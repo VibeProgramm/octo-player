@@ -1,11 +1,15 @@
 package app.winters.octo.discovery
 
 import app.winters.octo.catalog.SongIdentity
+import app.winters.octo.catalog.searchKey
+import app.winters.octo.subsonic.CHART_COUNTRY_AUTO
 import app.winters.octo.subsonic.CHART_NEW_SONGS
 import app.winters.octo.subsonic.CHART_TRENDING
+import app.winters.octo.subsonic.ChartChoices
 import app.winters.octo.subsonic.Extension
 import app.winters.octo.subsonic.OCTO_TOP_SONGS
 import app.winters.octo.subsonic.OCTO_TOP_SONGS_CHARTS
+import app.winters.octo.subsonic.OCTO_TOP_SONGS_COUNTRIES
 import app.winters.octo.subsonic.TOP_SONGS_APPLE
 import app.winters.octo.subsonic.TOP_SONGS_DEEZER
 import app.winters.octo.subsonic.TOP_SONGS_LASTFM
@@ -74,3 +78,72 @@ fun chartSongs(chart: String): Int = if (chart == CHART_NEW_SONGS || chart == CH
 // Whether a server's extensions offer the Charts page: octoTopSongs at the
 // version whose getTopChart takes a chart.
 fun chartsOffered(extensions: List<Extension>): Boolean = extensions.lists(OCTO_TOP_SONGS, OCTO_TOP_SONGS_CHARTS)
+
+// Whether a server's extensions offer chart countries: octoTopSongs at the
+// version whose chart calls take a country and that saves the listener's
+// own country and pins.
+fun chartCountriesOffered(extensions: List<Extension>): Boolean = extensions.lists(OCTO_TOP_SONGS, OCTO_TOP_SONGS_COUNTRIES)
+
+// The countries in the picker's order: the listener's own, then their
+// pinned ones, then the one in view when it is neither, then the rest by
+// name, accents aside.
+fun chartCountryOrder(
+    codes: List<String>,
+    own: String?,
+    pinned: List<String>,
+    name: (String) -> String,
+    viewing: String? = null,
+): List<String> {
+    val first = (listOfNotNull(own) + pinned + listOfNotNull(viewing)).distinct()
+    val rest = codes.filter { it !in first }.sortedBy { searchKey(name(it)) }
+    return first + rest
+}
+
+// One line of the chart country picker: the country it shows (null for
+// following the server's), its words, a line about it, whether it is the
+// one in view, and whether it is among the lines at the top (the server's,
+// the listener's own and pinned ones, and the one in view).
+data class ChartCountryRow(
+    val code: String?,
+    val label: String,
+    val detail: String?,
+    val chosen: Boolean,
+    val top: Boolean,
+)
+
+// The chart country picker's lines, from what getCharts said of the
+// listener's own country: first "Same as the server (United States)",
+// which saves following the server's country, then the countries in
+// chartCountryOrder's order. `viewing` is the country in view when it is
+// not the listener's own. "Yours" marks a country the listener chose, so
+// it is left off while they follow the server's.
+fun chartCountryRows(own: ChartChoices, viewing: String?, name: (String) -> String): List<ChartCountryRow> {
+    val follows = own.setting == null || own.setting.equals(CHART_COUNTRY_AUTO, ignoreCase = true)
+    val mine = own.setting?.lowercase()?.takeUnless { follows }
+    val order = chartCountryOrder(own.countries, mine, own.pinned, name, viewing)
+    val top = (listOfNotNull(mine) + own.pinned + listOfNotNull(viewing)).toSet()
+    val server = own.serverCountry?.let { "Same as the server (${name(it)})" } ?: "Same as the server"
+    return listOf(ChartCountryRow(null, server, null, chosen = viewing == null && follows, top = true)) +
+        order.map { code ->
+            ChartCountryRow(
+                code = code,
+                label = name(code),
+                detail = when {
+                    code == mine -> "Yours"
+                    code in own.pinned -> "Pinned"
+                    else -> null
+                },
+                chosen = if (viewing == null) code == mine else code == viewing,
+                top = code in top,
+            )
+        }
+}
+
+// Whether what was typed picks this country: inside its name, case and
+// accents ignored ("cote" finds Côte d'Ivoire), or exactly its two-letter
+// code. Nothing typed picks every country.
+fun countryMatches(name: String, code: String, typed: String): Boolean {
+    val words = searchKey(typed)
+    if (words.isEmpty()) return true
+    return words in searchKey(name) || code.equals(typed.trim(), ignoreCase = true)
+}

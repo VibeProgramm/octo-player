@@ -1,5 +1,6 @@
 package app.winters.octo.discovery
 
+import app.winters.octo.subsonic.ChartChoices
 import app.winters.octo.subsonic.TOP_SONGS_DEEZER
 import app.winters.octo.subsonic.TOP_SONGS_LASTFM
 import org.junit.Assert.assertEquals
@@ -70,5 +71,77 @@ class TopSongsTest {
         assertFalse(chartsOffered(listOf(app.winters.octo.subsonic.Extension("octoTopSongs", listOf(1)))))
         assertTrue(chartsOffered(listOf(app.winters.octo.subsonic.Extension("octoTopSongs", listOf(1, 2)))))
         assertFalse(chartsOffered(emptyList()))
+    }
+
+    @Test
+    fun chartCountriesNeedTheThirdVersion() {
+        assertFalse(chartCountriesOffered(listOf(app.winters.octo.subsonic.Extension("octoTopSongs", listOf(1, 2)))))
+        assertTrue(chartCountriesOffered(listOf(app.winters.octo.subsonic.Extension("octoTopSongs", listOf(1, 2, 3)))))
+        assertFalse(chartCountriesOffered(emptyList()))
+    }
+
+    private val names = mapOf("br" to "Brazil", "jp" to "Japan", "kr" to "South Korea", "us" to "United States", "ax" to "Åland Islands", "de" to "Germany")
+    private val name: (String) -> String = { names.getValue(it) }
+
+    @Test
+    fun theOwnCountryComesFirstThenThePinnedOnesThenTheRestByName() {
+        val codes = listOf("us", "kr", "jp", "de", "br", "ax")
+
+        assertEquals(listOf("br", "kr", "jp", "ax", "de", "us"), chartCountryOrder(codes, own = "br", pinned = listOf("kr", "jp"), name = name))
+        assertEquals(listOf("ax", "br", "de", "jp", "kr", "us"), chartCountryOrder(codes, own = null, pinned = emptyList(), name = name))
+        // The one in view follows the pinned ones.
+        assertEquals(listOf("br", "kr", "de", "ax", "jp", "us"), chartCountryOrder(codes, own = "br", pinned = listOf("kr"), name = name, viewing = "de"))
+    }
+
+    private fun own(setting: String, pinned: List<String> = emptyList()) = ChartChoices(
+        country = if (setting == "auto") "us" else setting,
+        setting = setting,
+        pinned = pinned,
+        countries = listOf("br", "de", "jp", "kr", "us"),
+        maxPinned = 3,
+        serverCountry = "us",
+    )
+
+    @Test
+    fun followingTheServerIsTheFirstLineAndChosenWhileFollowed() {
+        val rows = chartCountryRows(own("auto"), viewing = null, name = name)
+
+        assertEquals("Same as the server (United States)", rows.first().label)
+        assertNull(rows.first().code)
+        assertTrue(rows.first().chosen)
+        // No country says "Yours" while the listener follows the server.
+        assertTrue(rows.none { it.detail == "Yours" })
+        assertEquals(1, rows.count { it.chosen })
+    }
+
+    @Test
+    fun aChosenCountrySaysYoursAndPinnedOnesSayPinned() {
+        val rows = chartCountryRows(own("br", pinned = listOf("kr")), viewing = null, name = name)
+
+        assertEquals(listOf(null, "br", "kr"), rows.filter { it.top }.map { it.code })
+        assertEquals("Yours", rows[1].detail)
+        assertTrue(rows[1].chosen)
+        assertEquals("Pinned", rows[2].detail)
+        assertFalse(rows.first().chosen)
+    }
+
+    @Test
+    fun theCountryInViewIsChosenAndJoinsTheTop() {
+        val rows = chartCountryRows(own("br", pinned = listOf("kr")), viewing = "jp", name = name)
+
+        assertEquals(listOf(null, "br", "kr", "jp"), rows.filter { it.top }.map { it.code })
+        assertEquals(listOf("jp"), rows.filter { it.chosen }.map { it.code })
+        assertEquals(listOf("de", "us"), rows.filterNot { it.top }.map { it.code })
+    }
+
+    @Test
+    fun aCountryIsFoundByItsNameAccentsAsideOrItsWholeCode() {
+        assertTrue(countryMatches("Côte d'Ivoire", "ci", "cote"))
+        assertTrue(countryMatches("Japan", "jp", "JP"))
+        assertTrue(countryMatches("Japan", "jp", "  pan "))
+        // Codes match only whole.
+        assertFalse(countryMatches("Germany", "de", "d"))
+        assertTrue(countryMatches("Germany", "de", ""))
+        assertTrue(countryMatches("Germany", "de", "  "))
     }
 }
