@@ -1,30 +1,49 @@
 package app.winters.octo.ui.charts
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import app.winters.octo.design.ButtonSize
 import app.winters.octo.design.GlazeButton
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
+import app.winters.octo.design.OctoInk
 import app.winters.octo.design.OctoType
 import app.winters.octo.discovery.ChartList
 import app.winters.octo.discovery.chartCountryRows
@@ -40,6 +59,7 @@ import app.winters.octo.ui.common.ChoiceSheet
 import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.LocalChoiceSheet
 import app.winters.octo.ui.common.NO_COUNTRY_MATCHES
+import app.winters.octo.ui.common.QuietButton
 import app.winters.octo.ui.common.SongLead
 import app.winters.octo.ui.common.SongRow
 import app.winters.octo.ui.common.choiceAnchor
@@ -60,11 +80,15 @@ import kotlin.math.roundToInt
 @Composable
 fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
     val sheet = LocalChoiceSheet.current
+    // The line about the chart keeps the last chart's words for the same
+    // country while the next chart comes, so nothing under it moves.
+    var shownCaption by remember(vm.country) { mutableStateOf<String?>(null) }
+    LaunchedEffect(vm.list) { vm.list?.let(::caption)?.let { shownCaption = it } }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
             item(key = "title") {
                 val country = vm.country?.takeIf { vm.canPickCountry }
-                ChartsTitle(country?.let(::countryName), sheet) { pickCountry(sheet, vm) }
+                ChartsTitle(country?.let(::countryName), sheet, onPick = { pickCountry(sheet, vm) }) { CountryActions(vm) }
             }
             if (vm.choices.isNotEmpty()) {
                 item(key = "chips") {
@@ -80,9 +104,8 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
                     }
                 }
             }
-            if (vm.browsing != null) item(key = "country") { CountryActions(vm) }
-            vm.problem?.let { problem -> item(key = "problem") { Quiet(problem) } }
             val list = vm.list
+            if (!vm.none) item(key = "about") { Quiet(list?.let(::caption) ?: shownCaption.orEmpty()) }
             when {
                 vm.none -> item(key = "none") { Quiet("This server doesn't have charts.") }
                 list == null -> item(key = "loading") {
@@ -92,7 +115,6 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
                 }
                 list.songs.isEmpty() -> item(key = "empty") { Quiet("Nothing in this chart right now. Try another.") }
                 else -> {
-                    caption(list)?.let { item(key = "about") { Quiet(it) } }
                     item(key = "play") {
                         GlazeButton("Play all", onClick = { vm.play(0) }, modifier = Modifier.padding(start = 20.dp, bottom = 8.dp))
                     }
@@ -118,71 +140,109 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
 }
 
 // The page's title and, when other countries can be looked at, the country
-// in view beside it: a quieter capsule whose middle sits on the middle of
-// the title's capitals. When the two do not fit side by side, the capsule
-// goes under the title, which always keeps its whole width.
+// in view beside it: a quiet capsule whose middle sits on the middle of the
+// title's capitals, then the quiet words that act on a country looked at.
+// The words take their room whether or not they show, so nothing under
+// the title moves between the listener's own country and another: beside
+// the capsule when all of it fits on the title's line, else on a line of
+// their own under it. A capsule that does not fit beside the title goes
+// under it too, and the title always keeps its whole width.
 @Composable
-private fun ChartsTitle(country: String?, sheet: ChoiceSheet, onPick: () -> Unit) {
+private fun ChartsTitle(country: String?, sheet: ChoiceSheet, onPick: () -> Unit, actions: @Composable () -> Unit) {
     val capHeight = rememberCapHeightPx(OctoType.display)
     Layout(
         content = {
             Text("Charts", style = OctoType.display, color = OctoColors.TextPrimary)
             if (country != null) {
-                GlazeButton(
-                    country,
-                    onClick = onPick,
-                    size = ButtonSize.Small,
-                    icon = painterResource(OctoIcons.Globe),
-                    modifier = Modifier.choiceAnchor(sheet),
-                )
+                CountryCapsule(country, onPick, Modifier.choiceAnchor(sheet))
+                Row(verticalAlignment = Alignment.CenterVertically) { actions() }
             }
         },
         modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 16.dp),
     ) { measurables, constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
         val title = measurables[0].measure(loose)
-        val button = measurables.getOrNull(1)?.measure(loose)
         val width = constraints.maxWidth
+        if (measurables.size < 3) return@Layout layout(width, title.height) { title.place(0, 0) }
+        val capsule = measurables[1].measure(loose)
+        val words = measurables[2].measure(loose)
         val gap = 12.dp.roundToPx()
-        when {
-            button == null -> layout(width, title.height) { title.place(0, 0) }
-            title.width + gap + button.width <= width -> {
-                val middle = capMiddle(title[FirstBaseline].toFloat(), capHeight)
-                val top = (middle - button.height / 2f).roundToInt()
-                // The capsule may reach above the title's line; the row grows to hold it.
-                val lift = max(0, -top)
-                layout(width, max(title.height + lift, top + lift + button.height)) {
-                    title.place(0, lift)
-                    button.place(title.width + gap, top + lift)
-                }
+        val middle = capMiddle(title[FirstBaseline].toFloat(), capHeight)
+        val besideTitle = title.width + gap + capsule.width <= width
+        val allBeside = besideTitle && title.width + gap + capsule.width + words.width <= width
+        // The first line: the title, and what fits beside it on its capitals.
+        val onFirst = if (besideTitle) capsule.height else 0
+        val firstTop = (middle - onFirst / 2f).roundToInt()
+        val lift = max(0, -firstTop)
+        var bottom = max(title.height + lift, firstTop + lift + onFirst)
+        val capsuleAt: IntOffset
+        val wordsAt: IntOffset
+        if (besideTitle) {
+            capsuleAt = IntOffset(title.width + gap, firstTop + lift)
+            wordsAt = if (allBeside) {
+                IntOffset(capsuleAt.x + capsule.width, capsuleAt.y + (capsule.height - words.height) / 2)
+            } else {
+                IntOffset(0, bottom + gap / 2).also { bottom = it.y + words.height }
             }
-            else -> layout(width, title.height + gap / 2 + button.height) {
-                title.place(0, 0)
-                button.place(0, title.height + gap / 2)
-            }
+        } else {
+            capsuleAt = IntOffset(0, bottom + gap / 2)
+            bottom = capsuleAt.y + capsule.height
+            wordsAt = IntOffset(0, bottom + gap / 2)
+            bottom = wordsAt.y + words.height
+        }
+        layout(width, bottom) {
+            title.place(0, lift)
+            capsule.place(capsuleAt)
+            words.place(wordsAt)
         }
     }
 }
 
-// While another country is looked at: make it the listener's own, or pin
-// it so its charts come as playlists too. A full set of pins says so.
+// The country in view, as a quiet capsule that opens every country: the
+// chips' resting fill, softer words, and a small chevron saying it opens.
+@Composable
+private fun CountryCapsule(name: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val ink = if (pressed) OctoColors.TextPrimary else OctoColors.TextSecondary
+    Row(
+        modifier
+            .height(30.dp)
+            .clip(CircleShape)
+            .background(OctoColors.TextPrimary.copy(alpha = if (pressed) 0.12f else 0.08f))
+            .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClickLabel = "Choose a country", onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(painterResource(OctoIcons.Globe), contentDescription = null, tint = ink, modifier = Modifier.size(16.dp))
+        Text(name, style = OctoType.label, color = ink, maxLines = 1)
+        Icon(painterResource(OctoIcons.Chevron), contentDescription = null, tint = OctoColors.TextMuted, modifier = Modifier.size(12.dp).rotate(90f))
+    }
+}
+
+// The quiet words for the country in view: make it the listener's own, or
+// pin it so its charts come as playlists too; a full set of pins says so,
+// and a save that did not happen says that. While the listener's own
+// country shows they keep their room, unseen and out of reach.
 @Composable
 private fun CountryActions(vm: ChartsViewModel) {
+    val shown = vm.browsing != null
     Row(
-        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        (if (shown) Modifier else Modifier.alpha(0f).clearAndSetSemantics {}).padding(start = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GlazeButton("Use as my country", onClick = vm::useAsMine, size = ButtonSize.Small, enabled = !vm.saving)
-        GlazeButton(
-            if (vm.isPinned) "Unpin" else "Pin",
-            onClick = vm::togglePin,
-            size = ButtonSize.Small,
-            enabled = !vm.saving && vm.canPin,
-            icon = painterResource(if (vm.isPinned) OctoIcons.Pinned else OctoIcons.Pin),
-        )
-        if (!vm.canPin) Text("${vm.maxPinned} pinned", style = OctoType.caption, color = OctoColors.TextMuted)
+        Action("Use as my country", shown && !vm.saving, vm::useAsMine)
+        Action(if (vm.isPinned) "Unpin" else "Pin", shown && !vm.saving && vm.canPin, vm::togglePin)
     }
+    val note = vm.problem ?: "${vm.maxPinned} pinned".takeIf { shown && !vm.canPin }
+    if (note != null) Text(note, style = OctoType.caption, color = OctoColors.TextMuted, maxLines = 1, modifier = Modifier.padding(start = 4.dp))
+}
+
+// A quiet word button, dimmed and doing nothing while not `enabled`.
+@Composable
+private fun Action(text: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(Modifier.alpha(if (enabled) 1f else OctoInk.DisabledAlpha)) { QuietButton(text) { if (enabled) onClick() } }
 }
 
 // Every country, the server's own and the listener's own and pinned ones
