@@ -89,6 +89,9 @@ object OctoIcons {
     // Keeps an album, artist or playlist at the front of Home.
     val Pin = R.drawable.sym_keep
 
+    // The same, filled in: kept already.
+    val Pinned = R.drawable.sym_keep_filled
+
     // Takes a song off a playlist.
     val RemoveFromPlaylist = R.drawable.sym_playlist_remove
 
