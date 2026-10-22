@@ -405,23 +405,40 @@ class SubsonicClient(
     // The songs played most right now, ranked like an artist's top songs.
     // `chart` picks another chart (CHART_NEW_SONGS, CHART_TRENDING, a genre's
     // number) on servers that list octoTopSongs version 2; without it, the
-    // overall chart. Only for servers that list the octoTopSongs extension.
-    suspend fun topChart(count: Int = 20, chart: String? = null): TopSongs =
+    // overall chart. `country` reads another country's chart on servers that
+    // list version 3; without it, the listener's own. Only for servers that
+    // list the octoTopSongs extension.
+    suspend fun topChart(count: Int = 20, chart: String? = null, country: String? = null): TopSongs =
         get(
             "getTopChart",
             buildMap {
                 put("count", "$count")
                 chart?.let { put("chart", it) }
+                country?.let { put("country", it) }
             },
             "topSongs",
             TopSongs.serializer(),
             TopSongs(),
         )
 
-    // The charts the server's country has. Only for servers that list
-    // octoTopSongs version 2.
-    suspend fun charts(): ChartChoices =
-        get("getCharts", emptyMap(), "charts", ChartChoices.serializer(), ChartChoices())
+    // The charts the listener's country has, or `country`'s on servers that
+    // list octoTopSongs version 3. Only for servers that list version 2.
+    suspend fun charts(country: String? = null): ChartChoices =
+        get("getCharts", buildMap { country?.let { put("country", it) } }, "charts", ChartChoices.serializer(), ChartChoices())
+
+    // Saves the listener's own chart country (CHART_COUNTRY_AUTO follows the
+    // server's) and answers the charts. An answer without them is an error,
+    // so a save that did not happen is never taken for one that did. Only
+    // for servers that list octoTopSongs version 3.
+    suspend fun setChartCountry(country: String): ChartChoices =
+        get("setChartCountry", mapOf("country" to country), "charts", ChartChoices.serializer())
+
+    // Pins a country, so the listener gets its charts as playlists too, or
+    // unpins it, and answers the charts. The server adds or removes just this
+    // one, so another device's pins are kept. Only for servers that list
+    // octoTopSongs version 3.
+    suspend fun pinChartCountry(country: String, pinned: Boolean): ChartChoices =
+        get("pinChartCountry", mapOf("country" to country, "pinned" to "$pinned"), "charts", ChartChoices.serializer())
 
     // On Octo this call also sets up per-user playlists and the radio
     // profile, so callers keep the result for the session.

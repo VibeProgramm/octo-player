@@ -12,6 +12,13 @@ const val OCTO_TOP_SONGS = "octoTopSongs"
 // Trending Songs, a genre) and that answers getCharts.
 const val OCTO_TOP_SONGS_CHARTS = 2
 
+// The version whose getCharts and getTopChart take a country and that saves
+// the listener's own: their chart country and the countries they pin.
+const val OCTO_TOP_SONGS_COUNTRIES = 3
+
+// The chart country a listener saves to follow the server's.
+const val CHART_COUNTRY_AUTO = "auto"
+
 // Where a ranked list's order came from, as the server names it.
 const val TOP_SONGS_LASTFM = "lastfm"
 const val TOP_SONGS_DEEZER = "deezer"
@@ -63,9 +70,18 @@ data class ChartChoice(
     val on: Boolean = false,
 )
 
-// The charts the server's country has, Popular right now first.
+// The charts a country has, Popular right now first. From a server on
+// octoTopSongs version 3 it also says the listener's own choices: `setting`
+// is their chart country, or "auto" while they follow the server's
+// (`serverCountry`); `pinned` the countries whose charts they get as well,
+// at most `maxPinned`; `countries` every country Apple Music has charts for.
 @Serializable
 data class ChartChoices(
     val country: String? = null,
     val chart: List<ChartChoice> = emptyList(),
+    val setting: String? = null,
+    val pinned: List<String> = emptyList(),
+    val countries: List<String> = emptyList(),
+    val maxPinned: Int = 0,
+    val serverCountry: String? = null,
 )
