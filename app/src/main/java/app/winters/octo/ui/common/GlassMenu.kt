@@ -71,15 +71,17 @@ val MenuWidth = 288.dp
 
 // The options of a menu, one above the other with hairlines between, the
 // chosen one in the darker pill with a white check. `selected` below zero
-// means none is chosen, as when the menu asks for an action.
+// means none is chosen, as when the menu asks for an action; `pickable`
+// says the options are still choices then, as when a search has left the
+// chosen one out.
 @Composable
-fun GlassMenuOptions(options: List<Choice>, selected: Int, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun GlassMenuOptions(options: List<Choice>, selected: Int, onPick: (Int) -> Unit, modifier: Modifier = Modifier, pickable: Boolean = selected >= 0) {
     val looks = remember(options.size, selected) { menuRowLooks(options.size, selected) }
-    Column(if (selected >= 0) modifier.selectableGroup() else modifier) {
+    Column(if (pickable) modifier.selectableGroup() else modifier) {
         options.forEachIndexed { index, option ->
             // Always 1dp, drawn or not, so the rows never shift.
             if (index > 0) MenuLine(looks[index].lineAbove)
-            MenuOption(option, looks[index].selected, pickable = selected >= 0) { onPick(index) }
+            MenuOption(option, looks[index].selected, pickable = pickable) { onPick(index) }
         }
     }
 }

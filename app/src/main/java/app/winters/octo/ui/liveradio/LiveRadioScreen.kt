@@ -65,7 +65,10 @@ import app.winters.octo.ui.common.LocalChoiceSheet
 import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.Segmented
+import app.winters.octo.ui.common.COUNTRY_SEARCH_HINT
+import app.winters.octo.ui.common.NO_COUNTRY_MATCHES
 import app.winters.octo.ui.common.choiceAnchor
+import app.winters.octo.ui.common.countryChoiceMatches
 import app.winters.octo.ui.common.screenPadding
 
 private val SortWords = listOf("Nearest", "Most played")
@@ -102,7 +105,17 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
         // The phone's own country first, then every other by name.
         val here = countries.filter { it.first == vm.country }
         val ordered = here + countries.filterNot { it.first == vm.country }
-        sheet.show(ChoiceRequest("Country", ordered.map { Choice(it.second) }, selected = if (here.isEmpty()) -1 else 0) { vm.country = ordered[it].first })
+        sheet.show(
+            ChoiceRequest(
+                "Country",
+                ordered.map { Choice(it.second, key = it.first) },
+                selected = if (here.isEmpty()) -1 else 0,
+                onPick = { vm.country = ordered[it].first },
+                searchHint = COUNTRY_SEARCH_HINT,
+                match = ::countryChoiceMatches,
+                emptyText = NO_COUNTRY_MATCHES,
+            ),
+        )
     }
     val menu: (LiveStation) -> Unit = { station ->
         val actions = vm.actions(station)
