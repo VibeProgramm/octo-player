@@ -1,4 +1,4 @@
-**Android Auto** opens again, search puts your library first with online songs right after, and songs downloaded ahead play as FLAC.
+**Charts from any country**, Android Auto opens again, search puts your library first with online songs right after, and songs downloaded ahead play as FLAC.
 
 ## Sound
 
@@ -6,6 +6,7 @@
 
 ## Library
 
+- **Charts from any country.** Tap the country beside Charts to look at another country's charts, search for it by name, use it as your own, or pin up to three so their charts come as playlists too, like Popular right now · Japan.
 - Search lists each kind as one list: a few songs from your library first, then the songs found online right after.
 - A clear line says when Octo is looking online, found nothing, or couldn't look, with Try again.
 - Your library's songs are found by their artist too, not only by their title.
@@ -18,6 +19,7 @@
 
 ## Server
 
+- Charts from other countries need your Octo server on its next update or newer.
 - Downloading songs ahead needs your Octo server on the 2026.10.21 update or newer, with Get upcoming songs ahead turned on.
 
 ## Lyrics
