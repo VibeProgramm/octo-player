@@ -18,14 +18,14 @@ import app.winters.octo.design.MenuSeparator
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
-import app.winters.octo.design.Space
 import app.winters.octo.design.Txt
+import app.winters.octo.design.scrollFades
 import app.winters.octo.design.scrollbar
 import app.winters.octo.discovery.CountryRow
 import app.winters.octo.discovery.countryMatches
 
 // How wide a country menu is, so it keeps its size as the search narrows it.
-val CountryMenuWidth = 300.dp
+val CountryMenuWidth = 392.dp
 
 // A menu of countries: a field that narrows them by name or code, which
 // stays put while the countries under it scroll, then the lines at the top
@@ -42,13 +42,14 @@ fun ColumnScope.CountryMenu(
     GlassField(
         typed.value,
         { typed.value = it },
-        Modifier.fillMaxWidth().padding(horizontal = Space.M, vertical = Space.S),
+        // Its edges line up with the rows' pills, an even gutter all round.
+        Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
         placeholder = "Search countries",
         icon = OctoIcons.Search,
     )
     val shown = rows.filter { countryMatches(it.label, it.code.orEmpty(), typed.value) }
     val scroll = rememberScrollState()
-    Column(Modifier.weight(1f, fill = false).scrollbar(scroll).verticalScroll(scroll)) {
+    Column(Modifier.weight(1f, fill = false).scrollbar(scroll).scrollFades(scroll).verticalScroll(scroll)) {
         val top = shown.filter { it.top }
         val rest = shown.filterNot { it.top }
         top.forEach { row -> CountryLine(row, pick, close) }

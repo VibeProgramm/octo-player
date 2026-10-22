@@ -164,10 +164,11 @@ fun PageTitle(text: String, modifier: Modifier = Modifier, detail: String? = nul
 }
 
 // A section's title, whole, and its action at the end of the line, or
-// under the title when the two do not fit side by side.
+// under the title when the two do not fit side by side. `bottom` is the
+// room under it, less when a line about the section follows.
 @Composable
-fun SectionTitle(text: String, modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
-    val spaced = modifier.fillMaxWidth().padding(top = 22.dp, bottom = 10.dp)
+fun SectionTitle(text: String, modifier: Modifier = Modifier, action: String? = null, bottom: Dp = 10.dp, onAction: () -> Unit = {}) {
+    val spaced = modifier.fillMaxWidth().padding(top = 22.dp, bottom = bottom)
     if (action == null) {
         WholeTxt(text, OctoType.headline, modifier = spaced)
     } else {

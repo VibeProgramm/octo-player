@@ -32,18 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.SubcomposeLayout
@@ -58,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import app.winters.octo.design.CardEdge
 import app.winters.octo.design.scrollbar
+import app.winters.octo.design.topFade
 import app.winters.octo.design.CardFill
 import app.winters.octo.design.Corner
 import app.winters.octo.design.DesktopType
@@ -227,16 +223,6 @@ private fun SectionColumn(section: PageSection, modifier: Modifier, start: Dp, e
         }
     }
 }
-
-// The top edge fades out, so words scrolled up melt away under the title
-// rather than being cut off. At rest nothing sits in it.
-private fun Modifier.topFade(height: Dp): Modifier = this
-    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-    .drawWithContent {
-        drawContent()
-        val edge = height.toPx()
-        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = 0f, endY = edge), size = Size(size.width, edge), blendMode = BlendMode.DstIn)
-    }
 
 // A section: its icon on a tile, its name and line, then its cards.
 @Composable

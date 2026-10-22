@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.hoverable
@@ -25,6 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -102,7 +105,9 @@ fun IconAction(
 
 // A glass capsule with a white icon and word, like Play and Shuffle on an
 // album. A lit one catches a little more light, as a control under the
-// finger does; any capsule does under the pointer.
+// finger does; any capsule does under the pointer. A `quiet` one opens a
+// menu beside a title: the chips' resting fill, softer words and icon that
+// brighten under the pointer, and a small chevron saying it opens.
 @Composable
 fun GlazeCapsule(
     icon: ImageVector?,
@@ -112,9 +117,35 @@ fun GlazeCapsule(
     lit: Boolean = false,
     enabled: Boolean = true,
     height: Dp = 40.dp,
+    quiet: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val look = rememberButtonLook(interaction)
+    if (quiet) {
+        val held = look.hovered || look.pressed
+        val ink = if (held) OctoColors.TextPrimary else OctoColors.TextSecondary
+        Row(
+            modifier
+                .height(height)
+                .buttonMotion(look, CircleShape)
+                .alpha(if (enabled) 1f else OctoInk.DisabledAlpha)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = if (held) 0.12f else 0.08f))
+                .hoverable(interaction)
+                .pointerHoverIcon(PointerIcon.Hand)
+                .tabStop(LocalTabStops.current)
+                .clickable(interactionSource = interaction, indication = FocusRing(CircleShape), enabled = enabled, role = Role.Button, onClick = onClick)
+                .semantics { contentDescription = text }
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (icon != null) Glyph(icon, size = 16.dp, tint = ink)
+            Txt(text, OctoType.label, ink)
+            Glyph(OctoIcons.Chevron, Modifier.rotate(90f), size = IconSize.Inline - Space.Xxs, tint = OctoColors.TextMuted)
+        }
+        return
+    }
     Glaze(
         modifier
             .height(height)

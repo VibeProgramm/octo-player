@@ -71,6 +71,7 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -364,7 +365,8 @@ private val MenuRowShape = RoundedCornerShape(8.dp)
 // Under the pointer it sits in a quiet accent-tinted pill, at once. A
 // `destructive` one (deleting, removing) says so in soft red words; its
 // icon stays white like every other. `leading` draws something wider than
-// an icon in its place (a row of stars); `checked` ticks the choice in use.
+// an icon in its place (a row of stars); `checked` marks the choice in use
+// with the accent pill, a heavier word and a white tick.
 @Composable
 fun MenuRow(
     text: String,
@@ -386,6 +388,7 @@ fun MenuRow(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 6.dp)
+            .then(if (checked) Modifier.background(OctoColors.AccentSelected, MenuRowShape) else Modifier)
             .menuRowPress(MenuRowShape) { if ((hovered || pressed || focused) && enabled) 1f else 0f }
             .hoverable(interaction, enabled = enabled)
             .pointerHoverIcon(if (enabled) PointerIcon.Hand else PointerIcon.Default)
@@ -408,7 +411,7 @@ fun MenuRow(
         if (leading != null) leading() else if (icon != null) Glyph(icon, size = 16.dp, tint = if (enabled) Color.White else OctoColors.TextMuted)
         Txt(
             text,
-            OctoType.bodySmall,
+            if (checked) OctoType.bodySmall.copy(fontWeight = FontWeight.Medium) else OctoType.bodySmall,
             when {
                 !enabled -> OctoColors.TextMuted
                 destructive -> OctoColors.Destructive

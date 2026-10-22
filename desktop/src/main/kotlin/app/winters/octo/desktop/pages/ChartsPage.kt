@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -31,6 +34,7 @@ import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
 import app.winters.octo.design.Space
+import app.winters.octo.design.TextAction
 import app.winters.octo.design.Txt
 import app.winters.octo.design.WholeTxt
 import app.winters.octo.design.scrollbar
@@ -68,8 +72,12 @@ fun ChartsPage(app: AppState, visit: Visit) {
     val list = rememberListState(app.navigator, visit)
     val choices = charts.choices?.chart.orEmpty()
     val top = charts.lists[charts.key(charts.selected, charts.country)]
+    // The line under the title keeps the last chart's words for the same
+    // country while the next chart comes, so nothing under it moves.
+    var shownCaption by remember(charts.country) { mutableStateOf<String?>(null) }
+    LaunchedEffect(top) { top?.let(::caption)?.let { shownCaption = it } }
     LazyColumn(Modifier.scrollbar(list, LocalBottomRoom.current), state = list, contentPadding = pagePadding(LocalBottomRoom.current)) {
-        item(key = "title") { ChartsTitle(app, charts, top?.let(::caption)) }
+        item(key = "title") { ChartsTitle(app, charts, top?.let(::caption) ?: shownCaption) }
         if (choices.isNotEmpty()) {
             item(key = "chips") {
                 ChipRow(
@@ -80,10 +88,6 @@ fun ChartsPage(app: AppState, visit: Visit) {
                     modifier = Modifier.padding(top = Space.M, bottom = Space.M),
                 )
             }
-        }
-        if (charts.country != null) item(key = "country") { CountryActions(charts) }
-        charts.problem?.let { problem ->
-            item(key = "problem") { Txt(problem, OctoType.caption, OctoColors.TextMuted, Modifier.padding(bottom = Space.M)) }
         }
         when {
             charts.offered == false -> item(key = "none") { NothingHere("No charts here", "This server doesn't have charts.") }
@@ -97,30 +101,44 @@ fun ChartsPage(app: AppState, visit: Visit) {
 }
 
 // The page's title, and on a server that shows other countries, the
-// country in view beside it: a quieter capsule on the middle of the
-// title's capitals that opens every country.
+// country in view beside it: a quiet capsule on the middle of the title's
+// capitals that opens every country, then, while another country is
+// looked at, the words that make it the listener's own or pin it. All of
+// it sits on the title's line and the line under it is always held, so
+// nothing below moves between the listener's own country and another.
 @Composable
 private fun ChartsTitle(app: AppState, charts: Charts, detail: String?) {
     val country = charts.shownCountry?.takeIf { charts.canPickCountry }
     var anchor by remember { mutableStateOf(IntRect.Zero) }
-    // The capsule's place is held while there is no capsule, so the line
-    // under the title stays put when it comes.
     Column(Modifier.padding(bottom = Space.Xl)) {
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(Space.L)) {
             WholeTxt("Charts", DesktopType.pageTitle)
             OnTitleCapitals(DesktopType.pageTitle) {
-                if (country != null) GlazeCapsule(
-                    OctoIcons.Globe,
-                    countryName(country),
-                    { showCountryMenu(app, charts, anchor) },
-                    Modifier.onGloballyPositioned { anchor = it.boundsInWindow().roundToIntRect() },
-                    height = 32.dp,
-                )
+                if (country != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        GlazeCapsule(
+                            OctoIcons.Globe,
+                            countryName(country),
+                            { showCountryMenu(app, charts, anchor) },
+                            Modifier.onGloballyPositioned { anchor = it.boundsInWindow().roundToIntRect() },
+                            height = 28.dp,
+                            quiet = true,
+                        )
+                        Spacer(Modifier.width(Space.S))
+                        if (charts.country != null) CountryActions(charts)
+                        charts.problem?.let { Txt(it, OctoType.caption, OctoColors.TextMuted, Modifier.padding(start = Space.S)) }
+                    }
+                }
             }
         }
-        if (detail != null) Txt(detail, DesktopType.meta, OctoColors.TextMuted, Modifier.padding(top = Space.Xs))
+        Box(Modifier.padding(top = Space.Xs).height(CaptionHeight)) {
+            if (detail != null) Txt(detail, DesktopType.meta, OctoColors.TextMuted)
+        }
     }
 }
+
+// The line under the title, held whether or not it has words.
+private val CaptionHeight = 18.dp
 
 // Every country, under the capsule that opened it. `typed` starts the
 // search with words already in it.
@@ -136,25 +154,14 @@ private fun ColumnScope.ChartCountryMenu(charts: Charts, close: () -> Unit, type
     if (typed != null) CountryMenu(rows, pick, close, typed) else CountryMenu(rows, pick, close)
 }
 
-// While another country is looked at: make it the listener's own, or pin
-// it so its charts come as playlists too. A full set of pins says so.
+// While another country is looked at, quiet words beside its capsule:
+// make it the listener's own, or pin it so its charts come as playlists
+// too. A full set of pins says so.
 @Composable
 private fun CountryActions(charts: Charts) {
-    Row(
-        Modifier.padding(bottom = Space.M),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Space.M),
-    ) {
-        GlazeCapsule(null, "Use as my country", charts::useAsMine, enabled = !charts.saving, height = 34.dp)
-        GlazeCapsule(
-            if (charts.isPinned) OctoIcons.Pinned else OctoIcons.Pin,
-            if (charts.isPinned) "Unpin" else "Pin",
-            charts::togglePin,
-            enabled = !charts.saving && charts.canPin,
-            height = 34.dp,
-        )
-        if (!charts.canPin) Txt("${charts.maxPinned} pinned", OctoType.caption, OctoColors.TextMuted)
-    }
+    TextAction("Use as my country", charts::useAsMine, enabled = !charts.saving)
+    TextAction(if (charts.isPinned) "Unpin" else "Pin", charts::togglePin, enabled = !charts.saving && charts.canPin)
+    if (!charts.canPin) Txt("${charts.maxPinned} pinned", OctoType.caption, OctoColors.TextMuted, Modifier.padding(start = Space.Xs))
 }
 
 // Who ranked the chart and for which country: "Most played on Apple Music
@@ -202,12 +209,12 @@ internal fun LazyListScope.chartsRow(app: AppState, charts: Charts, home: HomeSt
     if (top.entry.none { it.song != null }) return
     moving(key = "charts-title") {
         Column(verticalArrangement = Arrangement.spacedBy(Space.Xs)) {
-            SectionTitle(top.name ?: "Popular right now", action = "See all") {
+            SectionTitle(top.name ?: "Popular right now", action = "See all", bottom = 0.dp) {
                 charts.showOwn()
                 charts.selected = CHART_OVERALL
                 app.navigator.go(Page.Charts)
             }
-            caption(top)?.let { Txt(it, OctoType.caption, OctoColors.TextMuted, Modifier.padding(bottom = Space.S)) }
+            caption(top)?.let { Txt(it, OctoType.caption, OctoColors.TextMuted, Modifier.padding(bottom = Space.L)) }
         }
     }
     chartSongs(app, top, shown = CHARTS_ROW)

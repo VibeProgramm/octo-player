@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -17,6 +18,7 @@ import app.winters.octo.design.TypingState
 import app.winters.octo.desktop.AppState
 import app.winters.octo.desktop.FakeServer
 import app.winters.octo.desktop.nav.Page
+import app.winters.octo.desktop.pages.countryName
 import app.winters.octo.desktop.pages.showCountryMenu
 import app.winters.octo.desktop.player.SilentPlayer
 import app.winters.octo.desktop.secrets.SessionOnlySecrets
@@ -81,8 +83,13 @@ class ChartsShotsTest {
     )
 
     private companion object {
-        // What the listener chose: Brazil and South Korea pinned, following the server's country.
-        const val OWN = """"setting":"auto","pinned":["br","kr"],"countries":["ae","au","br","ca","ci","de","fr","gb","jp","kr","mx","us"],"maxPinned":3,"serverCountry":"us""""
+        // A good part of the countries Apple Music has charts for, enough
+        // for the menu to scroll, with the longest names among them.
+        val COUNTRIES = listOf(
+            "ae", "ar", "at", "au", "ba", "be", "bg", "br", "ca", "ch", "ci", "cl", "co", "cz", "de", "dk", "do", "eg", "es", "fi",
+            "fr", "gb", "gr", "hk", "hu", "id", "ie", "il", "in", "it", "jp", "kn", "kr", "mx", "my", "nl", "no", "nz", "ph", "pl",
+            "pt", "ro", "sa", "se", "sg", "tc", "th", "tr", "tw", "us", "vc", "vn", "za",
+        )
         const val HOME = """
             {"id":"34","name":"Popular right now","label":"Top songs","kind":"overall","on":true},
             {"id":"new","name":"Best New Songs","label":"Best New Songs","kind":"new","on":true},
@@ -104,6 +111,18 @@ class ChartsShotsTest {
             {"id":"21","name":"Top Rock","label":"Rock","kind":"genre","on":false}"""
     }
 
+    // What the pretend server says of the listener: their country ("auto"
+    // follows the server's), their pins and the server's own country.
+    @Volatile private var setting = "auto"
+    @Volatile private var serverCountry = "us"
+
+    private fun own(): String {
+        val codes = COUNTRIES.joinToString(",") { "\"$it\"" }
+        return """"setting":"$setting","pinned":["br","kr"],"countries":[$codes],"maxPinned":3,"serverCountry":"$serverCountry""""
+    }
+
+    private fun ownCountry() = if (setting == "auto") serverCountry else setting
+
     private fun serve(server: FakeServer) {
         server.answer("ping", type = "octo")
         server.answer(
@@ -116,12 +135,12 @@ class ChartsShotsTest {
         server.answerBy("search3") { server.ok(""""searchResult3":{}""", type = "octo") }
         server.answer("getPlaylists", """"playlists":{"playlist":[]}""")
         server.answerBy("getCharts") { request ->
-            val country = request.url.queryParameter("country") ?: "us"
-            server.ok(""""charts":{"country":"$country",$OWN,"chart":[${if (country == "jp") JAPAN else HOME}]}""", type = "octo")
+            val country = request.url.queryParameter("country") ?: ownCountry()
+            server.ok(""""charts":{"country":"$country",${own()},"chart":[${if (country == "jp") JAPAN else HOME}]}""", type = "octo")
         }
         server.answerBy("getTopChart") { request ->
             val id = request.url.queryParameter("chart") ?: "34"
-            val country = request.url.queryParameter("country") ?: "us"
+            val country = request.url.queryParameter("country") ?: ownCountry()
             val (name, rows) = charts[if (country == "jp" && id == "34") "27" else id] ?: charts.getValue("34")
             val entries = rows.mapIndexed { index, line ->
                 val (title, artist, album, seconds, marks) = line.split("|")
@@ -152,7 +171,7 @@ class ChartsShotsTest {
             val scene = ImageComposeScene(1440, 900, Density(1f)) {
                 CompositionLocalProvider(LocalTyping provides TypingState()) { Shell(app, null) {} }
             }
-            fun shot(name: String, settleMs: Long = 2_500) {
+            fun shot(name: String?, settleMs: Long = 2_500) {
                 val begin = System.currentTimeMillis()
                 var t = 0L
                 while (System.currentTimeMillis() < begin + settleMs) {
@@ -160,33 +179,58 @@ class ChartsShotsTest {
                     Thread.sleep(30)
                     t = (System.currentTimeMillis() - begin) * 1_000_000
                 }
-                File(out, "$name.png").writeBytes(scene.render(t).encodeToData(EncodedImageFormat.PNG)!!.bytes)
+                val image = scene.render(t)
+                if (name != null) File(out, "$name.png").writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes)
             }
+            fun capsule(name: String) = scene.semanticsOwners.firstNotNullOf { find(it.unmergedRootSemanticsNode, name) }.boundsInWindow
+            val charts = app.search!!.charts
             shot("home-charts", 3_500)
             SwingUtilities.invokeAndWait { app.navigator.go(Page.Charts) }
             shot("charts-page")
-            SwingUtilities.invokeAndWait { app.search?.charts?.selected = "new" }
+            SwingUtilities.invokeAndWait { charts.selected = "new" }
             shot("charts-new-songs")
-            SwingUtilities.invokeAndWait { app.search?.charts?.selected = "18" }
+            SwingUtilities.invokeAndWait { charts.selected = "18" }
             shot("charts-genre")
-            SwingUtilities.invokeAndWait { app.search?.charts?.selected = "34" }
+            SwingUtilities.invokeAndWait { charts.selected = "34" }
             shot("charts-own-country", 1_500)
             // The country capsule, clicked as a person would: the menu opens under it.
-            val capsule = scene.semanticsOwners.firstNotNullOf { find(it.unmergedRootSemanticsNode, "United States") }.boundsInWindow
+            val home = capsule("United States")
             SwingUtilities.invokeAndWait {
-                scene.sendPointerEvent(PointerEventType.Press, capsule.center, buttons = PointerButtons(isPrimaryPressed = true))
-                scene.sendPointerEvent(PointerEventType.Release, capsule.center)
+                scene.sendPointerEvent(PointerEventType.Press, home.center, buttons = PointerButtons(isPrimaryPressed = true))
+                scene.sendPointerEvent(PointerEventType.Release, home.center)
             }
             shot("charts-country-menu", 1_500)
+            // The same menu scrolled part way, both its edges fading.
+            val row = scene.semanticsOwners.firstNotNullOf { findText(it.unmergedRootSemanticsNode, "Canada") }.boundsInWindow
+            repeat(4) { SwingUtilities.invokeAndWait { scene.sendPointerEvent(PointerEventType.Scroll, row.center, scrollDelta = Offset(0f, 1f)) } }
+            shot("charts-country-menu-scrolled", 1_500)
             SwingUtilities.invokeAndWait { app.popups.close() }
-            SwingUtilities.invokeAndWait { app.search?.charts?.pickCountry("jp") }
+            // The listener chose the United Kingdom, then looks at Japan.
+            setting = "gb"
+            SwingUtilities.invokeAndWait { charts.opened() }
+            shot(null, 1_000)
+            SwingUtilities.invokeAndWait { charts.pickCountry("jp") }
             shot("charts-japan")
-            val japan = scene.semanticsOwners.firstNotNullOf { find(it.unmergedRootSemanticsNode, "Japan") }.boundsInWindow
-            SwingUtilities.invokeAndWait { showCountryMenu(app, app.search!!.charts, japan.roundToIntRect(), mutableStateOf("ko")) }
+            val japan = capsule("Japan").roundToIntRect()
+            SwingUtilities.invokeAndWait { showCountryMenu(app, charts, japan) }
+            shot("charts-country-menu-japan", 1_500)
+            SwingUtilities.invokeAndWait { app.popups.close() }
+            SwingUtilities.invokeAndWait { showCountryMenu(app, charts, japan, mutableStateOf("ko")) }
             shot("charts-country-menu-search", 1_500)
             SwingUtilities.invokeAndWait { app.popups.close() }
-            SwingUtilities.invokeAndWait { showCountryMenu(app, app.search!!.charts, japan.roundToIntRect(), mutableStateOf("zz")) }
+            SwingUtilities.invokeAndWait { showCountryMenu(app, charts, japan, mutableStateOf("zz")) }
             shot("charts-country-menu-none", 1_500)
+            SwingUtilities.invokeAndWait { app.popups.close() }
+            // A server in the country with the longest name, followed by the listener.
+            setting = "auto"
+            serverCountry = COUNTRIES.maxBy { countryName(it).length }
+            SwingUtilities.invokeAndWait {
+                charts.showOwn()
+                charts.opened()
+            }
+            shot(null, 1_500)
+            SwingUtilities.invokeAndWait { showCountryMenu(app, charts, capsule(countryName(serverCountry)).roundToIntRect()) }
+            shot("charts-country-menu-longest", 1_500)
             scene.close()
         }
     }
@@ -194,6 +238,11 @@ class ChartsShotsTest {
     private fun find(node: SemanticsNode, name: String): SemanticsNode? {
         if (node.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(name) == true) return node
         return node.children.firstNotNullOfOrNull { find(it, name) }
+    }
+
+    private fun findText(node: SemanticsNode, words: String): SemanticsNode? {
+        if (node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == words } == true) return node
+        return node.children.firstNotNullOfOrNull { findText(it, words) }
     }
 
     // A cover of soft coloured shapes, in colours of its own for each id.
