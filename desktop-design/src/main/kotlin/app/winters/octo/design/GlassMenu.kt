@@ -158,13 +158,15 @@ class PopupHost {
         private set
 
     // Opens at a point in the window, like where a right click landed.
-    fun showAt(point: IntOffset, width: Dp? = 260.dp, content: @Composable ColumnScope.(close: () -> Unit) -> Unit) {
-        request = PopupRequest(point, null, width, content)
+    // Content that `scrollsItself` keeps a part in place (a search field)
+    // while the rest scrolls.
+    fun showAt(point: IntOffset, width: Dp? = 260.dp, scrollsItself: Boolean = false, content: @Composable ColumnScope.(close: () -> Unit) -> Unit) {
+        request = PopupRequest(point, null, width, content, scrollsItself = scrollsItself)
     }
 
     // Opens under (or over) a control, given its bounds in the window.
-    fun showUnder(anchor: IntRect, width: Dp? = 260.dp, content: @Composable ColumnScope.(close: () -> Unit) -> Unit) {
-        request = PopupRequest(null, anchor, width, content)
+    fun showUnder(anchor: IntRect, width: Dp? = 260.dp, scrollsItself: Boolean = false, content: @Composable ColumnScope.(close: () -> Unit) -> Unit) {
+        request = PopupRequest(null, anchor, width, content, scrollsItself = scrollsItself)
     }
 
     // Opens in the middle of the window, for a small form. A taller form
