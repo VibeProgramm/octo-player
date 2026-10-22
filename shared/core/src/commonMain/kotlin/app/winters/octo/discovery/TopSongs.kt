@@ -79,6 +79,9 @@ fun chartSongs(chart: String): Int = if (chart == CHART_NEW_SONGS || chart == CH
 // version whose getTopChart takes a chart.
 fun chartsOffered(extensions: List<Extension>): Boolean = extensions.lists(OCTO_TOP_SONGS, OCTO_TOP_SONGS_CHARTS)
 
+// The line under the buttons when a chart country or pin was not saved.
+const val CHART_SAVE_FAILED = "Couldn't save. Try again."
+
 // Whether a server's extensions offer chart countries: octoTopSongs at the
 // version whose chart calls take a country and that saves the listener's
 // own country and pins.
@@ -99,11 +102,11 @@ fun chartCountryOrder(
     return first + rest
 }
 
-// One line of the chart country picker: the country it shows (null for
-// following the server's), its words, a line about it, whether it is the
-// one in view, and whether it is among the lines at the top (the server's,
-// the listener's own and pinned ones, and the one in view).
-data class ChartCountryRow(
+// One line of a country picker: the country it picks (null for following
+// the server's chart country), its words, a line about it, whether it is
+// the one chosen, and whether it is among the lines at the top, above the
+// rest of the countries.
+data class CountryRow(
     val code: String?,
     val label: String,
     val detail: String?,
@@ -117,15 +120,15 @@ data class ChartCountryRow(
 // chartCountryOrder's order. `viewing` is the country in view when it is
 // not the listener's own. "Yours" marks a country the listener chose, so
 // it is left off while they follow the server's.
-fun chartCountryRows(own: ChartChoices, viewing: String?, name: (String) -> String): List<ChartCountryRow> {
+fun chartCountryRows(own: ChartChoices, viewing: String?, name: (String) -> String): List<CountryRow> {
     val follows = own.setting == null || own.setting.equals(CHART_COUNTRY_AUTO, ignoreCase = true)
     val mine = own.setting?.lowercase()?.takeUnless { follows }
     val order = chartCountryOrder(own.countries, mine, own.pinned, name, viewing)
     val top = (listOfNotNull(mine) + own.pinned + listOfNotNull(viewing)).toSet()
     val server = own.serverCountry?.let { "Same as the server (${name(it)})" } ?: "Same as the server"
-    return listOf(ChartCountryRow(null, server, null, chosen = viewing == null && follows, top = true)) +
+    return listOf(CountryRow(null, server, null, chosen = viewing == null && follows, top = true)) +
         order.map { code ->
-            ChartCountryRow(
+            CountryRow(
                 code = code,
                 label = name(code),
                 detail = when {

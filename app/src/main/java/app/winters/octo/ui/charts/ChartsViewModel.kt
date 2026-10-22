@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.winters.octo.discovery.ChartList
+import app.winters.octo.discovery.CHART_SAVE_FAILED
 import app.winters.octo.discovery.ChartLists
 import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.subsonic.CHART_COUNTRY_AUTO
@@ -17,9 +18,6 @@ import javax.inject.Inject
 import javax.inject.Provider
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-
-// The line under the buttons when a country was not saved.
-const val CHART_SAVE_FAILED = "Couldn't save. Try again."
 
 // The Charts page: the charts a country has, as chips, and the chosen
 // chart's songs. The country is the listener's own until another is

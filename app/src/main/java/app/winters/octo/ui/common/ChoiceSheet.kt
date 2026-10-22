@@ -243,7 +243,7 @@ private fun ChoiceSearch(typed: String, onChange: (String) -> Unit, hint: String
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
         modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-        height = MenuRowHeight.Touch + 4.dp,
+        height = MenuRowHeight.Touch,
         trailing = {
             if (typed.isEmpty()) {
                 Icon(painterResource(OctoIcons.Search), contentDescription = null, tint = OctoColors.TextMuted, modifier = Modifier.size(20.dp))
