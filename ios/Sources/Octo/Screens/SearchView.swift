@@ -1,9 +1,10 @@
 import OctoKit
 import SwiftUI
 
-/// Search: its field under the title, the kinds to search, the "Library songs only" chip, recent
-/// searches and the chart while the field is empty, then each kind as one list: the library's
-/// answers first and, on a server, what it found beyond the library right after them.
+/// Search: its field in the title's place, one line of chips for the kinds and "Library songs
+/// only", recent searches and the chart while the field is empty, then each kind as one list:
+/// the library's answers first and, on a server, what it found beyond the library right after
+/// them.
 struct SearchView: View {
     @Environment(Session.self) private var session
     @Environment(Player.self) private var player
@@ -21,19 +22,21 @@ struct SearchView: View {
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 0) {
-            ScreenTitle("Search")
+            // The field in the title's place, then one line of chips: the kinds, then Library
+            // songs only.
             field
-            Picker("Show", selection: $model.filter) {
-                ForEach(SearchFilter.allCases, id: \.self) { Text($0.label).tag($0) }
+                .padding(.top, 8)
+            ControlLine(fills: false) {
+                ForEach(SearchFilter.allCases, id: \.self) { kind in
+                    OnOffChip(text: kind.label, on: model.filter == kind) { model.filter = kind }
+                }
+                if model.signedIn {
+                    OnOffChip(text: LibraryOnlyWords.setting, on: libraryOnly) { AppSettings.shared.setLibraryOnly(!libraryOnly) }
+                }
+            } actions: {
+                EmptyView()
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 20)
             .padding(.top, 12)
-            if model.signedIn {
-                OnOffChip(text: LibraryOnlyWords.setting, on: libraryOnly) { AppSettings.shared.setLibraryOnly(!libraryOnly) }
-                    .padding(.leading, 20)
-                    .padding(.top, 10)
-            }
             if looksLikeRadioSearch(trimmed) { liveRadioRow }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
