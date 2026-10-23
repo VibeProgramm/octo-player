@@ -35,6 +35,7 @@ import app.winters.octo.catalog.isFind
 import app.winters.octo.catalog.mosaicCovers
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.elevation3
+import app.winters.octo.family.FamilyHub
 import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.playback.PlaylistStore
 import app.winters.octo.playlists.PlaylistSync
@@ -77,6 +78,7 @@ class PlaylistViewModel @AssistedInject constructor(
     private val playback: PlaybackConnection,
     private val feedback: Feedback,
     sync: PlaylistSync,
+    private val family: FamilyHub,
 ) : ViewModel() {
     // Null until first read.
     val page: StateFlow<PlaylistPage?> =
@@ -90,6 +92,14 @@ class PlaylistViewModel @AssistedInject constructor(
     // Whether a server is signed in, so the playlist could be saved there.
     val serverAvailable: StateFlow<Boolean> =
         sync.available.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    // Whether the listener manages the family: only a manager renames or
+    // deletes a family playlist from the phone.
+    fun managesFamily(): Boolean = family.me?.abilities?.manageFamily == true
+
+    // Whether songs can be taken out of this playlist here: not from a family
+    // playlist by a listener who hears only clean songs.
+    fun takesOut(playlist: PlaylistEntity): Boolean = !playlist.family || family.me?.abilities?.cleanOnly != true
 
     private fun ids() = page.value?.tracks.orEmpty().map { it.track.id }
 
@@ -125,8 +135,9 @@ class PlaylistViewModel @AssistedInject constructor(
 
 private val RowShape = RoundedCornerShape(12.dp)
 
-// One playlist: its songs in order. Drag a song by its handle to move it,
-// swipe it left to take it out, tap it to play from there.
+// One playlist: its songs in order. Drag a song by its handle to move it
+// (not in a family playlist, which keeps the server's order), swipe it left
+// to take it out, tap it to play from there.
 @Composable
 fun PlaylistScreen(
     id: String,
@@ -146,6 +157,7 @@ fun PlaylistScreen(
         val playlist = current?.playlist
         if (current != null && playlist != null) {
             val tracks = current.tracks
+            val takesOut = vm.takesOut(playlist)
             // The rows as drawn. A drag moves them at once; the playlist catches up on drop.
             var rows by remember(tracks) { mutableStateOf(tracks) }
             val haptics = LocalHapticFeedback.current
@@ -161,11 +173,18 @@ fun PlaylistScreen(
 
             // Songs are picked by their row, since a song can be here twice.
             val pickable = remember(rows) { rows.map { Pickable(it.itemId.toString(), it.track) } }
-            SelectableSongs(pickable, onRemove = { picked ->
-                val gone = picked.mapNotNull { it.key.toLongOrNull() }.toSet()
-                rows = rows.filterNot { it.itemId in gone }
-                vm.removeMany(gone.toList())
-            }) {
+            SelectableSongs(
+                pickable,
+                onRemove = if (!takesOut) {
+                    null
+                } else {
+                    ({ picked ->
+                        val gone = picked.mapNotNull { it.key.toLongOrNull() }.toSet()
+                        rows = rows.filterNot { it.itemId in gone }
+                        vm.removeMany(gone.toList())
+                    })
+                },
+            ) {
                 val selecting = LocalSongSelection.current?.active == true
                 LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = screenPadding(extraTop = DetailTopGap)) {
                     item(key = "header") {
@@ -179,7 +198,16 @@ fun PlaylistScreen(
                                 val onServer = playlist.sourceId != null
                                 val canDownload = tracks.any { !it.track.onPhone && !isFind(it.track.id) }
                                 sheets.show(
-                                    PlaylistSheet.Options(playlist.id, playlist.name, onServer, canSave = serverAvailable && !onServer, canDownload = canDownload),
+                                    PlaylistSheet.Options(
+                                        playlist.id,
+                                        playlist.name,
+                                        onServer,
+                                        canSave = serverAvailable && !onServer,
+                                        canDownload = canDownload,
+                                        family = playlist.family,
+                                        canRename = !playlist.family || vm.managesFamily(),
+                                        canDelete = !playlist.family || vm.managesFamily(),
+                                    ),
                                 )
                             },
                         ) { modifier, shape ->
@@ -207,7 +235,7 @@ fun PlaylistScreen(
                             SwipeToDismissBox(
                                 state = swipe,
                                 enableDismissFromStartToEnd = false,
-                                gesturesEnabled = !dragging && !selecting,
+                                gesturesEnabled = !dragging && !selecting && takesOut,
                                 onDismiss = {
                                     rows = rows - entry
                                     vm.remove(entry.itemId)
@@ -231,8 +259,8 @@ fun PlaylistScreen(
                                 ) {
                                     SongRow(
                                         entry.track,
-                                        // No moving songs while picking them.
-                                        trailing = if (selecting) null else ({ DragHandle(Modifier.draggableHandle(onDragStopped = drop)) }),
+                                        // No moving songs while picking them, or in a family playlist.
+                                        trailing = if (selecting || playlist.family) null else ({ DragHandle(Modifier.draggableHandle(onDragStopped = drop)) }),
                                         menuContext = SongMenuContext(playlistId = playlist.id, playlistItemId = entry.itemId),
                                         selectKey = entry.itemId.toString(),
                                         // A swipe left takes the song out here.

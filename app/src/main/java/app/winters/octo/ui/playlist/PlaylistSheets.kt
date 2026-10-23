@@ -94,16 +94,21 @@ sealed interface PlaylistSheet {
 
     // Rename or delete a playlist, or save one only on the phone to the
     // server when `canSave`. `onServer` is one kept with the server.
-    // `canDownload` when some of its songs are only on a server.
+    // `canDownload` when some of its songs are only on a server. A family
+    // playlist (`family`) is renamed and deleted only by a manager
+    // (`canRename`, `canDelete`).
     data class Options(
         val id: String,
         val name: String,
         val onServer: Boolean = false,
         val canSave: Boolean = false,
         val canDownload: Boolean = false,
+        val family: Boolean = false,
+        val canRename: Boolean = true,
+        val canDelete: Boolean = true,
     ) : PlaylistSheet
     data class Rename(val id: String, val name: String) : PlaylistSheet
-    data class Delete(val id: String, val name: String, val onServer: Boolean = false) : PlaylistSheet
+    data class Delete(val id: String, val name: String, val onServer: Boolean = false, val family: Boolean = false) : PlaylistSheet
 
     // A live list's options: edit its rules, rename, copy, save what it
     // holds now as a playlist, delete (asked).
@@ -269,7 +274,9 @@ fun PlaylistSheetsHost(sheets: PlaylistSheets, vm: PlaylistSheetsViewModel = hil
                     sheets.close()
                 })
                 is PlaylistSheet.Options -> GlassMenuPage(header = { GlassMenuHeading(sheet.name) }) {
-                    GlassMenuAction(OctoIcons.Rename, "Rename", opensPage = true, onClick = { sheets.show(PlaylistSheet.Rename(sheet.id, sheet.name)) })
+                    if (sheet.canRename) {
+                        GlassMenuAction(OctoIcons.Rename, "Rename", opensPage = true, onClick = { sheets.show(PlaylistSheet.Rename(sheet.id, sheet.name)) })
+                    }
                     if (sheet.canSave) {
                         GlassMenuAction(OctoIcons.Cloud, "Save to server", onClick = {
                             vm.saveToServer(sheet.id)
@@ -287,19 +294,21 @@ fun PlaylistSheetsHost(sheets: PlaylistSheets, vm: PlaylistSheetsViewModel = hil
                         sheets.close()
                         exportTo.launch(playlistFileName(sheet.name))
                     })
-                    GlassMenuAction(
-                        OctoIcons.Delete,
-                        "Delete",
-                        opensPage = true,
-                        destructive = true,
-                        onClick = { sheets.show(PlaylistSheet.Delete(sheet.id, sheet.name, sheet.onServer)) },
-                    )
+                    if (sheet.canDelete) {
+                        GlassMenuAction(
+                            OctoIcons.Delete,
+                            "Delete",
+                            opensPage = true,
+                            destructive = true,
+                            onClick = { sheets.show(PlaylistSheet.Delete(sheet.id, sheet.name, sheet.onServer, sheet.family)) },
+                        )
+                    }
                 }
                 is PlaylistSheet.Rename -> PopupNameForm("Rename playlist", "Playlist name", "Save", onBack = back, initial = sheet.name, onDone = { name ->
                     vm.rename(sheet.id, name)
                     sheets.close()
                 })
-                is PlaylistSheet.Delete -> ConfirmDelete(sheet.name, sheet.onServer, onCancel = back ?: sheets::close) {
+                is PlaylistSheet.Delete -> ConfirmDelete(sheet.name, sheet.onServer, family = sheet.family, onCancel = back ?: sheets::close) {
                     vm.delete(sheet.id)
                     sheets.close()
                 }
@@ -465,13 +474,18 @@ private fun ConfirmAgain(question: String, plan: AddPlan, onCancel: () -> Unit, 
 @Composable
 fun NewPlaylistForm(onCreate: (String) -> Unit) = PopupNameForm("New playlist", "Playlist name", "Create", onBack = null, onDone = onCreate)
 
-// Asks before a playlist is deleted. Its songs stay in the library. One
-// kept with the server goes from the server too.
+// Asks before a playlist is deleted. Its songs stay in the library. One kept
+// with the server goes from the server too; a family playlist goes for the
+// whole family.
 @Composable
-internal fun ConfirmDelete(name: String, onServer: Boolean, onCancel: () -> Unit, onDelete: () -> Unit) {
+internal fun ConfirmDelete(name: String, onServer: Boolean, family: Boolean = false, onCancel: () -> Unit, onDelete: () -> Unit) {
     PopupQuestion(
         "Delete \"$name\"?",
-        if (onServer) "It is deleted from your server too. The songs stay in your library." else "The songs stay in your library.",
+        when {
+            family -> "It's deleted for everyone in the family. The songs stay in your library."
+            onServer -> "It is deleted from your server too. The songs stay in your library."
+            else -> "The songs stay in your library."
+        },
         "Delete",
         onConfirm = onDelete,
         onCancel = onCancel,

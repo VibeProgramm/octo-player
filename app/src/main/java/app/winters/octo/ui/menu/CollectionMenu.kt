@@ -15,6 +15,7 @@ import app.winters.octo.catalog.UserDao
 import app.winters.octo.catalog.byPlayCount
 import app.winters.octo.data.Upgrades
 import app.winters.octo.design.PopupPages
+import app.winters.octo.family.FamilyHub
 import app.winters.octo.favourites.FavouriteStore
 import app.winters.octo.favourites.PinKey
 import app.winters.octo.favourites.PinStore
@@ -131,13 +132,14 @@ fun artistActions(radio: Boolean, favourite: Boolean = false, pin: PinSpot = Pin
 }
 
 // An empty playlist has nothing to play, only itself to pin, rename, copy
-// or delete.
-fun playlistActions(empty: Boolean, pin: PinSpot = PinSpot.None): List<CollectionAction> = buildList {
+// or delete. A family playlist is renamed and deleted only by a family
+// manager (`renames`, `deletes`).
+fun playlistActions(empty: Boolean, pin: PinSpot = PinSpot.None, renames: Boolean = true, deletes: Boolean = true): List<CollectionAction> = buildList {
     if (!empty) addAll(Playing)
     pin(pin)
-    add(CollectionAction.Rename)
+    if (renames) add(CollectionAction.Rename)
     add(CollectionAction.Duplicate)
-    add(CollectionAction.Delete)
+    if (deletes) add(CollectionAction.Delete)
 }
 
 // How a collection's menu groups its actions: playing it, keeping it,
@@ -174,7 +176,12 @@ class CollectionMenuViewModel @Inject constructor(
     private val favourites: FavouriteStore,
     private val pins: PinStore,
     private val upgrades: Upgrades,
+    private val family: FamilyHub,
 ) : ViewModel() {
+    // Whether the listener manages the family: only a manager renames or
+    // deletes a family playlist from the phone.
+    fun managesFamily(): Boolean = family.me?.abilities?.manageFamily == true
+
     val favouriteAlbums: StateFlow<Set<String>> = favourites.albums
     val favouriteArtists: StateFlow<Set<String>> = favourites.artists
 

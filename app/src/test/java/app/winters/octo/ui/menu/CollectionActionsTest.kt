@@ -66,6 +66,8 @@ class CollectionActionsTest {
     fun anEmptyPlaylistCanOnlyBePinnedRenamedCopiedOrDeleted() {
         assertEquals(listOf(Play, Shuffle, PlayNext, AddToQueue, PinToHome, Rename, Duplicate, Delete), playlistActions(empty = false))
         assertEquals(listOf(PinToHome, Rename, Duplicate, Delete), playlistActions(empty = true))
+        assertEquals(listOf(Play, Shuffle, PlayNext, AddToQueue, PinToHome, Duplicate), playlistActions(empty = false, renames = false, deletes = false))
+        assertEquals(listOf(PinToHome, Rename, Duplicate), playlistActions(empty = true, deletes = false))
     }
 
     @Test
