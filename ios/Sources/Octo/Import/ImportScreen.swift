@@ -17,7 +17,8 @@ struct ImportScreen: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                PageHeader(ImportText.importTitle)
+                // An opened list takes the page's place, under its own name; back closes it.
+                PageHeader(shownList?.name ?? ImportText.importTitle, count: shownList?.countsLine)
                 if let model {
                     content(model)
                 }
@@ -26,6 +27,7 @@ struct ImportScreen: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .barClearance()
+        .backAction(shownList == nil ? nil : { if let model { model.close() } })
         .onAppear {
             let model = model ?? makeModel()
             self.model = model
@@ -69,9 +71,17 @@ struct ImportScreen: View {
         ImportFiles.send(share, to: model)
     }
 
+    /// The list opened, while one is.
+    private var shownList: ImportListSummary? {
+        guard let model, let openId = model.openId else { return nil }
+        return model.overview?.lists.first { $0.id == openId }
+    }
+
     @ViewBuilder
     private func content(_ model: ImportModel) -> some View {
-        if let overview = model.overview {
+        if model.overview != nil, let list = shownList {
+            openedList(model, list)
+        } else if let overview = model.overview {
             if let problem = overview.libraryProblem { line(problem, color: OctoColor.signalOrange) }
             if let services = model.services {
                 GetMyMusicView(model: model, services: services, pick: { picking = true }, paste: { pasting = true })
@@ -84,11 +94,7 @@ struct ImportScreen: View {
                 publicLink(model)
                 if let said = model.said { line(said, color: OctoColor.textSecondary) }
             }
-            if let openId = model.openId, let list = overview.lists.first(where: { $0.id == openId }) {
-                openedList(model, list)
-            } else {
-                yourLists(model, overview)
-            }
+            yourLists(model, overview)
             trickle(model, overview.trickle)
         } else {
             line(model.problem ?? "Asking the server about your lists.")
@@ -178,60 +184,61 @@ struct ImportScreen: View {
         ForEach(overview.lists) { list in listRow(model, list) }
     }
 
+    /// One list, compact: its name and one muted line of where it came from and how full it is,
+    /// the meter, and More with its switches, Read again and Remove. A tap opens it.
     private func listRow(_ model: ImportModel, _ list: ImportListSummary) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button { model.open(list.id) } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(list.name).font(.octoBody).foregroundStyle(OctoColor.textPrimary).lineLimit(2)
-                    if !list.originLine.isEmpty {
-                        Text(list.originLine).font(.octoCaption).foregroundStyle(OctoColor.textMuted)
+            HStack(spacing: 8) {
+                Button { model.open(list.id) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(list.name).font(.octoBody).foregroundStyle(OctoColor.textPrimary).lineLimit(2)
+                        Text([list.originLine, list.countsLine].filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(.octoCaption)
+                            .foregroundStyle(OctoColor.textMuted)
+                            .lineLimit(2)
                     }
-                    Text(list.countsLine).font(.octoCaption).foregroundStyle(OctoColor.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .buttonStyle(.plain)
+                GlassMoreMenu {
+                    Toggle(isOn: Binding(get: { list.keepPlaylist }, set: { model.keepPlaylist(list.id, on: $0) })) {
+                        Text(ImportText.keepAsPlaylist)
+                    }
+                    .disabled(model.working)
+                    Toggle(isOn: Binding(get: { list.getMissing }, set: { model.getMissing(list.id, on: $0) })) {
+                        Text(ImportText.getMissingSongs)
+                    }
+                    .disabled(model.working)
+                    if list.canRefresh {
+                        Button("Read again", systemImage: OctoIcon.sync.symbol) { model.readList(list.id) }
+                            .disabled(model.working)
+                    }
+                    Button("Remove", systemImage: OctoIcon.delete.symbol, role: .destructive) { removing = list.id }
+                        .disabled(model.working)
+                }
+                .padding(.trailing, -7)
             }
-            .buttonStyle(.plain)
             Meter(fraction: list.fraction)
             if let partial = list.partial, !partial.isEmpty { Text(partial).font(.octoCaption).foregroundStyle(OctoColor.textMuted) }
             if let note = list.playlistNote, !note.isEmpty { Text(note).font(.octoCaption).foregroundStyle(OctoColor.textMuted) }
-            switchRow(ImportText.keepAsPlaylist, on: list.keepPlaylist, enabled: !model.working) { model.keepPlaylist(list.id, on: $0) }
-            switchRow(ImportText.getMissingSongs, on: list.getMissing, enabled: !model.working) { model.getMissing(list.id, on: $0) }
-            HStack(spacing: 8) {
-                GlazeButton("Open", size: .small) { model.open(list.id) }
-                if list.canRefresh {
-                    GlazeButton("Read again", size: .small, enabled: !model.working) { model.readList(list.id) }
-                }
-                GlazeButton("Remove", size: .small, enabled: !model.working) { removing = list.id }
-                    .confirmationDialog(ImportText.removeList,
-                                        isPresented: Binding(get: { removing == list.id }, set: { if !$0 { removing = nil } }),
-                                        titleVisibility: .visible) {
-                        Button("Remove", role: .destructive) { model.remove(list.id) }
-                    } message: {
-                        Text(list.removeLine)
-                    }
-            }
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 10)
-    }
-
-    private func switchRow(_ label: String, on: Bool, enabled: Bool, change: @escaping (Bool) -> Void) -> some View {
-        HStack {
-            Text(label).font(.octoBodySmall).foregroundStyle(OctoColor.textSecondary).frame(maxWidth: .infinity, alignment: .leading)
-            OctoSwitch(isOn: Binding(get: { on }, set: change), enabled: enabled, label: label)
+        .padding(.vertical, 8)
+        .confirmationDialog(ImportText.removeList,
+                            isPresented: Binding(get: { removing == list.id }, set: { if !$0 { removing = nil } }),
+                            titleVisibility: .visible) {
+            Button("Remove", role: .destructive) { model.remove(list.id) }
+        } message: {
+            Text(list.removeLine)
         }
     }
 
     @ViewBuilder
     private func openedList(_ model: ImportModel, _ list: ImportListSummary) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(list.name).font(.octoSection).foregroundStyle(OctoColor.textPrimary)
-            Text("\(list.countsLine). \(list.originLine)").font(.octoCaption).foregroundStyle(OctoColor.textMuted)
-            GlazeButton("Back to your lists", size: .small) { model.close() }
+        if !list.originLine.isEmpty {
+            line(list.originLine)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
         if let detail = model.detail, detail.list.id == list.id {
             let askable = detail.tracks.filter { $0.stage.askable }
             if !askable.isEmpty && !list.getMissing {
