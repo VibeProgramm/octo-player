@@ -91,9 +91,13 @@ object SettingsIndex {
         "skip_silence", SettingsPage.Playback, "Skip silence", "Quiet stretches inside songs are skipped",
         listOf("quiet", "gaps", "silent"),
     )
+    val SongSwipe = add(
+        "swipe_action", SettingsPage.Playback, "Swipe right on a song", "Play it next or add it to the end of the queue",
+        listOf("swipe", "gesture", "play next", "add to queue", "queue", "row", "song"), section = "Queue",
+    )
     val Autoplay = add(
         "autoplay", SettingsPage.Playback, "Autoplay", "Similar songs keep playing when the queue ends",
-        listOf("similar", "continue", "endless", "radio", "queue"),
+        listOf("similar", "continue", "endless", "radio", "queue"), section = "Queue",
     )
     val ResumeWired = add(
         "resume_wired", SettingsPage.Playback, "Resume when headphones connect", "Plays again when a cable goes back in",

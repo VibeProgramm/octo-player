@@ -255,7 +255,7 @@ private fun FavouriteSongs(
                     val swiping = swipe.dismissDirection == SwipeToDismissBoxValue.EndToStart
                     Box(Modifier.background(if (swiping) OctoColors.Background else Color.Transparent, RowShape)) {
                         // A swipe left unlikes here, so it does not also play next.
-                        SongRow(track, swipeToPlayNext = false) { onPlay(tracks.indexOf(track)) }
+                        SongRow(track, queueSwipe = false) { onPlay(tracks.indexOf(track)) }
                     }
                 }
             }

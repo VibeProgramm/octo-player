@@ -236,7 +236,7 @@ fun PlaylistScreen(
                                         menuContext = SongMenuContext(playlistId = playlist.id, playlistItemId = entry.itemId),
                                         selectKey = entry.itemId.toString(),
                                         // A swipe left takes the song out here.
-                                        swipeToPlayNext = false,
+                                        queueSwipe = false,
                                     ) { vm.play(tracks.indexOf(entry)) }
                                 }
                             }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.AudioManager
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import androidx.media3.common.C
 import androidx.media3.common.DeviceInfo
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -260,7 +261,7 @@ class PlaybackConnection @Inject constructor(
         c.play()
     }
 
-    // ---- Play next with an undo, for a swipe on a song row ----
+    // ---- Adding with an undo, for a swipe on a song row ----
 
     // Puts songs next, like playNext, then hands `inserted` a way to take
     // those same songs back out, wherever they have moved to since.
@@ -282,7 +283,35 @@ class PlaybackConnection @Inject constructor(
         c.removeMediaItems(start, start + trackIds.size)
     }
 
-    // ---- End of play next with an undo ----
+    // Puts songs at the end of the queue, like playLast, then hands
+    // `inserted` a way to take those same songs back out. They go before
+    // any Autoplay songs still to come, as the player puts them, which is
+    // where undo looks first.
+    fun playLastUndoable(trackIds: List<String>, inserted: (undo: () -> Unit) -> Unit) {
+        if (trackIds.isEmpty()) return
+        withController { c ->
+            val at = endOfOwnSongs(c)
+            c.addMediaItems(trackIds.map(::songRequest))
+            inserted { removeInserted(trackIds, at) }
+        }
+    }
+
+    // Where songs added to the end of the queue go: before the first
+    // Autoplay song still to come in play order, otherwise at the very end.
+    private fun endOfOwnSongs(c: Player): Int {
+        val count = c.mediaItemCount
+        val timeline = c.currentTimeline
+        val upcoming = buildList {
+            var i = if (timeline.isEmpty) C.INDEX_UNSET else timeline.getNextWindowIndex(c.currentMediaItemIndex, Player.REPEAT_MODE_OFF, c.shuffleModeEnabled)
+            while (i != C.INDEX_UNSET && size < count) {
+                add(i)
+                i = timeline.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, c.shuffleModeEnabled)
+            }
+        }
+        return ownSongsAt(count, upcoming, List(count) { c.getMediaItemAt(it).isAutoplay })
+    }
+
+    // ---- End of adding with an undo ----
 
     private fun withController(action: (MediaController) -> Unit) {
         val ready = controller
