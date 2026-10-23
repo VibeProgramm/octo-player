@@ -88,7 +88,7 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
             item(key = "title") {
                 val country = vm.country?.takeIf { vm.canPickCountry }
-                ChartsTitle(country?.let(::countryName), sheet, onPick = { pickCountry(sheet, vm) }) { CountryActions(vm) }
+                ChartsTitle(country?.let(::countryName), sheet, enabled = !vm.saving, onPick = { pickCountry(sheet, vm) }) { CountryActions(vm) }
             }
             if (vm.choices.isNotEmpty()) {
                 item(key = "chips") {
@@ -108,6 +108,7 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
             if (!vm.none) item(key = "about") { Quiet(list?.let(::caption) ?: shownCaption.orEmpty()) }
             when {
                 vm.none -> item(key = "none") { Quiet("This server doesn't have charts.") }
+                vm.refusal != null -> item(key = "refused") { Quiet(vm.refusal.orEmpty()) }
                 list == null -> item(key = "loading") {
                     Box(Modifier.fillMaxWidth().padding(top = 24.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = OctoColors.TextSecondary)
@@ -148,13 +149,13 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
 // their own under it. A capsule that does not fit beside the title goes
 // under it too, and the title always keeps its whole width.
 @Composable
-private fun ChartsTitle(country: String?, sheet: ChoiceSheet, onPick: () -> Unit, actions: @Composable () -> Unit) {
+private fun ChartsTitle(country: String?, sheet: ChoiceSheet, enabled: Boolean, onPick: () -> Unit, actions: @Composable () -> Unit) {
     val capHeight = rememberCapHeightPx(OctoType.display)
     Layout(
         content = {
             Text("Charts", style = OctoType.display, color = OctoColors.TextPrimary)
             if (country != null) {
-                CountryCapsule(country, onPick, Modifier.choiceAnchor(sheet))
+                CountryCapsule(country, enabled, onPick, Modifier.choiceAnchor(sheet))
                 Row(verticalAlignment = Alignment.CenterVertically) { actions() }
             }
         },
@@ -200,17 +201,19 @@ private fun ChartsTitle(country: String?, sheet: ChoiceSheet, onPick: () -> Unit
 
 // The country in view, as a quiet capsule that opens every country: the
 // chips' resting fill, softer words, and a small chevron saying it opens.
+// It is dimmed and out of reach while a save is on its way.
 @Composable
-private fun CountryCapsule(name: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun CountryCapsule(name: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val ink = if (pressed) OctoColors.TextPrimary else OctoColors.TextSecondary
     Row(
         modifier
             .height(30.dp)
+            .alpha(if (enabled) 1f else OctoInk.DisabledAlpha)
             .clip(CircleShape)
             .background(OctoColors.TextPrimary.copy(alpha = if (pressed) 0.12f else 0.08f))
-            .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClickLabel = "Choose a country", onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClickLabel = "Choose a country", onClick = onClick)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -224,7 +227,8 @@ private fun CountryCapsule(name: String, onClick: () -> Unit, modifier: Modifier
 // The quiet words for the country in view: make it the listener's own, or
 // pin it so its charts come as playlists too; a full set of pins says so,
 // and a save that did not happen says that. While the listener's own
-// country shows they keep their room, unseen and out of reach.
+// country shows they keep their room, unseen and out of reach, and the
+// line about a full set of pins keeps its room whether or not it shows.
 @Composable
 private fun CountryActions(vm: ChartsViewModel) {
     val shown = vm.browsing != null
@@ -232,17 +236,18 @@ private fun CountryActions(vm: ChartsViewModel) {
         (if (shown) Modifier else Modifier.alpha(0f).clearAndSetSemantics {}).padding(start = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Action("Use as my country", shown && !vm.saving, vm::useAsMine)
-        Action(if (vm.isPinned) "Unpin" else "Pin", shown && !vm.saving && vm.canPin, vm::togglePin)
+        QuietButton("Use as my country", enabled = shown && !vm.saving, onClick = vm::useAsMine)
+        QuietButton(if (vm.isPinned) "Unpin" else "Pin", enabled = shown && !vm.saving && vm.canPin, onClick = vm::togglePin)
+        val full = shown && !vm.canPin
+        Text(
+            "${vm.maxPinned} pinned",
+            style = OctoType.caption,
+            color = OctoColors.TextMuted,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 4.dp).then(if (full) Modifier else Modifier.alpha(0f).clearAndSetSemantics {}),
+        )
     }
-    val note = vm.problem ?: "${vm.maxPinned} pinned".takeIf { shown && !vm.canPin }
-    if (note != null) Text(note, style = OctoType.caption, color = OctoColors.TextMuted, maxLines = 1, modifier = Modifier.padding(start = 4.dp))
-}
-
-// A quiet word button, dimmed and doing nothing while not `enabled`.
-@Composable
-private fun Action(text: String, enabled: Boolean, onClick: () -> Unit) {
-    Box(Modifier.alpha(if (enabled) 1f else OctoInk.DisabledAlpha)) { QuietButton(text) { if (enabled) onClick() } }
+    vm.problem?.let { Text(it, style = OctoType.caption, color = OctoColors.TextMuted, maxLines = 1, modifier = Modifier.padding(start = 4.dp)) }
 }
 
 // Every country, the server's own and the listener's own and pinned ones

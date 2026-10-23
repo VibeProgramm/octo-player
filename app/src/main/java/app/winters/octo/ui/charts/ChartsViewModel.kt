@@ -7,12 +7,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.winters.octo.discovery.ChartList
 import app.winters.octo.discovery.CHART_SAVE_FAILED
+import app.winters.octo.discovery.ChartAnswer
+import app.winters.octo.discovery.ChoicesAnswer
+import app.winters.octo.discovery.chartRefusal
 import app.winters.octo.discovery.ChartLists
 import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.subsonic.CHART_COUNTRY_AUTO
 import app.winters.octo.subsonic.CHART_OVERALL
 import app.winters.octo.subsonic.ChartChoice
 import app.winters.octo.subsonic.ChartChoices
+import app.winters.octo.subsonic.SubsonicException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import javax.inject.Provider
@@ -61,6 +65,11 @@ class ChartsViewModel @Inject constructor(
     var problem by mutableStateOf<String?>(null)
         private set
 
+    // The server's own words when it refused the country in view (too many
+    // countries in an hour, say), shown in place of its chart.
+    var refusal by mutableStateOf<String?>(null)
+        private set
+
     private var loading: Job? = null
     private var choosing: Job? = null
 
@@ -92,11 +101,25 @@ class ChartsViewModel @Inject constructor(
         load()
     }
 
+    // The listener's own charts as the server says them. The chart in view
+    // is asked for again when it changed with them, or when it was read for
+    // a country that is no longer the listener's own; a country looked at
+    // that became their own is shown as their own.
     private fun showOwn(got: ChartChoices, countries: Boolean) {
-        if (countries) own = got
+        if (countries) {
+            own = got
+            if (browsing != null && browsing.equals(got.country, ignoreCase = true)) {
+                backToOwn(got)
+                return
+            }
+        }
         if (browsing == null) {
+            val before = selected
             choices = got.chart
             keepSelected()
+            // A chart still on its way may be the old country's: asked again too.
+            val stale = list?.country?.let { shown -> got.country != null && !shown.equals(got.country, ignoreCase = true) } ?: (list == null)
+            if (selected != before || stale) load()
         }
     }
 
@@ -107,19 +130,27 @@ class ChartsViewModel @Inject constructor(
     }
 
     // Looks at a country's charts; the listener's own country stops looking
-    // at another.
+    // at another. Picking the same country again asks again when its charts
+    // did not come.
     fun pickCountry(code: String) {
+        if (saving) return
         val target = code.takeIf { it != own?.country }
-        if (target == browsing) return
+        if (target == browsing && (choices.isNotEmpty() && refusal == null)) return
         browsing = target
         problem = null
+        refusal = null
         loading?.cancel()
         list = null
         choosing?.cancel()
         choosing = viewModelScope.launch {
-            val got = if (target == null) charts.keptChoices() ?: charts.choices() else charts.choices(target)
+            val got = if (target == null) {
+                ChoicesAnswer(charts.keptChoices() ?: charts.choices())
+            } else {
+                charts.choicesAnswer(target)
+            }
             if (target != browsing) return@launch
-            choices = got?.chart.orEmpty()
+            choices = got.choices?.chart.orEmpty()
+            refusal = got.refusal
             keepSelected()
             load()
         }
@@ -128,7 +159,8 @@ class ChartsViewModel @Inject constructor(
     // Makes the country looked at the listener's own.
     fun useAsMine() {
         val code = browsing ?: return
-        save({ charts.saveCountry(code) }) { got -> backToOwn(got) }
+        // Back to their own only when the country looked at is still the one saved.
+        save({ charts.saveCountry(code) }) { got -> if (browsing == code) backToOwn(got) }
     }
 
     // Follows the server's country again: saved when the listener had
@@ -139,12 +171,14 @@ class ChartsViewModel @Inject constructor(
             mine.country?.let(::pickCountry)
             return
         }
-        save({ charts.saveCountry(CHART_COUNTRY_AUTO) }) { got -> backToOwn(got) }
+        val from = browsing
+        save({ charts.saveCountry(CHART_COUNTRY_AUTO) }) { got -> if (browsing == from) backToOwn(got) }
     }
 
     private fun backToOwn(got: ChartChoices) {
         choosing?.cancel()
         browsing = null
+        refusal = null
         choices = got.chart
         keepSelected()
         load()
@@ -164,18 +198,24 @@ class ChartsViewModel @Inject constructor(
         }
     }
 
-    private fun save(call: suspend () -> ChartChoices?, then: (ChartChoices) -> Unit) {
+    // A refusal shows the server's own words; anything else the plain line.
+    private fun save(call: suspend () -> Result<ChartChoices>, then: (ChartChoices) -> Unit) {
         if (saving) return
         saving = true
         problem = null
         viewModelScope.launch {
-            val got = call()
+            val answer = call()
             saving = false
-            if (got == null) {
-                problem = CHART_SAVE_FAILED
+            val got = answer.getOrElse { e ->
+                problem = (e as? SubsonicException)?.let(::chartRefusal) ?: CHART_SAVE_FAILED
                 return@launch
             }
             own = got
+            // A country looked at that the answer says is now the listener's own.
+            if (browsing != null && browsing.equals(got.country, ignoreCase = true)) {
+                backToOwn(got)
+                return@launch
+            }
             then(got)
         }
     }
@@ -191,9 +231,10 @@ class ChartsViewModel @Inject constructor(
         val chart = selected
         val country = browsing
         loading = viewModelScope.launch {
-            val got = charts.chart(chart, country)
+            val answer = charts.answer(chart, country)
             if (chart != selected || country != browsing) return@launch
-            list = got ?: ChartList(chart, null, "", country, emptyList())
+            if (answer is ChartAnswer.Failed && answer.refusal != null) refusal = answer.refusal
+            list = (answer as? ChartAnswer.Got)?.list ?: ChartList(chart, null, "", country, emptyList())
         }
     }
 

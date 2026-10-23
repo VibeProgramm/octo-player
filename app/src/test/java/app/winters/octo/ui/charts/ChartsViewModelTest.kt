@@ -32,6 +32,10 @@ import javax.inject.Provider
 // asked again each time the page opens, another country looked at, made
 // the listener's own or pinned, and a server that shows no other country.
 class ChartsViewModelTest {
+    private companion object {
+        const val TOO_MANY = "Too many countries in an hour. Try again later."
+    }
+
     private val server = MockWebServer()
     private val asked = CopyOnWriteArrayList<RecordedRequest>()
     private lateinit var main: ExecutorCoroutineDispatcher
@@ -41,6 +45,8 @@ class ChartsViewModelTest {
     @Volatile private var pinned = listOf<String>()
     @Volatile private var versions = "[1,2,3]"
     @Volatile private var refuse = false
+    @Volatile private var refuseCode = 0
+    @Volatile private var refuseReads = false
 
     private val countryCharts = mapOf(
         "us" to listOf("34" to "Top songs", "18" to "Hip-Hop/Rap", "14" to "Pop"),
@@ -68,8 +74,8 @@ class ChartsViewModelTest {
         .body("""{"subsonic-response":{"status":"ok","version":"1.16.1","type":"octo","openSubsonic":true,$inner}}""")
         .build()
 
-    private fun failed() = MockResponse.Builder()
-        .body("""{"subsonic-response":{"status":"failed","version":"1.16.1","error":{"code":0,"message":"Too many countries in an hour. Try again later."}}}""")
+    private fun failed(code: Int = refuseCode) = MockResponse.Builder()
+        .body("""{"subsonic-response":{"status":"failed","version":"1.16.1","error":{"code":$code,"message":"${if (code == 0) TOO_MANY else "Something broke."}"}}}""")
         .build()
 
     @Before
@@ -82,8 +88,8 @@ class ChartsViewModelTest {
                 val country = request.url.queryParameter("country")
                 return when (request.url.pathSegments.last()) {
                     "getOpenSubsonicExtensions" -> ok(""""openSubsonicExtensions":[{"name":"octoTopSongs","versions":$versions}]""")
-                    "getCharts" -> ok(charts(country ?: ownCountry()))
-                    "getTopChart" -> ok(
+                    "getCharts" -> if (refuseReads && country != null) failed(0) else ok(charts(country ?: ownCountry()))
+                    "getTopChart" -> if (refuseReads && country != null) failed(0) else ok(
                         """"topSongs":{"artist":null,"source":"apple","chart":"${request.url.queryParameter("chart")}","country":"${country ?: ownCountry()}","entry":[]}""",
                     )
                     "setChartCountry" -> if (refuse) failed() else {
@@ -268,10 +274,73 @@ class ChartsViewModelTest {
         vm.useAsMine()
         until { vm.problem != null }
 
-        assertEquals("Couldn't save. Try again.", vm.problem)
+        // The server's own words when it refused for a reason the listener can act on.
+        assertEquals(TOO_MANY, vm.problem)
         assertEquals("jp", vm.browsing)
         assertEquals("auto", vm.own?.setting)
         assertFalse(vm.saving)
+    }
+
+    @Test
+    fun anyOtherFailedSaveSaysThePlainLine() = runBlocking {
+        val vm = page(lists())
+        until { vm.own != null && vm.list != null }
+        vm.pickCountry("jp")
+        until { vm.list?.country == "jp" }
+        refuse = true
+        refuseCode = 70
+
+        vm.togglePin()
+        until { vm.problem != null }
+
+        assertEquals("Couldn't save. Try again.", vm.problem)
+    }
+
+    @Test
+    fun aCountryChangedElsewhereAsksForTheOwnChartAgain() = runBlocking {
+        val lists = lists()
+        val first = page(lists)
+        until { first.own != null && first.list?.country == "us" }
+
+        // Another device made Brazil the listener's own.
+        setting = "br"
+        val second = page(lists)
+        until { second.own?.setting == "br" && second.list?.country == "br" }
+
+        assertEquals(2, calls("getTopChart").count { it.url.queryParameter("country") == null })
+    }
+
+    @Test
+    fun aRefusedCountrySaysWhyAndCanBeAskedAgain() = runBlocking {
+        val vm = page(lists())
+        until { vm.own != null && vm.list != null }
+        refuseReads = true
+
+        vm.pickCountry("jp")
+        until { vm.refusal != null }
+        assertEquals(TOO_MANY, vm.refusal)
+        assertTrue(vm.choices.isEmpty())
+
+        // The same country picked again asks again.
+        refuseReads = false
+        vm.pickCountry("jp")
+        until { vm.list?.country == "jp" && vm.choices.isNotEmpty() }
+        assertNull(vm.refusal)
+    }
+
+    @Test
+    fun aCountryLookedAtThatBecameTheOwnIsShownAsTheOwn() = runBlocking {
+        val lists = lists()
+        val vm = page(lists)
+        until { vm.own != null && vm.list != null }
+        vm.pickCountry("jp")
+        until { vm.list?.country == "jp" }
+
+        // Another device made Japan the listener's own; a pin here answers with that.
+        setting = "jp"
+        vm.togglePin()
+        until { vm.browsing == null }
+        assertEquals("jp", vm.country)
     }
 
     @Test

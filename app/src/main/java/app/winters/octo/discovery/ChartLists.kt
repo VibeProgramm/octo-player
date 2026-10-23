@@ -32,12 +32,18 @@ data class ChartList(
 )
 
 // What asking for a chart came to: its list, no charts on the server, or
-// no answer (the server could not be reached, or another is in use now).
+// no answer (the server could not be reached, refused, or another is in
+// use now). `refusal` is the server's own words when it refused for a
+// reason the listener can act on.
 sealed interface ChartAnswer {
     data class Got(val list: ChartList) : ChartAnswer
     data object None : ChartAnswer
-    data object Failed : ChartAnswer
+    data class Failed(val refusal: String? = null) : ChartAnswer
 }
+
+// What asking for a country's charts came to: the charts, or the server's
+// own words when it refused.
+data class ChoicesAnswer(val choices: ChartChoices?, val refusal: String? = null)
 
 // The Charts page's server side: which charts a country has (Popular right
 // now, Best New Songs, Trending Songs, the genres) and each chart's songs,
@@ -77,17 +83,37 @@ class ChartLists internal constructor(
     // asks the server again even so, for the listener's own choices, which
     // another device or the dashboard may have changed; the kept copy is the
     // answer when the server gives none.
-    suspend fun choices(country: String? = null, fresh: Boolean = false): ChartChoices? {
-        val session = session() ?: return null
+    suspend fun choices(country: String? = null, fresh: Boolean = false): ChartChoices? = choicesAnswer(country, fresh).choices
+
+    // The same, with the server's words when it refused.
+    suspend fun choicesAnswer(country: String? = null, fresh: Boolean = false): ChoicesAnswer {
+        val session = session() ?: return ChoicesAnswer(null)
         val key = choicesKey(session, country)
         val now = System.currentTimeMillis()
-        val kept = choices[key]?.takeIf { (at, _) -> now - at < CHOICES_KEPT_MS }?.second
-        if (kept != null && !fresh) return kept
-        if (!offers(session)) return null
-        val got = answerOf { session.client.charts(country) } ?: return kept
-        if (session()?.id != session.id) return null
+        val keptPair = choices[key]
+        val kept = keptPair?.takeIf { (at, _) -> now - at < CHOICES_KEPT_MS }?.second
+        if (kept != null && !fresh) return ChoicesAnswer(kept)
+        if (!offers(session)) return ChoicesAnswer(null)
+        val got = try {
+            session.client.charts(country)
+        } catch (e: SubsonicException) {
+            return ChoicesAnswer(kept, chartRefusal(e))
+        }
+        if (session()?.id != session.id) return ChoicesAnswer(null)
+        if (country == null) ownAnswered(session, keptPair?.second, got)
         choices[key] = now to got
-        return got
+        return ChoicesAnswer(got)
+    }
+
+    // The listener's own charts as the server says them now. When their
+    // country changed elsewhere (another device, the dashboard), the charts
+    // kept for the old one are let go, so they are asked for again.
+    private fun ownAnswered(session: Session, before: ChartChoices?, got: ChartChoices) {
+        val now = got.country ?: return
+        val own = "${serverKey(session)}||"
+        val changed = before?.country?.equals(now, ignoreCase = true) == false ||
+            lists.any { (key, kept) -> key.startsWith(own) && kept.second.country?.equals(now, ignoreCase = true) == false }
+        if (changed) lists.keys.removeAll { it.startsWith(own) }
     }
 
     // The charts a country has as kept, without asking: what the page shows
@@ -103,43 +129,51 @@ class ChartLists internal constructor(
 
     // The same, telling a server without charts from one that did not answer.
     suspend fun answer(chart: String, country: String? = null): ChartAnswer {
-        val session = session() ?: return ChartAnswer.Failed
+        val session = session() ?: return ChartAnswer.Failed()
         val key = "${serverKey(session)}|${country.orEmpty()}|$chart"
         val now = System.currentTimeMillis()
         lists[key]?.let { (at, kept) -> if (now - at < CHART_KEPT_MS) return ChartAnswer.Got(kept) }
         when (offersIfKnown(session)) {
-            null -> return ChartAnswer.Failed
+            null -> return ChartAnswer.Failed()
             false -> return ChartAnswer.None
             true -> Unit
         }
-        val list = answerOf { session.client.topChart(chartSongs(chart), chart, country) } ?: return ChartAnswer.Failed
+        val list = try {
+            session.client.topChart(chartSongs(chart), chart, country)
+        } catch (e: SubsonicException) {
+            return ChartAnswer.Failed(chartRefusal(e))
+        }
         // Another server in use by the time it came: not this one's chart.
-        if (session()?.id != session.id) return ChartAnswer.Failed
+        if (session()?.id != session.id) return ChartAnswer.Failed()
         val entries = list.entry.filter { it.song != null }
         val songs = rankTracks(entries, resolve(entries.map { it.song!! }))
         return ChartAnswer.Got(ChartList(chart, list.name, list.source, list.country, songs).also { lists[key] = now to it })
     }
 
     // Saves the listener's own chart country (CHART_COUNTRY_AUTO follows the
-    // server's) and answers their charts; null when it was not saved.
-    suspend fun saveCountry(code: String): ChartChoices? = saved { client -> client.setChartCountry(code) }
+    // server's) and answers their charts; a failure when it was not saved.
+    suspend fun saveCountry(code: String): Result<ChartChoices> = saved { client -> client.setChartCountry(code) }
 
-    // Pins a country or unpins it, and answers the listener's charts; null
-    // when it was not saved.
-    suspend fun pin(code: String, pinned: Boolean): ChartChoices? = saved { client -> client.pinChartCountry(code, pinned) }
+    // Pins a country or unpins it, and answers the listener's charts; a
+    // failure when it was not saved.
+    suspend fun pin(code: String, pinned: Boolean): Result<ChartChoices> = saved { client -> client.pinChartCountry(code, pinned) }
 
     // A save changes the listener's own lists, so every chart and list of
     // charts kept for the server is let go, and the answer is kept as the
     // listener's own.
-    private suspend fun saved(call: suspend (SubsonicClient) -> ChartChoices): ChartChoices? {
-        val session = session() ?: return null
-        val got = answerOf { call(session.client) } ?: return null
-        if (session()?.id != session.id) return null
+    private suspend fun saved(call: suspend (SubsonicClient) -> ChartChoices): Result<ChartChoices> {
+        val session = session() ?: return Result.failure(IllegalStateException("Not signed in"))
+        val got = try {
+            call(session.client)
+        } catch (e: SubsonicException) {
+            return Result.failure(e)
+        }
+        if (session()?.id != session.id) return Result.failure(IllegalStateException("Another server is in use"))
         val server = "${serverKey(session)}|"
         lists.keys.removeAll { it.startsWith(server) }
         choices.keys.removeAll { it.startsWith(server) }
         choices[choicesKey(session, null)] = System.currentTimeMillis() to got
-        return got
+        return Result.success(got)
     }
 
     private suspend fun offers(session: Session): Boolean = offersIfKnown(session) ?: false
@@ -164,11 +198,4 @@ class ChartLists internal constructor(
     private fun choicesKey(session: Session, country: String?): String = "${serverKey(session)}|${country.orEmpty()}"
 
     private fun session(): Session? = signedIn()
-
-    private suspend fun <T> answerOf(call: suspend () -> T): T? =
-        try {
-            call()
-        } catch (e: SubsonicException) {
-            null
-        }
 }

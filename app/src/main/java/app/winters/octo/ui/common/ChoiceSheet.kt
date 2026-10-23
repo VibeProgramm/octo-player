@@ -2,14 +2,17 @@ package app.winters.octo.ui.common
 
 import android.os.SystemClock
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -20,7 +23,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -248,12 +253,13 @@ private fun ChoiceSearch(typed: String, onChange: (String) -> Unit, hint: String
             if (typed.isEmpty()) {
                 Icon(painterResource(OctoIcons.Search), contentDescription = null, tint = OctoColors.TextMuted, modifier = Modifier.size(20.dp))
             } else {
-                Icon(
-                    painterResource(OctoIcons.Close),
-                    contentDescription = "Clear search",
-                    tint = OctoColors.TextMuted,
-                    modifier = Modifier.size(20.dp).clickable(role = Role.Button) { onChange("") },
-                )
+                // A finger-sized target round the small icon, reaching past the field's inside edge.
+                Box(
+                    Modifier.offset(x = 10.dp).size(40.dp).clip(CircleShape).clickable(role = Role.Button, onClickLabel = "Clear search") { onChange("") },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(painterResource(OctoIcons.Close), contentDescription = "Clear search", tint = OctoColors.TextMuted, modifier = Modifier.size(20.dp))
+                }
             }
         },
     )
