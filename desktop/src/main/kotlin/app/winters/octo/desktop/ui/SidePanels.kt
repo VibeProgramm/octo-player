@@ -602,7 +602,8 @@ private fun QueueHeader(app: AppState, state: PlayerState, menu: Boolean, toNow:
         Modifier.fillMaxWidth().padding(start = Space.L + Space.Xs, end = Space.S, top = Space.S),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Txt(summary.orEmpty(), OctoType.caption, OctoColors.TextMuted, Modifier.weight(1f), maxLines = 2)
+        // A time's "AM" or "PM" never wraps away from it.
+        Txt(summary.orEmpty().replace(" AM", " AM").replace(" PM", " PM"), OctoType.caption, OctoColors.TextMuted, Modifier.weight(1f), maxLines = 2)
         if (state.current != null) {
             IconAction(OctoIcons.Lossless, "Show the song playing", toNow, size = ControlHeight.M, iconSize = IconSize.Toolbar, tint = OctoColors.TextSecondary)
         }
