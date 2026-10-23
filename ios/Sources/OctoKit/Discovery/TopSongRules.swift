@@ -7,6 +7,13 @@ public let octoTopSongs = "octoTopSongs"
 /// The octoTopSongs version whose getTopChart takes a chart and that answers getCharts.
 public let octoTopSongsCharts = 2
 
+/// The octoTopSongs version whose getCharts and getTopChart take a country and that saves the
+/// listener's own chart country and pinned countries.
+public let octoTopSongsCountries = 3
+
+/// The chart country saved for a listener who follows the server's.
+public let chartCountryAuto = "auto"
+
 /// Where a ranked list's order came from, as the server names it.
 public let topSongsLastFm = "lastfm"
 public let topSongsDeezer = "deezer"
@@ -80,6 +87,75 @@ public func chartSongs(_ chart: String) -> Int { chart == Charts.newSongs || cha
 /// Whether a server's extensions offer the Charts page: octoTopSongs at the version whose
 /// getTopChart takes a chart.
 public func chartsOffered(_ extensions: [String]) -> Bool { extensions.contains("\(octoTopSongs):\(octoTopSongsCharts)") }
+
+/// Whether a server's extensions offer charts of any country, and saving the listener's own:
+/// octoTopSongs at the version whose getCharts takes a country.
+public func chartCountriesOffered(_ extensions: [String]) -> Bool { extensions.contains("\(octoTopSongs):\(octoTopSongsCountries)") }
+
+/// The countries in the picker's order: the listener's own, then their pinned ones, then the rest
+/// by name. A pinned country Apple Music no longer lists stays, so it can be unpinned; none is
+/// listed twice.
+public func chartCountryOrder(_ codes: [String], own: String?, pinned: [String], name: (String) -> String) -> [String] {
+    var seen = Set<String>()
+    var order: [String] = []
+    func add(_ code: String) {
+        if seen.insert(code.lowercased()).inserted { order.append(code) }
+    }
+    if let own, !own.isEmpty { add(own) }
+    pinned.forEach(add)
+    let named = codes.map { (code: $0, name: name($0)) }
+    for entry in named.sorted(by: { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { add(entry.code) }
+    return order
+}
+
+/// Whether what was typed picks this country: inside its name, case and accents ignored, or
+/// exactly its two-letter code. Nothing typed picks every country.
+public func countryMatches(name: String, code: String, typed: String) -> Bool {
+    let folded = searchKey(typed)
+    if folded.isEmpty { return true }
+    return searchKey(name).contains(folded) || code.caseInsensitiveCompare(typed.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+}
+
+/// A country's name in the phone's language, from its two-letter code; the code in capitals when
+/// the phone has no name for it.
+public func countryName(_ code: String, locale: Locale = .current) -> String {
+    let upper = code.uppercased()
+    guard let name = locale.localizedString(forRegionCode: upper), !name.trimmingCharacters(in: .whitespaces).isEmpty else { return upper }
+    return name
+}
+
+/// The key a server's chart choices are kept under: per kept server and country, the listener's
+/// own under an empty country, which is what Home and Search read.
+public func chartChoicesKey(server: String, country: String?) -> String { "\(server)|\(country ?? "")" }
+
+/// The key one chart's songs are kept under: per kept server, country and chart.
+public func chartListKey(server: String, country: String?, chart: String) -> String { "\(server)|\(country ?? "")|\(chart)" }
+
+/// Whether a kept key belongs to this kept server's charts.
+public func isChartKey(_ key: String, server: String) -> Bool { key.hasPrefix("\(server)|") }
+
+/// Whether a kept chart's key is one of the listener's own charts on this kept server.
+public func isOwnChartKey(_ key: String, server: String) -> Bool { key.hasPrefix(chartListKey(server: server, country: nil, chart: "")) }
+
+/// Whether the Charts page, as it opens, asks the server for the listener's own charts, and
+/// whether past the kept copy (`fresh`).
+public struct ChartChoicesAsk: Equatable, Sendable {
+    public var ask: Bool
+    public var fresh: Bool
+
+    public init(ask: Bool, fresh: Bool) {
+        self.ask = ask
+        self.fresh = fresh
+    }
+}
+
+/// How the Charts page reads the listener's own charts as it opens, any kept copy showing first.
+/// A server that saves the listener's country (`countries`) is asked every time, since a change
+/// made on another device or the dashboard is not kept here; an older server only when nothing
+/// is kept.
+public func chartChoicesOnOpen(countries: Bool, kept: Bool) -> ChartChoicesAsk {
+    countries ? ChartChoicesAsk(ask: true, fresh: true) : ChartChoicesAsk(ask: !kept, fresh: false)
+}
 
 /// One ranked song as the app shows it. Plays are Last.fm's, when the list was ranked by them.
 public struct RankedSong<Track>: Sendable where Track: Sendable {
