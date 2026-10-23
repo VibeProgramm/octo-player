@@ -13,6 +13,7 @@ import app.winters.octo.playback.StreamQuality
 import app.winters.octo.animated.AnimatedArtSetting
 import app.winters.octo.player.PlayerPrefs
 import app.winters.octo.player.StreamPrefs
+import app.winters.octo.player.SwipeAction
 import app.winters.octo.playlists.BYTE_ORDER_MARK
 import app.winters.octo.sound.Crossfeed
 import app.winters.octo.sound.CrossfeedPreset
@@ -64,7 +65,7 @@ class BackupTest {
         listOf(
             "liveBackground", "crossfade", "crossfadeSeconds", "lyricsOnline", "speed", "keepPitch", "pitchSemitones",
             "skipSilence", "resumeWired", "resumeBluetooth", "resumeAlways", "smartTransitions", "filterSweeps", "matchTempo", "crossfadeCurve",
-            "accent", "glassTint",
+            "accent", "glassTint", "swipeAction",
             "animatedArt",
         ).forEach { assertTrue("$it is missing", text.contains("\"$it\"")) }
     }
@@ -101,6 +102,21 @@ class BackupTest {
         assertEquals(AccentChoice.Octo, (decodeBackup(newer) as BackupRead.Read).backup.player?.accent)
         // A backup from before accents leaves Octo's own.
         assertEquals(AccentChoice.Octo, (decodeBackup("{\"kind\": \"octo-settings\", \"player\": {}}") as BackupRead.Read).backup.player?.accent)
+    }
+
+    @Test
+    fun theSwipeChoiceIsKept() {
+        for (action in SwipeAction.entries) {
+            val read = decodeBackup(encodeBackup(Backup(player = PlayerPrefs(swipeAction = action)))) as BackupRead.Read
+            assertEquals(action, read.backup.player?.swipeAction)
+        }
+        // By name, as the other apps write it.
+        assertTrue(encodeBackup(Backup(player = PlayerPrefs(swipeAction = SwipeAction.AddToQueue))).contains("\"swipeAction\": \"AddToQueue\""))
+        // One this app does not know, from a newer Octo, plays next.
+        val newer = encodeBackup(Backup(player = PlayerPrefs(swipeAction = SwipeAction.AddToQueue))).replace("\"AddToQueue\"", "\"Nothing\"")
+        assertEquals(SwipeAction.PlayNext, (decodeBackup(newer) as BackupRead.Read).backup.player?.swipeAction)
+        // A backup from before the choice plays next.
+        assertEquals(SwipeAction.PlayNext, (decodeBackup("{\"kind\": \"octo-settings\", \"player\": {}}") as BackupRead.Read).backup.player?.swipeAction)
     }
 
     @Test

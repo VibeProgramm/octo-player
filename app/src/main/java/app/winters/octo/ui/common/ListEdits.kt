@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
+import app.winters.octo.player.SwipeAction
 
 // What is behind a row as it is swiped away.
 private val RemoveFill = OctoColors.Error.copy(alpha = 0.25f)
@@ -44,21 +45,27 @@ fun DragHandle(modifier: Modifier) {
     }
 }
 
-// What is behind a song as it is swiped right, to play it next.
-private val PlayNextFill: Color get() = OctoColors.Accent.copy(alpha = 0.22f)
+// What is behind a song as it is swiped right, to play it next or add it
+// to the queue.
+private val QueueSwipeFill: Color get() = OctoColors.Accent.copy(alpha = 0.22f)
 
 // Shown behind a row being swiped right: a wash of the accent, and what the
 // swipe does at the start.
 @Composable
-fun PlayNextBackground(active: Boolean, shape: Shape) {
+fun QueueSwipeBackground(active: Boolean, action: SwipeAction, shape: Shape) {
     if (!active) return
+    val icon = when (action) {
+        SwipeAction.PlayNext -> OctoIcons.PlayNext
+        SwipeAction.AddToQueue -> OctoIcons.AddToQueue
+        SwipeAction.Off -> return
+    }
     Row(
-        Modifier.fillMaxSize().background(PlayNextFill, shape).padding(horizontal = 24.dp),
+        Modifier.fillMaxSize().background(QueueSwipeFill, shape).padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(painterResource(OctoIcons.PlayNext), contentDescription = null, tint = OctoColors.TextPrimary, modifier = Modifier.size(22.dp))
-        Text("Play next", style = OctoType.bodySmall, color = OctoColors.TextPrimary)
+        Icon(painterResource(icon), contentDescription = null, tint = OctoColors.TextPrimary, modifier = Modifier.size(22.dp))
+        Text(action.label, style = OctoType.bodySmall, color = OctoColors.TextPrimary)
     }
 }
 

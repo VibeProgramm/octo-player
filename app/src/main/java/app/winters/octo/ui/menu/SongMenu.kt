@@ -28,6 +28,8 @@ import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.playback.PlaylistStore
 import app.winters.octo.playback.RADIO_LENGTH
 import app.winters.octo.playback.RatingStore
+import app.winters.octo.player.PlayerSettings
+import app.winters.octo.player.SwipeAction
 import app.winters.octo.server.ServerControls
 import app.winters.octo.sound.SoundEngine
 import app.winters.octo.ui.common.Feedback
@@ -61,7 +63,7 @@ data class SongMenuContext(
 
 // What a song row can do without opening the menu: a swipe, or a screen
 // reader's actions. The menu's host fills it in, since it has the player.
-// Play next from here says so, with an Undo, since nothing else shows it.
+// Both say so, with an Undo, since nothing else on screen shows it.
 interface QuickSongActions {
     fun playNext(trackId: String)
     fun addToQueue(trackId: String)
@@ -106,6 +108,10 @@ class SongMenuState {
 
     // Set by the host while it is shown.
     var quick: QuickSongActions? = null
+        internal set
+
+    // What a swipe right on a song row does, set by the host while it is shown.
+    var swipeAction by mutableStateOf(SwipeAction.PlayNext)
         internal set
 
     fun close() {
@@ -282,9 +288,14 @@ class SongMenuViewModel @Inject constructor(
     // What adding a song found online does in a family, and its requests.
     val family: FamilyHub,
     sound: SoundEngine,
+    playerSettings: PlayerSettings,
 ) : ViewModel() {
     val liked: StateFlow<Set<String>> = likes.liked
     val downloadStates: StateFlow<Map<String, DownloadState>> = downloads.states
+
+    // What a swipe right on a song row does, as Settings say.
+    val swipeAction: StateFlow<SwipeAction> = playerSettings.prefs.map { it.swipeAction }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, SwipeAction.PlayNext)
 
     // Library songs downloaded to the phone, or on their way.
     val kept: StateFlow<Map<String, DownloadEntity>> = offline.byTrack
@@ -363,6 +374,10 @@ class SongMenuViewModel @Inject constructor(
     // Play next from a swipe, which nothing else on screen confirms, so it
     // says so and offers to take that one song back out of the queue.
     fun playNextUndoable(id: String) = playback.playNextUndoable(listOf(id)) { undo -> feedback.undoable("Playing next", undo) }
+
+    // Add to queue from a swipe or a screen reader, which says so too and
+    // offers to take that one song back out of the queue.
+    fun playLastUndoable(id: String) = playback.playLastUndoable(listOf(id)) { undo -> feedback.undoable("Added to queue", undo) }
 
     // Takes the song's row out of a playlist, with an Undo that puts it back.
     fun removeFromPlaylist(playlistId: String, itemId: Long) {

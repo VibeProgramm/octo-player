@@ -260,7 +260,7 @@ class PlaybackConnection @Inject constructor(
         c.play()
     }
 
-    // ---- Play next with an undo, for a swipe on a song row ----
+    // ---- Adding with an undo, for a swipe on a song row ----
 
     // Puts songs next, like playNext, then hands `inserted` a way to take
     // those same songs back out, wherever they have moved to since.
@@ -282,7 +282,20 @@ class PlaybackConnection @Inject constructor(
         c.removeMediaItems(start, start + trackIds.size)
     }
 
-    // ---- End of play next with an undo ----
+    // Puts songs at the end of the queue, like playLast, then hands
+    // `inserted` a way to take those same songs back out. They go before
+    // any Autoplay songs still to come, as the player puts them, which is
+    // where undo looks first.
+    fun playLastUndoable(trackIds: List<String>, inserted: (undo: () -> Unit) -> Unit) {
+        if (trackIds.isEmpty()) return
+        withController { c ->
+            val at = endOfOwnSongs(c)
+            c.addMediaItems(trackIds.map(::songRequest))
+            inserted { removeInserted(trackIds, at) }
+        }
+    }
+
+    // ---- End of adding with an undo ----
 
     private fun withController(action: (MediaController) -> Unit) {
         val ready = controller
@@ -370,4 +383,11 @@ class PlaybackConnection @Inject constructor(
     // songs to unless it plays them bit for bit.
     private fun outputRate(): Int? =
         context.getSystemService(AudioManager::class.java)?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
+}
+
+// Where songs added to the end of the queue go: before the first Autoplay
+// song still to come in play order, otherwise at the very end.
+internal fun endOfOwnSongs(player: Player): Int {
+    val count = player.mediaItemCount
+    return ownSongsAt(count, upcoming(player), List(count) { player.getMediaItemAt(it).isAutoplay })
 }

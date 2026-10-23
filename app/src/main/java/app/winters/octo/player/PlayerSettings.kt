@@ -97,6 +97,8 @@ data class PlayerPrefs(
     // Only songs in the library: albums, search, artists and radio leave
     // out songs found online.
     val libraryOnly: Boolean = false,
+    // What swiping a song row right does.
+    val swipeAction: SwipeAction = SwipeAction.PlayNext,
     // The accent the app is drawn in, or the playing cover's.
     val accent: AccentChoice = AccentChoice.Octo,
     // Whether the glass (the bar, glazed buttons and sheets) takes the
@@ -198,6 +200,7 @@ private val REDUCE_MOTION = booleanPreferencesKey("reduce_motion")
 private val CAST_RENDERERS = booleanPreferencesKey("cast_renderers")
 private val CAST_KEEP_PLAYING = booleanPreferencesKey("cast_keep_playing")
 private val LIBRARY_ONLY = booleanPreferencesKey("library_only")
+private val SWIPE_ACTION = stringPreferencesKey("swipe_action")
 private val ACCENT = stringPreferencesKey("accent_color")
 private val GLASS_TINT = booleanPreferencesKey("accent_glass")
 internal val ANIMATED_ART = stringPreferencesKey(AnimatedArtSetting.PREF_KEY)
@@ -269,6 +272,7 @@ class PlayerSettings @Inject constructor(@ApplicationContext private val context
             castRenderers = stored[CAST_RENDERERS] ?: defaults.castRenderers,
             castKeepPlaying = stored[CAST_KEEP_PLAYING] ?: defaults.castKeepPlaying,
             libraryOnly = stored[LIBRARY_ONLY] ?: defaults.libraryOnly,
+            swipeAction = choice(stored[SWIPE_ACTION], defaults.swipeAction),
             accent = choice(stored[ACCENT], defaults.accent),
             glassTint = stored[GLASS_TINT] ?: defaults.glassTint,
             animatedArt = animatedArtOf(stored),
@@ -409,6 +413,10 @@ class PlayerSettings @Inject constructor(@ApplicationContext private val context
         context.playerPrefs.edit { it[LIBRARY_ONLY] = on }
     }
 
+    suspend fun setSwipeAction(action: SwipeAction) {
+        context.playerPrefs.edit { it[SWIPE_ACTION] = action.name }
+    }
+
     suspend fun setAccent(accent: AccentChoice) {
         context.playerPrefs.edit { it[ACCENT] = accent.name }
     }
@@ -459,6 +467,7 @@ class PlayerSettings @Inject constructor(@ApplicationContext private val context
             it[CAST_RENDERERS] = player.castRenderers
             it[CAST_KEEP_PLAYING] = player.castKeepPlaying
             it[LIBRARY_ONLY] = player.libraryOnly
+            it[SWIPE_ACTION] = player.swipeAction.name
             it[ACCENT] = player.accent.name
             it[GLASS_TINT] = player.glassTint
             it[ANIMATED_ART] = player.animatedArt.key

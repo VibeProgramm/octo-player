@@ -65,6 +65,7 @@ import app.winters.octo.discovery.OnlineAlbum
 import app.winters.octo.discovery.OnlineArtist
 import app.winters.octo.discovery.albumShareLine
 import app.winters.octo.discovery.shownLengthMs
+import app.winters.octo.player.SwipeAction
 import app.winters.octo.ui.menu.CollectionTarget
 import app.winters.octo.ui.menu.LocalSongMenu
 import app.winters.octo.ui.menu.SongMenuContext
@@ -256,8 +257,8 @@ private fun OwnershipMark(track: TrackEntity) {
 // for the song the row shows. `trailing` goes after the length, such as a
 // drag handle. `menuContext` says what page the row is on, for its menu. In
 // a list that picks songs, `selectKey` is the row's key; a tap then picks it
-// instead. A swipe right puts it next in the queue, on lists where a swipe
-// does nothing else (`swipeToPlayNext`).
+// instead. A swipe right plays it next or adds it to the queue, as Settings
+// say, on lists where a swipe does nothing else (`queueSwipe`).
 // A song found online that is not in the library carries a small plus on
 // its artwork. In a list that offers adding (`offerAdd`), it gets the add
 // button at the end instead, and the row says it once. A library song in
@@ -277,7 +278,7 @@ fun SongRow(
     trailing: (@Composable () -> Unit)? = null,
     menuContext: SongMenuContext = SongMenuContext(),
     selectKey: String = track.id,
-    swipeToPlayNext: Boolean = true,
+    queueSwipe: Boolean = true,
     offerAdd: Boolean = false,
     librarySpace: Boolean = offerAdd,
     ownership: Boolean = false,
@@ -292,11 +293,18 @@ fun SongRow(
     val face: @Composable (TrackEntity) -> Unit = { shown ->
         SongFace(shown, lead, subtitle(shown), trailing, offerAdd, librarySpace, selectKey, isNow, ownership, highlight)
     }
-    if (swipeToPlayNext) {
-        val menu = LocalSongMenu.current
+    val menu = LocalSongMenu.current
+    val action = menu.swipeAction
+    if (queueSwipe && action != SwipeAction.Off) {
         // No swiping while the list is picking songs.
         val selecting = LocalSongSelection.current?.active == true
-        PlayNextSwipe(enabled = !selecting, onSwiped = { menu.quick?.playNext(song.id) }) {
+        QueueSwipe(enabled = !selecting, action = action, onSwiped = {
+            when (action) {
+                SwipeAction.PlayNext -> menu.quick?.playNext(song.id)
+                SwipeAction.AddToQueue -> menu.quick?.addToQueue(song.id)
+                SwipeAction.Off -> Unit
+            }
+        }) {
             SongLine(song, swap, menuContext, selectKey, onClick, face)
         }
     } else {
@@ -352,7 +360,7 @@ private fun SongLine(
                 .semantics {
                     if (selecting) selected = picked
                     customActions = listOf(
-                        // Like the swipe it stands in for, it says so, with an Undo.
+                        // Like the swipe, each says so, with an Undo.
                         CustomAccessibilityAction("Play next") {
                             menu.quick?.playNext(song.id)
                             true
@@ -496,10 +504,10 @@ private fun PickedMark() {
     Icon(painterResource(OctoIcons.Select), contentDescription = null, tint = OctoColors.TextPrimary, modifier = Modifier.size(22.dp))
 }
 
-// A swipe right puts the song next: the row springs back once it has, with
-// "Play next" showing behind it on the way.
+// A swipe right plays the song next or adds it to the queue: the row
+// springs back once it has, with what it did showing behind it on the way.
 @Composable
-private fun PlayNextSwipe(enabled: Boolean, onSwiped: () -> Unit, content: @Composable () -> Unit) {
+private fun QueueSwipe(enabled: Boolean, action: SwipeAction, onSwiped: () -> Unit, content: @Composable () -> Unit) {
     val swipe = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
@@ -512,7 +520,7 @@ private fun PlayNextSwipe(enabled: Boolean, onSwiped: () -> Unit, content: @Comp
             onSwiped()
             scope.launch { swipe.reset() }
         },
-        backgroundContent = { PlayNextBackground(swipe.dismissDirection == SwipeToDismissBoxValue.StartToEnd, RowShape) },
+        backgroundContent = { QueueSwipeBackground(swipe.dismissDirection == SwipeToDismissBoxValue.StartToEnd, action, RowShape) },
     ) {
         // Solid under the row while it moves, so it hides what it passes
         // over; clear at rest, so the page's glow shows.
