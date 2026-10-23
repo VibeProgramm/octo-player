@@ -1,14 +1,6 @@
 import OctoKit
 import SwiftUI
 
-/// One row of a country picker: what picking it answers (`id`, a country's code, or a choice such
-/// as following the server's country), the words it shows, and the code a search also matches.
-struct CountryRow: Identifiable, Hashable {
-    let id: String
-    let code: String
-    let name: String
-}
-
 /// A group of rows under its heading; a picker with one group needs no heading.
 struct CountrySection: Identifiable {
     let title: String?
@@ -18,13 +10,15 @@ struct CountrySection: Identifiable {
 }
 
 /// A country picked on a sheet: Apple's search bar over the countries, which matches a name with
-/// case and accents ignored or a two-letter code exactly, and the chosen row checked. Picking a
-/// row closes the sheet.
+/// case and accents ignored or a two-letter code exactly, the chosen row checked, and `note`, a
+/// quiet line above the rows. `pick` answers whether the sheet closes; one that asks something
+/// first keeps it open.
 struct CountryPickerSheet: View {
     var title = "Country"
+    var note: String?
     let sections: [CountrySection]
     let chosen: String?
-    let pick: (String) -> Void
+    let pick: (CountryRow) -> Bool
     @Environment(\.dismiss) private var dismiss
     @State private var typed = ""
 
@@ -40,17 +34,25 @@ struct CountryPickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                if let note, typed.isEmpty {
+                    Section {
+                    } header: {
+                        Text(note).textCase(nil)
+                    }
+                }
                 ForEach(shown) { section in
                     Section {
                         ForEach(section.rows) { row in
                             Button {
-                                dismiss()
-                                pick(row.id)
+                                if pick(row) { dismiss() }
                             } label: {
                                 HStack(spacing: 8) {
                                     Text(row.name)
                                         .foregroundStyle(.primary)
                                         .frame(maxWidth: .infinity, alignment: .leading)
+                                    if let detail = row.detail {
+                                        Text(detail).font(.footnote).foregroundStyle(.secondary)
+                                    }
                                     if row.id == chosen {
                                         Image(systemName: "checkmark")
                                             .fontWeight(.semibold)

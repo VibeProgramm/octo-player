@@ -233,9 +233,9 @@ struct OnlineArtistView: View {
 /// The charts and new songs an Octo server reads from Apple Music, one at a time, picked with the
 /// chips: the chart country's most played songs, Best New Songs, Trending Songs and a chart per
 /// genre. A song the library has plays from it; any other has the add button at the end of its
-/// row. On a server that has every country's charts, the country button beside the title shows
-/// another country's; while one is shown, it can become the listener's own or be pinned, so its
-/// charts come as playlists too.
+/// row. One line holds the title, the country button and Play and Shuffle; the chips sit under it.
+/// On a server that has every country's charts, picking a country asks what to do with it: only
+/// look at it here, use it for the listener's charts, or add its chart playlists beside theirs.
 struct ChartsView: View {
     @Environment(Discovery.self) private var discovery
     @Environment(Player.self) private var player
@@ -257,27 +257,17 @@ struct ChartsView: View {
     @State private var switching: Task<Void, Never>?
     /// The country on its way while `switching`; nil for the listener's own.
     @State private var target: String?
+    /// What the server said when it would not show a country, in place of the songs.
+    @State private var refused: String?
     @State private var picking = false
-    @State private var savingCountry = false
-    @State private var savingPin = false
+    /// The country picked in the menu, while its choice is asked.
+    @State private var asking: CountryAsk?
+    @State private var saving = false
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                // The title keeps its whole width; a long country name gives way in the button.
-                HStack(alignment: .chartsTitleLine, spacing: 0) {
-                    ScreenTitle("Charts")
-                        .fixedSize(horizontal: true, vertical: false)
-                        .alignmentGuide(.chartsTitleLine) { d in d[.firstTextBaseline] - titleCapHeight / 2 }
-                    Spacer(minLength: 0)
-                    if canPickCountry {
-                        Button { picking = true } label: { ChoiceChip(text: shownCountryName, systemImage: OctoIcon.globe.symbol) }
-                            .buttonStyle(.plain)
-                            .alignmentGuide(.chartsTitleLine) { d in d[VerticalAlignment.center] }
-                            .padding(.trailing, 20)
-                            .accessibilityLabel("Chart country: \(shownCountryName)")
-                    }
-                }
+                header
                 if !choices.isEmpty {
                     ScrollView(.horizontal) {
                         HStack(spacing: 8) {
@@ -292,21 +282,14 @@ struct ChartsView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 12)
                 }
-                if let browsing, !none {
-                    browsingRow(browsing)
-                }
                 if none {
                     quiet("This server doesn't have charts.")
+                } else if let refused {
+                    quiet(refused)
                 } else if let list {
                     if list.songs.isEmpty {
                         quiet("Nothing in this chart right now. Try another.")
                     } else {
-                        if let caption = chartCaption(source: list.source, chart: list.chart, country: list.country) {
-                            quiet(caption)
-                        }
-                        GlazeButton("Play all", size: .small) { play(list, 0) }
-                        .padding(.leading, 20)
-                        .padding(.bottom, 8)
                         let all = list.songs.map(\.track)
                         ForEach(Array(list.songs.enumerated()), id: \.element.track.id) { index, ranked in
                             SongRow(song: ranked.track, list: all, position: index, offersAdd: true, addSpace: true, rank: ranked.rank,
@@ -328,9 +311,16 @@ struct ChartsView: View {
         }
         .barClearance()
         .sheet(isPresented: $picking) {
-            CountryPickerSheet(sections: countrySections, chosen: (switching == nil ? browsing : target) ?? own?.chosen ?? chartCountryAuto) {
-                browse($0)
-            }
+            CountryPickerSheet(note: sourceLine, sections: countrySections, chosen: chosenRow) { choose($0) }
+                .confirmationDialog(asking?.row.name ?? "", isPresented: askingShown, titleVisibility: .visible, presenting: asking) { ask in
+                    ForEach(ask.choices) { choice in
+                        Button(choice.title) { act(choice.action, ask.row) }
+                            .disabled(!choice.enabled)
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: { ask in
+                    if let note = ask.note { Text(note) }
+                }
         }
         .task {
             guard choices.isEmpty, list == nil else { return }
@@ -339,16 +329,51 @@ struct ChartsView: View {
             let kept = discovery.keptChartChoices()
             if let kept { showOwn(kept) }
             countriesOn = await discovery.offersChartCountries()
-            let asking = chartChoicesOnOpen(countries: countriesOn, kept: kept != nil)
-            if asking.ask, let answer = try? await discovery.chartChoices(fresh: asking.fresh) { showOwn(answer) }
+            let opening = chartChoicesOnOpen(countries: countriesOn, kept: kept != nil)
+            if opening.ask, let answer = try? await discovery.chartChoices(fresh: opening.fresh) { showOwn(answer) }
             if choices.isEmpty, !(await discovery.offersCharts()) { none = true }
         }
     }
 
-    // MARK: The country
+    // MARK: The header
 
-    /// The title's cap height, for the country button to sit on the middle of its capitals.
+    /// The title, then at the right the country button, Play and Shuffle, all on the middle of the
+    /// title's capitals. The title keeps its whole width; a long country name gives way in the
+    /// button.
+    private var header: some View {
+        let playable = !(list?.songs.isEmpty ?? true)
+        return HStack(alignment: .chartsTitleLine, spacing: 0) {
+            ScreenTitle("Charts")
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.trailing, -12)
+                .alignmentGuide(.chartsTitleLine) { d in d[.firstTextBaseline] - titleCapHeight / 2 }
+            Spacer(minLength: 0)
+            if !none {
+                HStack(spacing: 0) {
+                    if canPickCountry {
+                        Button { picking = true } label: { ChoiceChip(text: shownCountryName, systemImage: OctoIcon.globe.symbol) }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Chart country: \(shownCountryName)")
+                            .padding(.trailing, 4)
+                    }
+                    GlassIconButton(icon: .play, label: "Play", lit: true) { if let list { play(list, 0) } }
+                        .disabled(!playable)
+                        .opacity(playable ? 1 : OctoInkColor.disabled)
+                    GlassIconButton(icon: .shuffle, label: "Shuffle") { if let list { player.shuffle(list.songs.map(\.track)) } }
+                        .disabled(!playable)
+                        .opacity(playable ? 1 : OctoInkColor.disabled)
+                }
+                .alignmentGuide(.chartsTitleLine) { d in d[VerticalAlignment.center] }
+                // The round buttons' targets reach 7 past their glass, so the glass ends 20 in.
+                .padding(.trailing, 13)
+            }
+        }
+    }
+
+    /// The title's cap height, for the buttons beside it to sit on the middle of its capitals.
     private var titleCapHeight: CGFloat { UIFont.systemFont(ofSize: titleSize, weight: .black).capHeight }
+
+    // MARK: The country
 
     private var canPickCountry: Bool { countriesOn && !none && !(own?.countries.isEmpty ?? true) }
 
@@ -357,41 +382,45 @@ struct ChartsView: View {
 
     private var shownCountryName: String { shownCode.map { countryName($0) } ?? "Country" }
 
-    /// The picker's rows: following the server's country, the listener's own when they chose one,
-    /// their pinned ones, then every other country by name.
+    /// Who ranked the chart in view and for which country, at the top of the country menu.
+    private var sourceLine: String? { list.flatMap { chartCaption(source: $0.source, chart: $0.chart, country: $0.country) } }
+
+    /// The menu's row for the country in view, or the one on its way.
+    private var chosenRow: String { (switching == nil ? browsing : target) ?? chartCountryYours }
+
+    /// The menu: the listener's own charts at the top, then every country by name.
     private var countrySections: [CountrySection] {
         guard let own else { return [] }
-        func row(_ code: String) -> CountryRow { CountryRow(id: code, code: code, name: countryName(code)) }
-        let server = own.serverCountry.flatMap { $0.isEmpty ? nil : $0 }
-        let follow = CountryRow(id: chartCountryAuto, code: server ?? "",
-                                name: server.map { "Same as the server (\(countryName($0)))" } ?? "Same as the server")
-        let mine = own.chosen
-        let order = chartCountryOrder(own.countries, own: mine ?? own.country, pinned: own.pinned) { countryName($0) }
-        let taken = Set(([mine ?? own.country].compactMap { $0 } + own.pinned).map { $0.lowercased() })
-        var sections = [CountrySection(title: nil, rows: [follow])]
-        if let mine { sections.append(CountrySection(title: "Yours", rows: [row(mine)])) }
-        if !own.pinned.isEmpty { sections.append(CountrySection(title: "Pinned", rows: own.pinned.map(row))) }
-        sections.append(CountrySection(title: "All countries", rows: order.filter { !taken.contains($0.lowercased()) }.map(row)))
-        return sections
+        let menu = chartCountryMenu(own) { countryName($0) }
+        return [CountrySection(title: nil, rows: menu.top), CountrySection(title: "All countries", rows: menu.countries)]
     }
 
-    /// Under the chips while another country shows: make it the listener's own, or pin it.
-    private func browsingRow(_ code: String) -> some View {
-        let pinned = own?.isPinned(code) ?? false
-        let full = !pinned && (own?.pinsFull ?? false)
-        return HStack(spacing: 8) {
-            GlazeButton("Use as my country", size: .small, enabled: !savingPin, loading: savingCountry) { save(code) }
-            GlazeButton(pinned ? "Unpin" : "Pin", icon: pinned ? .pinned : .pin, size: .small,
-                        enabled: !full && !savingCountry, loading: savingPin) { togglePin(code, pinned: !pinned) }
-            if full, let most = own?.maxPinned {
-                Text("\(most) pinned")
-                    .font(.octoCaption)
-                    .foregroundStyle(OctoColor.textMuted)
-                    .lineLimit(1)
-            }
+    private var askingShown: Binding<Bool> {
+        Binding(get: { asking != nil }, set: { if !$0 { asking = nil } })
+    }
+
+    /// A row picked in the menu: Yours goes back to the listener's own charts and closes it; any
+    /// other row asks what to do with that country, over the menu.
+    private func choose(_ row: CountryRow) -> Bool {
+        guard let own, row.id != chartCountryYours else {
+            show(nil)
+            return true
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 12)
+        asking = CountryAsk(row: row, choices: chartCountryChoices(row, charts: own) { countryName($0) })
+        return false
+    }
+
+    /// What was chosen for a picked country; the menu closes first.
+    private func act(_ action: ChartCountryAction, _ row: CountryRow) {
+        picking = false
+        switch action {
+        case .look:
+            show(row.code.caseInsensitiveCompare(own?.country ?? "") == .orderedSame ? nil : row.code)
+        case .use:
+            save(row.id == chartCountryAuto ? chartCountryAuto : row.code)
+        case .pin, .unpin:
+            setPin(row.code, pinned: action == .pin)
+        }
     }
 
     /// The listener's own charts as the server said: their chips show unless another country does.
@@ -413,22 +442,14 @@ struct ChartsView: View {
         }
     }
 
-    /// Shows a country's charts, the listener's own as their own; following the server's saves that.
-    private func browse(_ id: String) {
-        if id == chartCountryAuto {
-            if own?.chosen == nil { show(nil) } else { save(chartCountryAuto) }
-            return
-        }
-        show(id.caseInsensitiveCompare(own?.country ?? "") == .orderedSame ? nil : id)
-    }
-
     /// Shows a country's charts, nil for the listener's own. A country picked while another is on
-    /// its way replaces that one.
+    /// its way replaces that one. One the server will not show says why in place of the songs.
     private func show(_ country: String?) {
         guard country != (switching == nil ? browsing : target) else { return }
         switching?.cancel()
         loading?.cancel()
         list = nil
+        refused = nil
         target = country
         switching = Task {
             do {
@@ -444,18 +465,17 @@ struct ChartsView: View {
                 guard !Task.isCancelled else { return }
                 switching = nil
                 target = nil
-                router.show(serverWords(error) ?? "Couldn't show that country's charts. Try again.")
-                load()
+                refused = serverWords(error) ?? "Couldn't show that country's charts. Try again."
             }
         }
     }
 
-    /// Saves a country as the listener's own (`auto` follows the server), then shows their own.
+    /// Saves a country as the listener's own (`auto` follows the server), then shows it as theirs.
     private func save(_ code: String) {
-        guard !savingCountry else { return }
-        savingCountry = true
+        guard !saving else { return }
+        saving = true
         Task {
-            defer { savingCountry = false }
+            defer { saving = false }
             do {
                 guard let answer = try await discovery.saveChartCountry(code) else { return }
                 own = answer
@@ -463,6 +483,7 @@ struct ChartsView: View {
                 switching = nil
                 target = nil
                 browsing = nil
+                refused = nil
                 showChoices(answer.chart, reload: true)
             } catch {
                 router.show(serverWords(error) ?? "Couldn't save. Try again.")
@@ -470,13 +491,16 @@ struct ChartsView: View {
         }
     }
 
-    private func togglePin(_ code: String, pinned: Bool) {
-        guard !savingPin else { return }
-        savingPin = true
+    /// Adds a country's chart playlists, or removes them, then shows that country.
+    private func setPin(_ code: String, pinned: Bool) {
+        guard !saving else { return }
+        saving = true
         Task {
-            defer { savingPin = false }
+            defer { saving = false }
             do {
-                if let answer = try await discovery.pinChartCountry(code, pinned: pinned) { own = answer }
+                guard let answer = try await discovery.pinChartCountry(code, pinned: pinned) else { return }
+                own = answer
+                show(code.caseInsensitiveCompare(answer.country ?? "") == .orderedSame ? nil : code)
             } catch {
                 router.show(serverWords(error) ?? "Couldn't save. Try again.")
             }
@@ -508,6 +532,7 @@ struct ChartsView: View {
     private func load() {
         loading?.cancel()
         list = nil
+        refused = nil
         let chart = selected
         let country = browsing
         loading = Task {
@@ -522,11 +547,20 @@ struct ChartsView: View {
     }
 }
 
+/// A country picked in the Charts page's menu and what can be done with it. The note says why a
+/// choice can't be picked.
+private struct CountryAsk {
+    let row: CountryRow
+    let choices: [ChartCountryChoice]
+
+    var note: String? { choices.first { !$0.enabled }?.detail }
+}
+
 extension VerticalAlignment {
     private enum ChartsTitleLine: AlignmentID {
         static func defaultValue(in dimensions: ViewDimensions) -> CGFloat { dimensions[VerticalAlignment.center] }
     }
 
-    /// The middle of the Charts title's capitals, for the country button beside it.
+    /// The middle of the Charts title's capitals, for the buttons beside it.
     fileprivate static let chartsTitleLine = VerticalAlignment(ChartsTitleLine.self)
 }

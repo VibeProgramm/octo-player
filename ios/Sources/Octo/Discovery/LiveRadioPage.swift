@@ -337,7 +337,10 @@ struct PlaceChooser: View {
         .modifier(ChooserBackground(inSheet: inSheet))
         .sheet(isPresented: $pickingCountry) {
             let rows = placeCountries().map { CountryRow(id: $0.code, code: $0.code, name: $0.name) }
-            CountryPickerSheet(sections: [CountrySection(title: nil, rows: rows)], chosen: country) { country = $0 }
+            CountryPickerSheet(sections: [CountrySection(title: nil, rows: rows)], chosen: country) { row in
+                country = row.id
+                return true
+            }
         }
     }
 
