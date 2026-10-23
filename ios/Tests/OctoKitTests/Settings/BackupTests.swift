@@ -48,7 +48,7 @@ import Testing
         let text = BackupFile.encode(backup)
         for key in ["liveBackground", "crossfade", "crossfadeSeconds", "lyricsOnline", "speed", "keepPitch", "pitchSemitones", "skipSilence",
                     "resumeWired", "resumeBluetooth", "resumeAlways", "smartTransitions", "filterSweeps", "matchTempo", "radioDiscovery", "crossfadeCurve",
-                    "ambient", "background", "castRenderers", "castKeepPlaying", "libraryOnly", "reduceMotion"] {
+                    "ambient", "background", "castRenderers", "castKeepPlaying", "libraryOnly", "swipeAction", "reduceMotion"] {
             #expect(text.contains("\"\(key)\""), "\(key) is missing")
         }
         #expect(text.contains("\"contrast\": 1.3"))
@@ -91,6 +91,20 @@ import Testing
         guard case .read(let backup) = BackupFile.decode(#"{"kind": "octo-settings", "streaming": {"copies": "Nonsense", "wifi": "Kbps256"}}"#)
         else { Issue.record("not read"); return }
         #expect(backup.streaming == StreamPrefs(wifi: .mp3(kbps: 256)))
+    }
+
+    @Test func theSwipeActionReadsBackAndAnUnknownOneIsPlayNext() {
+        var backup = Backup()
+        var player = PlayerPrefs()
+        player.swipeAction = .addToQueue
+        backup.player = player
+        guard case .read(let back) = BackupFile.decode(BackupFile.encode(backup)) else { Issue.record("not read"); return }
+        #expect(back.player?.swipeAction == .addToQueue)
+        guard case .read(let unknown) = BackupFile.decode(#"{"kind": "octo-settings", "player": {"swipeAction": "Nothing"}}"#),
+              case .read(let missing) = BackupFile.decode(#"{"kind": "octo-settings", "player": {"crossfade": true}}"#)
+        else { Issue.record("not read"); return }
+        #expect(unknown.player?.swipeAction == .playNext)
+        #expect(missing.player?.swipeAction == .playNext)
     }
 
     @Test func songsAreFoundByRelinkKeyFirst() {

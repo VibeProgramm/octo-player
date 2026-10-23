@@ -1,16 +1,18 @@
+import OctoKit
 import SwiftUI
 import UIKit
 
-/// What swiping a row does: right puts the song next in the queue, left takes the row away.
+/// What swiping a row does: right plays the song next or adds it to the queue, as Settings say;
+/// left takes the row away.
 enum RowSwipe {
     case none
-    case playNext(() -> Void)
+    case queue(SwipeAction, () -> Void)
     case remove(() -> Void)
 }
 
 extension View {
     /// Lets the row be swiped sideways. The row follows the finger over a wash that says what
-    /// letting go will do; past a third of the width, or flung, it acts. Play next springs back;
+    /// letting go will do; past a third of the width, or flung, it acts. Play next and Add to queue spring back;
     /// remove slides the row away.
     func rowSwipe(_ swipe: RowSwipe, enabled: Bool) -> some View {
         modifier(RowSwipeModifier(swipe: swipe, enabled: enabled))
@@ -24,8 +26,9 @@ private struct RowSwipeModifier: ViewModifier {
     @State private var width: CGFloat = 0
     @State private var confirmed = 0
 
-    private var right: Bool { if case .playNext = swipe { true } else { false } }
+    private var right: Bool { if case .queue = swipe { true } else { false } }
     private var left: Bool { if case .remove = swipe { true } else { false } }
+    private var queueAction: SwipeAction { if case .queue(let action, _) = swipe { action } else { .playNext } }
 
     func body(content: Content) -> some View {
         if case .none = swipe {
@@ -47,8 +50,8 @@ private struct RowSwipeModifier: ViewModifier {
     private var wash: some View {
         if offset > 0 {
             HStack(spacing: 10) {
-                IconView(.playNext, size: 20)
-                Text("Play next").font(.octoBodySmall)
+                IconView(queueAction == .addToQueue ? .addToQueue : .playNext, size: 20)
+                Text(queueAction.label).font(.octoBodySmall)
                 Spacer()
             }
             .foregroundStyle(.white)
@@ -70,7 +73,7 @@ private struct RowSwipeModifier: ViewModifier {
     private func finish(_ dx: CGFloat, _ velocity: CGFloat) {
         let far = abs(dx) > max(width, 1) / 3 || abs(velocity) > 800
         switch swipe {
-        case .playNext(let run) where far && dx > 0:
+        case .queue(_, let run) where far && dx > 0:
             confirmed += 1
             run()
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { offset = 0 }

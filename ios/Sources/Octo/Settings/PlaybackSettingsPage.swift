@@ -1,8 +1,9 @@
 import OctoKit
 import SwiftUI
 
-/// How songs play: blending, speed, skipping silence, Autoplay, music coming back when
-/// headphones connect, and what happens when casting ends. Radio has a page of its own.
+/// How songs play: blending, speed and skipping silence; the queue, what a swipe on a song adds
+/// to it and Autoplay when it ends; music coming back when headphones connect, and what happens
+/// when casting ends. Radio has a page of its own.
 struct PlaybackSettingsPage: View {
     var highlight: String?
     @State private var settings = AppSettings.shared
@@ -39,6 +40,12 @@ struct PlaybackSettingsPage: View {
                     PaceCard().frame(width: 320)
                 }
                 ToggleRow(SettingsIndex.skipSilence, isOn: prefs.skipSilence, onChange: settings.setSkipSilence)
+            }
+            SettingsGroup(title: "Queue", icon: SettingsIcon.queue) {
+                ChoiceRow(SettingsIndex.songSwipe, value: prefs.swipeAction.label, helper: prefs.swipeAction.detail,
+                          question: SettingsQuestion(
+                              SettingsIndex.songSwipe.title, SwipeAction.allCases, current: prefs.swipeAction,
+                              answer: { SettingsAnswer($0.label, $0.detail) }, pick: settings.setSwipeAction))
                 ToggleRow(SettingsIndex.autoplay, isOn: prefs.autoplay,
                           helper: "When the queue ends, similar songs keep playing, picked as Radio settings say.",
                           onChange: settings.setAutoplay)

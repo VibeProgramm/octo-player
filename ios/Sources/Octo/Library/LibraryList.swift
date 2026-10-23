@@ -46,8 +46,8 @@ extension View {
     }
 
     /// The row's swipes. In a `LibraryList` they are the system's swipe actions: from the left
-    /// edge, Play next; from the right edge, the row's removal. Elsewhere the row follows the
-    /// finger itself (`rowSwipe`).
+    /// edge, Play next or Add to queue as Settings say (none when Off); from the right edge, the
+    /// row's removal. Elsewhere the row follows the finger itself (`rowSwipe`).
     func songSwipes(_ swipe: RowSwipe, enabled: Bool) -> some View {
         modifier(SongSwipes(swipe: swipe, enabled: enabled))
     }
@@ -62,9 +62,11 @@ private struct SongSwipes: ViewModifier {
         if inList {
             content
                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                    if enabled, case .playNext(let run) = swipe {
-                        Button(action: run) { Label("Play next", systemImage: OctoIcon.playNext.symbol) }
-                            .tint(OctoColor.accent)
+                    if enabled, case .queue(let action, let run) = swipe {
+                        Button(action: run) {
+                            Label(action.label, systemImage: (action == .addToQueue ? OctoIcon.addToQueue : OctoIcon.playNext).symbol)
+                        }
+                        .tint(OctoColor.accent)
                     }
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
