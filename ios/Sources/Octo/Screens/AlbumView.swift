@@ -774,19 +774,6 @@ struct PlaylistsView: View {
     }
 }
 
-/// A square tile for the lead lines: an icon at 40% of the tile on the quiet tile, with the rim.
-private struct LeadTile: View {
-    let icon: OctoIcon
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: OctoRadius.artS)
-            .fill(OctoColor.backgroundTertiary)
-            .overlay { IconView(icon, size: 56 * 0.4, color: .white) }
-            .overlay { RoundedRectangle(cornerRadius: OctoRadius.artS).strokeBorder(.white.opacity(0.1), lineWidth: 1) }
-            .frame(width: 56, height: 56)
-    }
-}
-
 /// The live lists whose songs are worked out for their pictures, against the library as last read.
 private struct LiveCoversKey: Hashable {
     let version: Int
