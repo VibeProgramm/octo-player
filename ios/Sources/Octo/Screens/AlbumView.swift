@@ -623,7 +623,14 @@ struct PlaylistsView: View {
                             // The ways to make a list, in the order the page once listed them.
                             GlassMoreMenu(icon: .addToLibrary, label: "New") {
                                 Button("New playlist", systemImage: OctoIcon.addToLibrary.symbol) { actions.askNewPlaylist(.tracks([])) }
-                                Button("New live list", systemImage: "wand.and.stars") { router.go(.liveListEditor(id: nil)) }
+                                Button { router.go(.liveListEditor(id: nil)) } label: {
+                                    Label {
+                                        Text("New live list")
+                                        Text("Songs picked by rules, always up to date")
+                                    } icon: {
+                                        Image(systemName: "wand.and.stars")
+                                    }
+                                }
                                 Button("Import a playlist file", systemImage: OctoIcon.folder.symbol) { importing = true }
                             }
                         }

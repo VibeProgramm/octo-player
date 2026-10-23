@@ -226,15 +226,19 @@ private struct NoticesRow: View {
 
     var body: some View {
         Group {
-            // One line: what notices are for, and the switch to them.
+            // One banner: what notices are for, with a short muted line why, and the switch to them.
             if !allowed {
                 HStack(spacing: 12) {
-                    Text("Hear when a request is decided")
-                        .font(.octoBodySmall)
-                        .foregroundStyle(OctoColor.textPrimary)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityHint("Octo can tell you when a request is approved, declined or added, and a manager when requests wait.")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Hear when a request is decided")
+                            .font(.octoBodySmall)
+                            .foregroundStyle(OctoColor.textPrimary)
+                            .lineLimit(2)
+                        Text("Approved, declined or added, and for a manager, requests waiting.")
+                            .font(.octoCaption)
+                            .foregroundStyle(OctoColor.textMuted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     GlazeButton("Turn on", size: .small) {
                         Task {
                             let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus

@@ -628,6 +628,13 @@ private struct FindSources: View {
                             .font(.octoCaption)
                             .foregroundStyle(source.state == findOff ? OctoColor.textMuted : OctoColor.textSecondary)
                             .lineLimit(1)
+                        // Why it could not search, as a quiet word on its pill.
+                        if source.state == findFailed {
+                            Text(words(source))
+                                .font(.octoCaption)
+                                .foregroundStyle(OctoColor.textMuted)
+                                .lineLimit(1)
+                        }
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
