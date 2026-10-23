@@ -158,9 +158,9 @@ public enum SwipeAction: String, StoredChoice, Codable {
 
     public var detail: String {
         switch self {
-        case .playNext: "Right after the song that's on"
+        case .playNext: "After the current song"
         case .addToQueue: "At the end of the queue"
-        case .off: "Swiping a song does nothing"
+        case .off: "Swiping does nothing"
         }
     }
 }
