@@ -15,10 +15,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -63,14 +69,14 @@ import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.FavouriteHeart
 import app.winters.octo.ui.common.LocalAdoptedFinds
 import app.winters.octo.ui.common.Pickable
-import app.winters.octo.ui.common.PlayRow
-import app.winters.octo.ui.common.QuietAction
-import app.winters.octo.ui.common.QuietActions
+import app.winters.octo.ui.common.HeaderControlLine
+import app.winters.octo.ui.common.HeaderMore
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.PlayShuffleButtons
 import app.winters.octo.ui.common.Refreshable
 import app.winters.octo.ui.common.SelectableSongs
 import app.winters.octo.ui.common.SongLead
 import app.winters.octo.ui.common.SongRow
-import app.winters.octo.ui.common.addMissingLabel
 import app.winters.octo.ui.common.albumLibraryNote
 import app.winters.octo.ui.common.asLength
 import app.winters.octo.ui.common.isOutsideLibrary
@@ -267,47 +273,50 @@ fun AlbumScreen(
             LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
                 album?.let { a ->
                     item(key = "header") {
+                        val genre = albumGenre(library)
+                        val adopted = LocalAdoptedFinds.current
+                        val note = if (missing) albumLibraryNote(whole.size, whole.count { isOutsideLibrary(it.id, adopted) }) else null
+                        val share = albumShareItem(id, a.title)
+                        val download = albumDownloadItem(library)
+                        val canFollow by vm.canFollow.collectAsStateWithLifecycle()
+                        val askable = whole.count { isFind(it.id) && (states[it.id] ?: DownloadState.None) == DownloadState.None }
+                        val coming = whole.count { isFind(it.id) && states[it.id] == DownloadState.Requested }
+                        val follows = askable == 0 && coming > 0 && canFollow
+                        // The setting already leaves them out; the switch is for this album alone.
+                        val offerOnlyMine = !libraryOnly
+                        val more = albumMore(share != null, download != null, missing, offerOnlyMine, genre != null).mapNotNull { entry ->
+                            when (entry) {
+                                AlbumMore.Share -> share
+                                AlbumMore.Download -> download
+                                AlbumMore.AddMissing -> {
+                                    val (label, enabled) = addMissingAction(askable, follows)
+                                    MoreItem(label, OctoIcons.AddToLibrary, enabled = enabled) { if (follows) vm.showDownloads() else vm.addMissing() }
+                                }
+                                AlbumMore.OnlyMine -> MoreItem(ONLY_MY_SONGS, OctoIcons.Library, checked = ownOnly) { vm.setOnlyMine(!ownOnly) }
+                                AlbumMore.Genre -> genre?.let { MoreItem("Go to genre", OctoIcons.Genres, detail = it, opensPage = true) { onOpen(GenreRoute(it)) } }
+                            }
+                        }
                         AlbumHeader(
                             artwork = a.artwork,
                             loop = loop,
                             title = a.title,
                             artist = a.artist,
-                            details = listOfNotNull(
-                                a.year?.toString(),
+                            details = albumFacts(
+                                a.year,
                                 songs(if (mixed) tracks.size else a.songCount),
                                 (if (mixed) (tracks.sumOf { it.durationMs } / 1000).toInt() else (a.durationMs / 1000).toInt()).asLength(),
+                                genre,
+                                averageRating(library),
+                                note,
                             ).joinToString(" • "),
                             onArtist = { onOpen(ArtistRoute(a.artistId)) },
                             onPlay = { vm.play(0) },
                             onShuffle = vm::shuffle,
-                            // Favourites: the heart beside the buttons.
+                            // Favorites: the heart leads the control line.
                             heart = { FavouriteHeart(FavouriteKind.Album, id) },
-                            more = {
-                                QuietActions {
-                                    AlbumShareButton(id, a.title)
-                                    AlbumDownloadButton(library)
-                                }
-                                val canFollow by vm.canFollow.collectAsStateWithLifecycle()
-                                if (missing) {
-                                    MissingSongs(
-                                        whole,
-                                        states,
-                                        vm::addMissing,
-                                        if (canFollow) vm::showDownloads else null,
-                                        // The setting already leaves them out; the toggle is for this album alone.
-                                        onlyMine = if (libraryOnly) null else ownOnly,
-                                        onOnlyMine = { vm.setOnlyMine(!ownOnly) },
-                                    )
-                                }
-                            },
+                            more = more,
                         )
                     }
-                }
-                // The genre and the songs' average rating, when known.
-                val genre = albumGenre(library)
-                val average = averageRating(library)
-                if (album != null && (genre != null || average != null)) {
-                    item(key = "about") { AlbumAbout(genre, average) { onOpen(GenreRoute(it)) } }
                 }
                 val discs = tracks.groupBy { it.discNo ?: 1 }
                 discs.forEach { (disc, onDisc) ->
@@ -347,53 +356,12 @@ fun AlbumScreen(
     }
 }
 
-// Under an album that has only some of its songs in the library: how many
-// are in, and the plus that adds the rest (each one not asked for yet).
-// Once they are all on their way, it opens the downloads sheet instead.
-// "Only my songs" (`onlyMine`, when offered) hides the rest on this page.
-@Composable
-private fun MissingSongs(
-    tracks: List<TrackEntity>,
-    states: Map<String, DownloadState>,
-    onAdd: () -> Unit,
-    onFollow: (() -> Unit)?,
-    onlyMine: Boolean? = null,
-    onOnlyMine: () -> Unit = {},
-) {
-    val adopted = LocalAdoptedFinds.current
-    val outside = tracks.count { isOutsideLibrary(it.id, adopted) }
-    val askable = tracks.count { isFind(it.id) && (states[it.id] ?: DownloadState.None) == DownloadState.None }
-    val note = albumLibraryNote(tracks.size, outside)
-    val coming = tracks.count { isFind(it.id) && states[it.id] == DownloadState.Requested }
-    val follows = askable == 0 && coming > 0 && onFollow != null
-    QuietActions {
-        QuietAction(
-            OctoIcons.AddToLibrary,
-            if (askable > 0) addMissingLabel(askable) else if (follows) "Adding, show downloads" else "Adding",
-            onClick = { if (follows) onFollow?.invoke() else onAdd() },
-            enabled = askable > 0 || follows,
-        )
-        if (onlyMine != null) QuietAction(OctoIcons.Library, ONLY_MY_SONGS, onOnlyMine, checked = onlyMine)
-        if (note != null) {
-            Text(
-                note,
-                style = OctoType.caption,
-                color = OctoColors.TextMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.End,
-                modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
-            )
-        }
-    }
-}
-
-// The top of an album page: cover, title and artist, then a quiet line with
-// the details on the left and the heart on the right, and Play and Shuffle
-// under it. The artist opens only when there is somewhere to go. `heart`
-// sits on the details line and `more` under the buttons, for quieter actions.
-// An album with animated art plays its square `loop` in place of the cover
-// while the page is in front.
+// The top of an album page: the cover, the title under it, one quiet line
+// with the artist (in the accent, opening their page when there is one to
+// go to) and the album's facts, then one control line: the heart, and
+// round Play, Shuffle and More at the end. `more` holds the album's lesser
+// actions. An album with animated art plays its square `loop` in place of
+// the cover while the page is in front.
 @Composable
 fun AlbumHeader(
     artwork: String?,
@@ -404,7 +372,7 @@ fun AlbumHeader(
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     heart: (@Composable () -> Unit)? = null,
-    more: (@Composable () -> Unit)? = null,
+    more: List<MoreItem> = emptyList(),
     loop: AnimatedClip? = null,
 ) {
     Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
@@ -425,16 +393,35 @@ fun AlbumHeader(
             }
             Spacer(Modifier.height(20.dp))
             Text(title, style = OctoType.title, color = OctoColors.TextPrimary, textAlign = TextAlign.Center)
-            Text(
-                artist,
-                style = OctoType.body,
-                color = if (onArtist != null) OctoColors.Accent else OctoColors.TextSecondary,
-                modifier = Modifier
-                    .padding(top = 4.dp)
-                    .then(if (onArtist != null) Modifier.clickable(onClick = onArtist) else Modifier),
-            )
-            PlayRow(details, onPlay, onShuffle, Modifier.padding(top = 14.dp)) { heart?.invoke() }
+            AlbumByline(artist, details, onArtist, Modifier.padding(top = 4.dp))
         }
-        more?.invoke()
+        HeaderControlLine(
+            control = heart,
+            filters = null,
+            actions = {
+                PlayShuffleButtons(onPlay, onShuffle)
+                HeaderMore(more)
+            },
+            modifier = Modifier.padding(start = 12.dp, end = 16.dp, top = 10.dp),
+        )
     }
+}
+
+// The artist and the album's facts as one centered line, wrapping only when
+// it must. The artist's name is a link while there is a page to open.
+@Composable
+private fun AlbumByline(artist: String, details: String, onArtist: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val open by rememberUpdatedState(onArtist)
+    val line = remember(artist, details, onArtist != null) {
+        buildAnnotatedString {
+            val name = SpanStyle(color = if (onArtist != null) OctoColors.Accent else OctoColors.TextSecondary)
+            if (onArtist != null) {
+                withLink(LinkAnnotation.Clickable("artist", TextLinkStyles(name)) { open?.invoke() }) { append(artist) }
+            } else {
+                withStyle(name) { append(artist) }
+            }
+            if (details.isNotEmpty()) append(" • $details")
+        }
+    }
+    Text(line, style = OctoType.bodySmall, color = OctoColors.TextMuted, textAlign = TextAlign.Center, modifier = modifier)
 }
