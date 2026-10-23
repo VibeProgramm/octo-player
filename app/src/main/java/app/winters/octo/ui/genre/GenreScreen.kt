@@ -33,7 +33,9 @@ import app.winters.octo.sort.Sorted
 import app.winters.octo.sort.SortedLibrary
 import app.winters.octo.design.OctoIcons
 import app.winters.octo.ui.common.AlbumCard
-import app.winters.octo.ui.common.HeaderButton
+import app.winters.octo.ui.common.PlayShuffleButtons
+import app.winters.octo.ui.common.albums
+import app.winters.octo.ui.common.songs
 import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Pickable
 import app.winters.octo.ui.common.SelectableSongs
@@ -114,10 +116,9 @@ fun GenreScreen(
                     PageHeader(
                         name,
                         onBack,
-                        actions = {
-                            HeaderButton(OctoIcons.Play, "Play", { vm.play(0) }, enabled = tracks.isNotEmpty())
-                            HeaderButton(OctoIcons.Shuffle, "Shuffle", vm::shuffle, enabled = tracks.isNotEmpty())
-                        },
+                        // What the genre holds, when it fits after its name.
+                        count = if (sortedTracks == null) null else listOfNotNull(albumList.size.takeIf { it > 0 }?.let(::albums), songs(tracks.size)).joinToString(" • "),
+                        actions = { PlayShuffleButtons({ vm.play(0) }, vm::shuffle, enabled = tracks.isNotEmpty()) },
                     )
                 }
                 items(albumRows, key = { "albums:${it.first().id}" }) { row ->
