@@ -279,7 +279,8 @@ class HealthViewModel @Inject constructor(
 private val ListPadding = PaddingValues(top = 4.dp, bottom = 140.dp)
 
 // The checks that found something, one row each with its count, then the
-// server's trash and the way back from the last change, where it allows.
+// server's trash and the way back from the last change, where it allows,
+// and at the foot how many songs were checked.
 @Composable
 fun LibraryHealthScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: HealthViewModel = hiltViewModel()) {
     val health by vm.health.collectAsStateWithLifecycle()
@@ -296,7 +297,6 @@ fun LibraryHealthScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: Health
             } else {
                 val report = shown.report
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = ListPadding) {
-                    item { Words(report.overview(), muted = true) }
                     if (report.clean) {
                         item { Text("Everything looks right", style = OctoType.section, color = OctoColors.TextPrimary, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp)) }
                         item { Words(HEALTH_ALL_CLEAR) }
@@ -321,6 +321,7 @@ fun LibraryHealthScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: Health
                             }
                         }
                     }
+                    item(key = "overview") { Footnote(report.overview()) }
                 }
             }
         }
@@ -328,8 +329,9 @@ fun LibraryHealthScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: Health
     }
 }
 
-// One check: what it means, what to do, its fix for everything it found
-// when the server can, then its songs under their headings.
+// One check: its fix for everything it found on the control line when the
+// server can, what it means and what to do in one paragraph, then its songs
+// under their headings.
 @Composable
 fun HealthCheckScreen(checkName: String, onBack: () -> Unit, vm: HealthViewModel = hiltViewModel()) {
     val health by vm.health.collectAsStateWithLifecycle()
@@ -337,13 +339,20 @@ fun HealthCheckScreen(checkName: String, onBack: () -> Unit, vm: HealthViewModel
     val source by vm.source.collectAsStateWithLifecycle()
     val serverIds by vm.serverIds.collectAsStateWithLifecycle()
     val check = HealthCheck.entries.firstOrNull { it.name == checkName }
+    val shown = health
+    val fixAll = if (check != null && shown != null) fixAllButton(check, shown, offers, source, serverIds, vm) else null
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
-            PageHeader(check?.title() ?: "Library health", onBack)
-            val shown = health
+            PageHeader(
+                check?.title() ?: "Library health",
+                onBack,
+                actions = if (check == null || fixAll == null || fixAll.count == 0) null else {
+                    { AccentButton(check.fixAllLabel(fixAll.count), onClick = fixAll.open, size = ButtonSize.Small) }
+                },
+            )
             when {
                 check == null -> Words("This check is not in this version of the app.", muted = true)
-                shown == null -> Loading()
+                shown == null || fixAll == null -> Loading()
                 else -> {
                     val lines = remember(shown, check) { shown.lines(check) }
                     val songs = remember(lines) { lines.mapNotNull { (it as? HealthLine.Song)?.track } }
@@ -355,17 +364,8 @@ fun HealthCheckScreen(checkName: String, onBack: () -> Unit, vm: HealthViewModel
                             at
                         }
                     }
-                    val fixAll = fixAllButton(check, shown, offers, source, serverIds, vm)
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = ListPadding) {
-                        item { Words(check.meaning()) }
-                        item { Words(if (fixAll.count > 0) check.fixMeaning() else check.advice()) }
-                        if (fixAll.count > 0) {
-                            item(key = "fix all") {
-                                Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)) {
-                                    AccentButton(check.fixAllLabel(fixAll.count), onClick = fixAll.open, size = ButtonSize.Medium)
-                                }
-                            }
-                        }
+                        item { Words(checkWords(check.meaning(), if (fixAll.count > 0) check.fixMeaning() else check.advice())) }
                         if (lines.isEmpty()) item { Words("Nothing to fix here any more.", muted = true) }
                         itemsIndexed(lines, key = { index, _ -> index }) { index, line ->
                             val group = groupOf[index]
@@ -492,6 +492,26 @@ private fun FindingRow(title: String, count: String, chevron: Boolean = true, on
 
 @Composable
 internal fun Words(text: String, muted: Boolean = false) {
+    WordsLine(text, muted)
+}
+
+// What a check means and what to do about it, as one paragraph.
+internal fun checkWords(meaning: String, then: String): String = "$meaning $then"
+
+// A quiet line at the foot of a page, for what is worth knowing but not
+// first: how many songs were checked, or how long the trash keeps a song.
+@Composable
+internal fun Footnote(text: String) {
+    Text(
+        text,
+        style = OctoType.caption,
+        color = OctoColors.TextMuted,
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 6.dp),
+    )
+}
+
+@Composable
+private fun WordsLine(text: String, muted: Boolean) {
     Text(
         text,
         style = OctoType.bodySmall,

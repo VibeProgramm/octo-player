@@ -120,7 +120,8 @@ class RecentlyRemovedViewModel @Inject constructor(private val files: LibraryFil
 }
 
 // The songs deleted from the server's disk that are still in its trash,
-// each with how long it has left and a way to put it back.
+// each with how long it has left and a way to put it back, Put back all on
+// the control line, and how long the trash keeps a song at the foot.
 @Composable
 fun RecentlyRemovedScreen(onBack: () -> Unit, vm: RecentlyRemovedViewModel = hiltViewModel()) {
     val actions by vm.canRestore.collectAsStateWithLifecycle()
@@ -128,26 +129,26 @@ fun RecentlyRemovedScreen(onBack: () -> Unit, vm: RecentlyRemovedViewModel = hil
     val now = remember { System.currentTimeMillis() }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
-            PageHeader(RECENTLY_REMOVED, onBack)
             val trash = vm.trash
             val problem = vm.problem
+            PageHeader(
+                RECENTLY_REMOVED,
+                onBack,
+                actions = if (trash == null || !canRestore || trash.songs.size < 2) null else {
+                    { AccentButton("$PUT_BACK all", onClick = { vm.putBack(trash.songs) }, size = ButtonSize.Small) }
+                },
+            )
             when {
                 trash == null && problem != null -> Words(problem, muted = true)
                 trash == null -> Loading()
                 else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 4.dp, bottom = 140.dp)) {
-                    item { Words(keepsFor(trash.keepDays), muted = true) }
                     if (trash.songs.isEmpty()) {
                         item { Words("Nothing is in the server's trash.", muted = true) }
-                    } else if (canRestore && trash.songs.size > 1) {
-                        item(key = "all") {
-                            Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)) {
-                                AccentButton("$PUT_BACK all", onClick = { vm.putBack(trash.songs) }, size = ButtonSize.Medium)
-                            }
-                        }
                     }
                     items(trash.songs) { song ->
                         TrashRow(song, goneText(goneAtMillis(song.goneAt), now), canRestore) { vm.putBack(listOf(song)) }
                     }
+                    item(key = "keeps") { Footnote(keepsFor(trash.keepDays)) }
                 }
             }
         }
