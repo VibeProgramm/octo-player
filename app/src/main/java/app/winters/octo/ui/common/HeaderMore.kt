@@ -33,6 +33,7 @@ import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoSwitch
 import app.winters.octo.design.OctoType
 import app.winters.octo.design.SwitchSize
+import dev.chrisbanes.haze.HazeState
 
 // One line in a page header's More menu: what it does, a quiet line about it
 // (how it stands, or what it does when that is not plain), and its icon.
@@ -51,17 +52,26 @@ class MoreItem(
 
 // A page header's More button: the round glass button with the three dots,
 // opening a glass menu of the page's lesser actions beside it. With nothing
-// to offer it is not drawn.
+// to offer it is not drawn. A `quiet` one is the plain icon with no glass,
+// for a sheet's top, where the glass would frost the page under the sheet;
+// its menu frosts `backdrop`.
 @Composable
-fun HeaderMore(items: List<MoreItem>, modifier: Modifier = Modifier, title: String = "More") {
+fun HeaderMore(
+    items: List<MoreItem>,
+    modifier: Modifier = Modifier,
+    title: String = "More",
+    quiet: Boolean = false,
+    backdrop: HazeState = LocalHaze.current,
+) {
     if (items.isEmpty()) return
     var open by remember { mutableStateOf(false) }
-    HeaderButton(OctoIcons.More, title, { open = true }, modifier.pressSpot(LocalPressSpot.current))
+    val spot = modifier.pressSpot(LocalPressSpot.current)
+    if (quiet) QuietIconAction(OctoIcons.More, title, { open = true }, spot) else HeaderButton(OctoIcons.More, title, { open = true }, spot)
     GlassPopup(
         visible = open,
         anchor = rememberOpenedBeside(open),
         onDismiss = { open = false },
-        backdrop = LocalHaze.current,
+        backdrop = backdrop,
         title = title,
     ) {
         GlassMenuPage {

@@ -2,9 +2,7 @@ package app.winters.octo.player
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -16,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -35,7 +32,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -59,6 +55,9 @@ import app.winters.octo.ui.common.asLength
 import app.winters.octo.ui.common.isOutsideLibrary
 import app.winters.octo.ui.common.songs
 import app.winters.octo.ui.common.GlassMenuAction
+import app.winters.octo.ui.common.HeaderMore
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.QuietIconAction
 import app.winters.octo.ui.common.GlassMenuHeader
 import app.winters.octo.ui.common.GlassMenuPage
 import app.winters.octo.ui.common.GlassMenuSeparator
@@ -100,6 +99,7 @@ fun QueueSheets(model: PlayerViewModel, shuffle: Boolean, visible: Boolean, onDi
             played = played,
             queue = upNext,
             shuffle = shuffle,
+            backdrop = backdrop,
             actions = QueueActions(
                 move = model::moveInQueue,
                 remove = model::removeFromQueue,
@@ -160,10 +160,11 @@ class QueueActions(
 // as the desktop's queue shows it. It opens at
 // the song that is on. Drag a song by its handle to move it, swipe it left
 // to take it out, tap it to play it, long-press it for its menu. Moving is
-// off while shuffle is on. Tools along the top clear the queue, take out
-// the songs played, save it as a playlist, or scroll back to the song on.
+// off while shuffle is on. Its top line scrolls back to the song on, and its
+// More menu clears the queue, takes out the songs played or saves it as a
+// playlist.
 @Composable
-fun ColumnScope.QueueSheet(played: List<QueueEntry>, queue: List<QueueEntry>, shuffle: Boolean, actions: QueueActions) {
+fun ColumnScope.QueueSheet(played: List<QueueEntry>, queue: List<QueueEntry>, shuffle: Boolean, actions: QueueActions, backdrop: HazeState) {
     val current = queue.firstOrNull()
     val upcoming = queue.drop(1)
     // The rows as drawn. A drag moves them at once; the queue catches up on drop.
@@ -184,18 +185,24 @@ fun ColumnScope.QueueSheet(played: List<QueueEntry>, queue: List<QueueEntry>, sh
         actions.menu(entry, place)
     }
 
-    Column(Modifier.padding(start = 20.dp, end = 20.dp)) {
-        Text("Up next", style = OctoType.section, color = OctoColors.TextPrimary)
-        Text(queueSummary(rows), style = OctoType.caption, color = OctoColors.TextMuted)
-    }
+    // One line: "Up next" and what is to come, then a way back to the song
+    // on and the rest of the tools in More.
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        QueueTool("Now playing", enabled = current != null) { scope.launch { listState.animateScrollToItem(played.size) } }
-        QueueTool("Clear", enabled = upcoming.isNotEmpty() || played.isNotEmpty(), onClick = actions.clear)
-        QueueTool("Remove played", enabled = played.isNotEmpty(), onClick = actions.removePlayed)
-        QueueTool("Save as playlist", enabled = current != null, onClick = actions.save)
+        Text("Up next", style = OctoType.section, color = OctoColors.TextPrimary, maxLines = 1)
+        Text(
+            queueSummary(rows),
+            style = OctoType.caption,
+            color = OctoColors.TextMuted,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        QuietIconAction(OctoIcons.Playback, "Show the song playing", enabled = current != null, onClick = { scope.launch { listState.animateScrollToItem(played.size) } })
+        HeaderMore(queueMore(upcoming.isNotEmpty(), played.isNotEmpty(), current != null, actions), quiet = true, backdrop = backdrop)
     }
     LazyColumn(
         Modifier.weight(1f, fill = false),
@@ -316,19 +323,23 @@ private fun queueSummary(rows: List<QueueEntry>): String {
     return if (auto.isEmpty()) base else "$base · ${auto.size} from Autoplay"
 }
 
-// One of the queue's tools: plain words, dimmed when there is nothing to do.
-@Composable
-private fun QueueTool(label: String, enabled: Boolean, onClick: () -> Unit) {
-    Text(
-        label,
-        style = OctoType.label,
-        color = if (enabled) OctoColors.TextSecondary else OctoColors.TextMuted,
-        maxLines = 1,
-        modifier = Modifier
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-    )
-}
+// What the queue's More menu holds, in order, and whether each can be done.
+enum class QueueTool(val label: String) { Clear("Clear"), RemovePlayed("Remove played"), Save("Save as playlist") }
+
+fun queueTools(upcoming: Boolean, played: Boolean, current: Boolean): List<Pair<QueueTool, Boolean>> = listOf(
+    QueueTool.Clear to (upcoming || played),
+    QueueTool.RemovePlayed to played,
+    QueueTool.Save to current,
+)
+
+private fun queueMore(upcoming: Boolean, played: Boolean, current: Boolean, actions: QueueActions): List<MoreItem> =
+    queueTools(upcoming, played, current).map { (tool, enabled) ->
+        when (tool) {
+            QueueTool.Clear -> MoreItem(tool.label, OctoIcons.Delete, enabled = enabled, destructive = true, onClick = actions.clear)
+            QueueTool.RemovePlayed -> MoreItem(tool.label, OctoIcons.History, enabled = enabled, onClick = actions.removePlayed)
+            QueueTool.Save -> MoreItem(tool.label, OctoIcons.AddToPlaylist, enabled = enabled, onClick = actions.save)
+        }
+    }
 
 // A song's menu from the queue: play it next, take it out, or stop the
 // music once it has played. The song that is on can only be the last one.
