@@ -225,3 +225,37 @@ fun keptRowIds(local: List<Pair<Long, String>>, rows: List<Row>): List<Long?> {
     local.forEach { (id, trackId) -> free.getOrPut(trackId) { ArrayDeque() }.addLast(id) }
     return rows.map { free[it.trackId]?.removeFirstOrNull() }
 }
+
+// What a family push sends and keeps. `changes` go to the server;
+// `baseAfterSend` is kept as the songs both sides agree on once they are
+// there; `held` are the songs (one entry per copy) whose removal waits.
+data class FamilySend(val changes: FamilyChanges, val baseAfterSend: List<String>, val held: List<String>)
+
+// Decides a family push. Removals count places over the list Octo shows,
+// so they wait while Octo lists fewer songs than it holds (`listedCount`,
+// the playlist's count in the list of playlists, null when not read) and
+// while it is not known whether the listener hears only clean songs
+// (`cleanOnly` null). A listener who hears only clean songs is shown too
+// few songs to count from, so their removals are dropped and the songs
+// come back with the server's list.
+fun familySend(base: List<String>, phone: List<String>, current: List<String>, listedCount: Int?, cleanOnly: Boolean?): FamilySend {
+    val wanted = familyChanges(base, phone, current)
+    if (wanted.removeAt.isEmpty()) return FamilySend(wanted, phone, emptyList())
+    val adds = wanted.copy(removeAt = emptyList())
+    if (cleanOnly == true) return FamilySend(adds, phone, emptyList())
+    if (cleanOnly == null || listedCount != current.size) {
+        return FamilySend(adds, base + wanted.add, wanted.removeAt.map { current[it] })
+    }
+    return FamilySend(wanted, phone, emptyList())
+}
+
+// The rows after taking the server's songs, less the songs whose removal
+// waits: for each held song, its last row from the server goes.
+fun withoutHeld(rows: List<Row>, held: List<String>): List<Row> {
+    val out = rows.toMutableList()
+    for (id in held) {
+        val at = out.indexOfLast { it.serverSongId == id }
+        if (at >= 0) out.removeAt(at)
+    }
+    return out
+}

@@ -193,12 +193,65 @@ class PlaylistPlanTest {
     }
 
     @Test
-    fun aRefusedTakeBetweenTwoPushesDoesNotRemoveSomeoneElsesSong() {
-        val first = familyChanges(listOf("a", "b"), listOf("a", "b", "d"), listOf("a", "b", "Y"))
-        assertEquals(FamilyChanges(emptyList(), listOf("d")), first)
-        val kept = listOf("a", "b", "d")
-        val second = familyChanges(kept, listOf("a", "b", "d", "e"), listOf("a", "b", "Y", "d"))
-        assertEquals(FamilyChanges(emptyList(), listOf("e")), second)
+    fun aSecondPushStartsFromWhatTheFirstKept() {
+        val first = familySend(listOf("a", "b"), listOf("a", "b", "d"), listOf("a", "b", "Y"), 3, false)
+        assertEquals(FamilyChanges(emptyList(), listOf("d")), first.changes)
+        assertEquals(listOf("a", "b", "d"), first.baseAfterSend)
+        val second = familySend(first.baseAfterSend, listOf("a", "b", "d", "e"), listOf("a", "b", "Y", "d"), 4, false)
+        assertEquals(FamilyChanges(emptyList(), listOf("e")), second.changes)
+    }
+
+    @Test
+    fun aRemovalIsSentWhenTheCountsAgree() {
+        val send = familySend(listOf("a", "b"), listOf("a"), listOf("a", "b"), 2, false)
+        assertEquals(FamilyChanges(listOf(1), emptyList()), send.changes)
+        assertEquals(listOf("a"), send.baseAfterSend)
+        assertTrue(send.held.isEmpty())
+    }
+
+    @Test
+    fun aRemovalWaitsWhenOctoListsFewerSongsThanItHolds() {
+        val send = familySend(listOf("a", "b"), listOf("a", "c"), listOf("a", "b"), 3, false)
+        assertEquals(FamilyChanges(emptyList(), listOf("c")), send.changes)
+        assertEquals(listOf("a", "b", "c"), send.baseAfterSend)
+        assertEquals(listOf("b"), send.held)
+    }
+
+    @Test
+    fun aRemovalWaitsWhenTheCountIsNotRead() {
+        val send = familySend(listOf("a", "b"), listOf("a"), listOf("a", "b"), null, false)
+        assertTrue(send.changes.none)
+        assertEquals(listOf("a", "b"), send.baseAfterSend)
+        assertEquals(listOf("b"), send.held)
+    }
+
+    @Test
+    fun aRemovalWaitsWhileItIsNotKnownIfTheListenerHearsOnlyCleanSongs() {
+        val send = familySend(listOf("a", "b"), listOf("a"), listOf("a", "b"), 2, null)
+        assertTrue(send.changes.none)
+        assertEquals(listOf("b"), send.held)
+    }
+
+    @Test
+    fun aListenerWhoHearsOnlyCleanSongsHasRemovalsDropped() {
+        val send = familySend(listOf("a", "b"), listOf("a"), listOf("a", "b"), 2, true)
+        assertTrue(send.changes.none)
+        assertEquals(listOf("a"), send.baseAfterSend)
+        assertTrue(send.held.isEmpty())
+    }
+
+    @Test
+    fun withoutARemovalNothingIsHeld() {
+        val send = familySend(listOf("a"), listOf("a", "b"), listOf("a"), null, null)
+        assertEquals(FamilyChanges(emptyList(), listOf("b")), send.changes)
+        assertEquals(listOf("a", "b"), send.baseAfterSend)
+        assertTrue(send.held.isEmpty())
+    }
+
+    @Test
+    fun aHeldSongLosesItsLastRowFromTheServer() {
+        val rows = listOf(Row("t1", "a"), Row("t2", "b"), Row("t3", "a"))
+        assertEquals(listOf(Row("t1", "a"), Row("t2", "b")), withoutHeld(rows, listOf("a")))
     }
 
     @Test

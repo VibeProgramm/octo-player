@@ -98,8 +98,8 @@ class PlaylistViewModel @AssistedInject constructor(
     fun managesFamily(): Boolean = family.me?.abilities?.manageFamily == true
 
     // Whether songs can be taken out of this playlist here: not from a family
-    // playlist by a listener who hears only clean songs.
-    fun takesOut(playlist: PlaylistEntity): Boolean = !playlist.family || family.me?.abilities?.cleanOnly != true
+    // playlist unless the listener is known not to hear only clean songs.
+    fun takesOut(playlist: PlaylistEntity): Boolean = !playlist.family || family.me?.abilities?.cleanOnly == false
 
     private fun ids() = page.value?.tracks.orEmpty().map { it.track.id }
 
@@ -261,7 +261,7 @@ fun PlaylistScreen(
                                         entry.track,
                                         // No moving songs while picking them, or in a family playlist.
                                         trailing = if (selecting || playlist.family) null else ({ DragHandle(Modifier.draggableHandle(onDragStopped = drop)) }),
-                                        menuContext = SongMenuContext(playlistId = playlist.id, playlistItemId = entry.itemId),
+                                        menuContext = SongMenuContext(playlistId = playlist.id, playlistItemId = entry.itemId.takeIf { takesOut }),
                                         selectKey = entry.itemId.toString(),
                                         // A swipe left takes the song out here.
                                         swipeToPlayNext = false,

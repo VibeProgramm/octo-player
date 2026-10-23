@@ -227,7 +227,7 @@ class PlaylistSync @Inject constructor(
         val rows = rowsOf(full) ?: return
         val isFamily = isFamilyPlaylist(full.owner, server.client.username)
         val songs = syncedSongsText(full.entry.map { it.id })
-        val twin =user.phonePlaylists().filter { it.name == full.name }.firstOrNull { playlist ->
+        val twin = user.phonePlaylists().filter { it.name == full.name }.firstOrNull { playlist ->
             user.playlistItems(playlist.id).map { it.trackId } == rows.map { it.trackId }
         }
         if (twin != null) {
@@ -320,12 +320,11 @@ class PlaylistSync @Inject constructor(
     }
 
     // Sends a family playlist's own changes since both sides last agreed, on
-    // top of everyone else's: songs taken out here by their place in the
-    // server's list now, songs added here at the end, then its name. The
-    // phone then takes the server's list and name. Removals wait while the
-    // server shows fewer songs than it holds (one it could not read), since
-    // places count over all of them; a listener who hears only clean songs
-    // sees too few of them to take any out, so theirs come back instead.
+    // top of everyone else's (familySend decides what): songs taken out here
+    // by their place in the server's list now, songs added here at the end,
+    // then its name. The phone then takes the server's list and name; a song
+    // whose removal waits stays out of the phone's copy, and the copy stays
+    // marked changed so it is sent again.
     private suspend fun pushFamily(server: Server, playlist: PlaylistEntity, serverId: String) {
         val client = server.client
         val there = client.playlist(serverId)
@@ -333,14 +332,13 @@ class PlaylistSync @Inject constructor(
         val phone = familySongsToSend(server, playlist.id)
         val base = syncedSongsOf(playlist.syncedSongs) ?: phone
         val wanted = familyChanges(base, phone, current)
-        val cleanOnly = family.me?.abilities?.cleanOnly == true
-        val miscount = !cleanOnly && wanted.removeAt.isNotEmpty() &&
-            client.playlists().firstOrNull { it.id == serverId }?.songCount != current.size
-        val changes = if (cleanOnly || miscount) wanted.copy(removeAt = emptyList()) else wanted
-        if (!changes.none) {
-            client.updatePlaylist(serverId, songIdsToAdd = changes.add, songIndexesToRemove = changes.removeAt, formPost = server.formPost)
+        val cleanOnly = if (wanted.removeAt.isEmpty()) false else family.plan()?.abilities?.cleanOnly
+        val listedCount = if (wanted.removeAt.isEmpty() || cleanOnly != false) null else client.playlists().firstOrNull { it.id == serverId }?.songCount
+        val send = familySend(base, phone, current, listedCount, cleanOnly)
+        if (!send.changes.none) {
+            client.updatePlaylist(serverId, songIdsToAdd = send.changes.add, songIndexesToRemove = send.changes.removeAt, formPost = server.formPost)
             // Kept before anything else can fail, so nothing is sent twice.
-            user.markFamilyBase(playlist.id, syncedSongsText(if (miscount) base + changes.add else phone))
+            user.markFamilyBase(playlist.id, syncedSongsText(send.baseAfterSend))
         }
         if (playlist.name != playlist.syncedName && playlist.name != there.name) {
             try {
@@ -351,20 +349,19 @@ class PlaylistSync @Inject constructor(
                 if (e.code != 50) throw e
             }
         }
-        // Still changed here: sent again once the server shows every song.
-        if (miscount) return
         val stamp = listingStamp(server, serverId) ?: return
         val full = client.playlist(serverId)
         val fromServer = rowsOf(full) ?: return
         val localItems = user.playlistItems(playlist.id)
         val local = localItems.map { Row(it.trackId, it.serverSongId) }
         val copies = serverCopies(server.sourceId, local.map { it.trackId })
-        val rows = withPhoneOnly(fromServer, local) { serverSongFor(it, copies[it.trackId].orEmpty()) == null }
+        val rows = withoutHeld(withPhoneOnly(fromServer, local) { serverSongFor(it, copies[it.trackId].orEmpty()) == null }, send.held)
         val at = maxOf(System.currentTimeMillis(), playlist.updatedAt + 1)
         val updated = playlist.copy(
             name = full.name,
             updatedAt = at,
-            syncedAt = at,
+            // Still changed here while a removal waits, so it is sent again.
+            syncedAt = if (send.held.isEmpty()) at else playlist.syncedAt,
             syncedName = full.name,
             serverStamp = stamp,
             syncedSongs = syncedSongsText(full.entry.map { it.id }),

@@ -208,8 +208,8 @@ interface UserDao {
     @Query("UPDATE playlist SET family = :family WHERE id = :id")
     suspend fun markFamily(id: String, family: Boolean)
 
-    // A family playlist's songs as both sides agree once a change from here
-    // reached the server, kept at once so the change is never sent twice.
+    // The songs a family playlist's next changes are worked out from, kept at
+    // once after a change reaches the server so it is never sent twice.
     @Query("UPDATE playlist SET syncedSongs = :songs WHERE id = :id")
     suspend fun markFamilyBase(id: String, songs: String)
 
