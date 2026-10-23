@@ -103,10 +103,15 @@ public struct PlaylistRow: TableRow, Hashable, Identifiable {
     public var serverStamp: String?
     /// Which of Octo's notice lists the server copy is ("review", "duplicates").
     public var octoNotice: String?
+    /// A family playlist: anyone in the family may add and take out songs, and its order is the server's.
+    public var family: Bool
+    /// The server's songs as both sides last agreed, one id a line, so a family playlist's own changes
+    /// can be told from everyone else's.
+    public var syncedSongs: String?
 
     public init(id: String, name: String, createdAt: Int64, updatedAt: Int64, serverId: String? = nil,
                 sourceId: String? = nil, syncedAt: Int64? = nil, syncedName: String? = nil, serverStamp: String? = nil,
-                octoNotice: String? = nil) {
+                octoNotice: String? = nil, family: Bool = false, syncedSongs: String? = nil) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
@@ -117,13 +122,15 @@ public struct PlaylistRow: TableRow, Hashable, Identifiable {
         self.syncedName = syncedName
         self.serverStamp = serverStamp
         self.octoNotice = octoNotice
+        self.family = family
+        self.syncedSongs = syncedSongs
     }
 
     public static let table = "playlist"
     public static let columns = ["id", "name", "createdAt", "updatedAt", "serverId", "sourceId", "syncedAt", "syncedName",
-                                 "serverStamp", "octoNotice"]
+                                 "serverStamp", "octoNotice", "family", "syncedSongs"]
     public var values: [any SQLBindable] {
-        [id, name, createdAt, updatedAt, serverId, sourceId, syncedAt, syncedName, serverStamp, octoNotice]
+        [id, name, createdAt, updatedAt, serverId, sourceId, syncedAt, syncedName, serverStamp, octoNotice, family ? 1 : 0, syncedSongs]
     }
 
     public init(row: SQLRow) {
@@ -137,6 +144,8 @@ public struct PlaylistRow: TableRow, Hashable, Identifiable {
         syncedName = row.optionalString("syncedName")
         serverStamp = row.optionalString("serverStamp")
         octoNotice = row.optionalString("octoNotice")
+        family = row.int("family") != 0
+        syncedSongs = row.optionalString("syncedSongs")
     }
 
     /// Whether this playlist shows while this server is in use (nil for none): a phone-only one

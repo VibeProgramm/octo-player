@@ -6,8 +6,8 @@ import Testing
     func server(_ id: String, name: String? = nil, stamp: String = "t1|3") -> ServerPlaylist { ServerPlaylist(id, name ?? id, stamp) }
 
     func linked(_ serverId: String, name: String? = nil, edited: Bool = false, syncedName: String? = nil,
-                syncedStamp: String = "t1|3") -> LinkedPlaylist {
-        LinkedPlaylist("local-\(serverId)", serverId, name ?? serverId, edited, syncedName ?? name ?? serverId, syncedStamp)
+                syncedStamp: String = "t1|3", family: Bool = false) -> LinkedPlaylist {
+        LinkedPlaylist("local-\(serverId)", serverId, name ?? serverId, edited, syncedName ?? name ?? serverId, syncedStamp, family: family)
     }
 
     func plan(_ server: [ServerPlaylist] = [], _ linked: [LinkedPlaylist] = [], others: Set<String> = [], waiting: [String] = [],
@@ -159,6 +159,53 @@ import Testing
         #expect(playlistsStale(now, now - playlistsFreshMs))
         #expect(!playlistsStale(now, now - playlistsFreshMs + 1))
         #expect(!playlistsStale(now, now))
+    }
+
+    @Test func aFamilyPlaylistIsImportedUnlessReadOnlyOrSomeoneElses() {
+        let all = [listed("fam", owner: "Family"), listed("famRo", owner: "Family", readonly: true), listed("sam", owner: "sam")]
+        #expect(importable(all, stationIds: [], username: "alex").map(\.id) == ["fam"])
+    }
+
+    @Test func aNewPlaylistIsNeverMatchedToAFamilyOne() {
+        let all = [ServerPlaylistInfo(id: "f", name: "Road trip", owner: "Family", readonly: false),
+                   ServerPlaylistInfo(id: "o", name: "Road trip", owner: "alex", readonly: false),
+                   ServerPlaylistInfo(id: "l", name: "Road trip", owner: "alex", readonly: false)]
+        #expect(newestNamedCandidates(all, name: "Road trip", username: "alex", linked: ["l"]).map(\.id) == ["o"])
+    }
+
+    @Test func whenBothChangedAFamilyPlaylistPushesAndOthersPull() {
+        let changed = server("s", stamp: "new")
+        let family = linked("s", edited: true, syncedStamp: "old", family: true)
+        let own = linked("s", edited: true, syncedStamp: "old", family: false)
+        #expect(planLinked(changed, family) == .push(localId: "local-s", serverId: "s"))
+        #expect(planLinked(changed, own) == .pull(localId: "local-s", serverId: "s", stamp: "new", keepName: false))
+    }
+
+    @Test func familyChangesAreCountsAgainstTheBase() {
+        #expect(familyChanges(base: ["a", "b", "c"], phone: ["a", "c", "d"], current: ["a", "b", "c", "e"])
+            == FamilyChanges(removeAt: [1], add: ["d"]))
+        #expect(familyChanges(base: ["a", "b"], phone: ["a"], current: ["a"]).none)
+        #expect(familyChanges(base: ["a", "a"], phone: ["a"], current: ["a", "x", "a"]) == FamilyChanges(removeAt: [2], add: []))
+        #expect(familyChanges(base: ["a", "b"], phone: ["b", "a"], current: ["a", "b"]).none)
+        #expect(familyChanges(base: [], phone: ["a", "a"], current: ["a"]) == FamilyChanges(removeAt: [], add: ["a", "a"]))
+        #expect(familyChanges(base: ["a"], phone: ["a", "b"], current: ["x", "a", "y"]) == FamilyChanges(removeAt: [], add: ["b"]))
+    }
+
+    @Test func twoPushesNeverRemoveSomeoneElsesSong() {
+        #expect(familyChanges(base: ["a", "b"], phone: ["a", "b", "d"], current: ["a", "b", "Y"]) == FamilyChanges(removeAt: [], add: ["d"]))
+        #expect(familyChanges(base: ["a", "b", "d"], phone: ["a", "b", "d", "e"], current: ["a", "b", "Y", "d"])
+            == FamilyChanges(removeAt: [], add: ["e"]))
+    }
+
+    @Test func syncedSongsRoundTrip() {
+        #expect(syncedSongsOf(nil) == nil)
+        #expect(syncedSongsOf("a\n\nb") == ["a", "b"])
+        #expect(syncedSongsOf(syncedSongsText(["a", "b"])) == ["a", "b"])
+    }
+
+    @Test func rowsKeepTheIdsOfTheSameSongInOrder() {
+        let rows = ["t1", "t3", "t1", "t2"].map { PlaylistSyncRow($0) }
+        #expect(keptRowIds([(1, "t1"), (2, "t2"), (3, "t1")], rows) == [1, nil, 3, 2])
     }
 
     @Test func longSongListsGoInBatchesUnlessAFormBodyTakesThem() {

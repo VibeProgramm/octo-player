@@ -34,14 +34,18 @@ public struct LinkedPlaylist: Sendable, Hashable {
     public var edited: Bool
     public var syncedName: String?
     public var syncedStamp: String?
+    /// A family playlist, whose own changes are sent on top of everyone else's.
+    public var family: Bool
 
-    public init(_ localId: String, _ serverId: String, _ name: String, _ edited: Bool, _ syncedName: String?, _ syncedStamp: String?) {
+    public init(_ localId: String, _ serverId: String, _ name: String, _ edited: Bool, _ syncedName: String?, _ syncedStamp: String?,
+                family: Bool = false) {
         self.localId = localId
         self.serverId = serverId
         self.name = name
         self.edited = edited
         self.syncedName = syncedName
         self.syncedStamp = syncedStamp
+        self.family = family
     }
 }
 
@@ -68,10 +72,17 @@ public enum PlaylistStep: Sendable, Hashable {
 
 public func stampOf(_ changed: String?, _ songCount: Int) -> String { "\(changed ?? "")|\(songCount)" }
 
-/// Server playlists worth a copy on the phone: the signed-in user's own, leaving out read-only
-/// ones and stations, which the stations shelf shows.
+/// Server playlists worth a copy on the phone: the signed-in user's own and the family's they may
+/// change, leaving out read-only ones and stations, which the stations shelf shows.
 public func importable(_ playlists: [ServerPlaylistInfo], stationIds: Set<String>, username: String) -> [ServerPlaylistInfo] {
-    playlists.filter { !$0.readonly && !stationIds.contains($0.id) && ownedBy($0.owner, username) }
+    playlists.filter { !$0.readonly && !stationIds.contains($0.id) && (isFamilyPlaylist(owner: $0.owner, username: username) || ownedBy($0.owner, username)) }
+}
+
+/// The playlists a new one made on a server too old to answer with it can be: the user's own
+/// by that name not linked yet, never the family's.
+public func newestNamedCandidates(_ playlists: [ServerPlaylistInfo], name: String, username: String, linked: Set<String>) -> [ServerPlaylistInfo] {
+    importable(playlists, stationIds: [], username: username)
+        .filter { $0.name == name && !linked.contains($0.id) && !isFamilyPlaylist(owner: $0.owner, username: username) }
 }
 
 /// How long the phone's copy of the server's playlists counts as fresh when the playlists come on
@@ -123,6 +134,8 @@ public func planLinked(_ server: ServerPlaylist?, _ playlist: LinkedPlaylist, st
     }
     let serverChanged = server.stamp != playlist.syncedStamp
     if serverChanged && playlist.edited {
+        // Both changed: a family playlist sends the phone's own changes on top of everyone else's.
+        if playlist.family { return .push(localId: playlist.localId, serverId: server.id) }
         // Both changed: the server's songs, and the phone's name if it was renamed here.
         let renamedHere = playlist.name != playlist.syncedName && playlist.name != server.name
         return .pull(localId: playlist.localId, serverId: server.id, stamp: server.stamp, keepName: renamedHere)
@@ -187,4 +200,60 @@ public func phoneOnlyNote(_ count: Int) -> String {
     count == 1
         ? "1 song is only on this phone and is not in the server's copy"
         : "\(count) songs are only on this phone and are not in the server's copy"
+}
+
+/// What the phone changed in a family playlist, as Octo takes it: songs taken out by their place
+/// in the server's list now, and songs added at the end. `base` is the server's songs when both
+/// last agreed, `phone` the songs the phone holds now, `current` the server's songs now. Only
+/// counts matter (a family playlist keeps the server's order): a song the phone has fewer of than
+/// `base` comes out of `current` that many times, last places first, unless someone else took it
+/// out already; a song the phone has more of goes on the end.
+public struct FamilyChanges: Equatable, Sendable {
+    public var removeAt: [Int]
+    public var add: [String]
+    public init(removeAt: [Int], add: [String]) {
+        self.removeAt = removeAt
+        self.add = add
+    }
+    public var none: Bool { removeAt.isEmpty && add.isEmpty }
+}
+
+public func familyChanges(base: [String], phone: [String], current: [String]) -> FamilyChanges {
+    var had: [String: Int] = [:]
+    for id in base { had[id, default: 0] += 1 }
+    var has: [String: Int] = [:]
+    for id in phone { has[id, default: 0] += 1 }
+    var removeAt: [Int] = []
+    for (id, count) in had {
+        let out = count - (has[id] ?? 0)
+        guard out > 0 else { continue }
+        removeAt += current.indices.filter { current[$0] == id }.suffix(out)
+    }
+    var seen: [String: Int] = [:]
+    let add = phone.filter { id in
+        seen[id, default: 0] += 1
+        return seen[id, default: 0] > (had[id] ?? 0)
+    }
+    return FamilyChanges(removeAt: removeAt.sorted(), add: add)
+}
+
+/// The songs both sides last agreed on, as the phone keeps them, or nil when none were kept.
+public func syncedSongsOf(_ stored: String?) -> [String]? {
+    stored.map { $0.split(separator: "\n").map(String.init) }
+}
+
+public func syncedSongsText(_ ids: [String]) -> String { ids.joined(separator: "\n") }
+
+/// The ids rows keep when a playlist's songs are swapped for the server's: each new row takes the
+/// id of the first unused phone row of the same song, in order, so a row that is picked, or that
+/// Undo is about to take back out, is still there. Nil for a row new to the phone.
+public func keptRowIds(_ local: [(id: Int64, trackId: String)], _ rows: [PlaylistSyncRow]) -> [Int64?] {
+    var free: [String: [Int64]] = [:]
+    for row in local { free[row.trackId, default: []].append(row.id) }
+    return rows.map { row in
+        guard var ids = free[row.trackId], !ids.isEmpty else { return nil }
+        let id = ids.removeFirst()
+        free[row.trackId] = ids
+        return id
+    }
 }

@@ -10,7 +10,7 @@ public struct NewerCatalogFile: Error, Equatable, Sendable {
 /// The library database's tables. Raise `version` and add a step to `migrations` when a table
 /// changes; a step runs once on a file made by the version before it.
 enum Schema {
-    static let version = 2
+    static let version = 3
 
     static let create = """
     CREATE TABLE IF NOT EXISTS track (
@@ -94,7 +94,8 @@ enum Schema {
 
     CREATE TABLE IF NOT EXISTS playlist (
         id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL,
-        serverId TEXT, sourceId TEXT, syncedAt INTEGER, syncedName TEXT, serverStamp TEXT, octoNotice TEXT);
+        serverId TEXT, sourceId TEXT, syncedAt INTEGER, syncedName TEXT, serverStamp TEXT, octoNotice TEXT,
+        family INTEGER NOT NULL DEFAULT 0, syncedSongs TEXT);
 
     CREATE TABLE IF NOT EXISTS playlist_item (
         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, playlistId TEXT NOT NULL, trackId TEXT NOT NULL,
@@ -139,6 +140,8 @@ enum Schema {
     static let migrations: [Int: String] = [
         // Each download notes the server's size for the file it was made from.
         1: "ALTER TABLE download ADD COLUMN fileSize INTEGER;",
+        // Playlists say when they are the family's, and keep the server's songs as last agreed.
+        2: "ALTER TABLE playlist ADD COLUMN family INTEGER NOT NULL DEFAULT 0; ALTER TABLE playlist ADD COLUMN syncedSongs TEXT;",
     ]
 
     /// Makes the tables, or brings a file from an older version up to `version`. A file written

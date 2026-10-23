@@ -32,6 +32,28 @@ import Testing
         #expect(try reopened.scalar("SELECT x FROM marker") == 7)
     }
 
+    @Test func aVersionTwoFileGainsTheFamilyColumns() throws {
+        let path = tempPath()
+        defer { for end in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + end) } }
+        do {
+            let db = try SQLiteDatabase(path: path)
+            try db.execute("""
+                CREATE TABLE playlist (
+                    id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL,
+                    serverId TEXT, sourceId TEXT, syncedAt INTEGER, syncedName TEXT, serverStamp TEXT, octoNotice TEXT);
+                INSERT INTO playlist (id, name, createdAt, updatedAt) VALUES ('p', 'Mix', 1, 2);
+                """)
+            db.userVersion = 2
+        }
+        let db = try SQLiteDatabase(path: path)
+        try Schema.open(db)
+        #expect(db.userVersion == 3)
+        let row = try #require(try db.rows(PlaylistRow.self, "SELECT * FROM playlist").first)
+        #expect(row.name == "Mix")
+        #expect(!row.family)
+        #expect(row.syncedSongs == nil)
+    }
+
     @Test func theStoreThrowsForANewerFileSoTheAppOpensAFreshOne() throws {
         let path = tempPath()
         defer { for end in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + end) } }
