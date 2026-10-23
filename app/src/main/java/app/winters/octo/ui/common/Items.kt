@@ -520,12 +520,15 @@ private fun QueueSwipe(enabled: Boolean, action: SwipeAction, onSwiped: () -> Un
             onSwiped()
             scope.launch { swipe.reset() }
         },
-        backgroundContent = { QueueSwipeBackground(swipe.dismissDirection == SwipeToDismissBoxValue.StartToEnd, action, RowShape) },
+        backgroundContent = {
+            QueueSwipeBackground(swipe.dismissDirection == SwipeToDismissBoxValue.StartToEnd, action, RowShape) {
+                runCatching { swipe.requireOffset() }.getOrDefault(0f)
+            }
+        },
     ) {
-        // Solid under the row while it moves, so it hides what it passes
-        // over; clear at rest, so the page's glow shows.
-        val swiping = swipe.dismissDirection == SwipeToDismissBoxValue.StartToEnd
-        Box(Modifier.background(if (swiping) OctoColors.Background else Color.Transparent, RowShape)) { content() }
+        // Clear while it moves too: the wash sits only beside the row, so
+        // nothing shows through it and the page's glow stays.
+        content()
     }
 }
 

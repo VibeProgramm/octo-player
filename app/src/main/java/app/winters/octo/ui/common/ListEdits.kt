@@ -6,17 +6,27 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -25,6 +35,7 @@ import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
 import app.winters.octo.player.SwipeAction
+import kotlin.math.roundToInt
 
 // What is behind a row as it is swiped away.
 private val RemoveFill = OctoColors.Error.copy(alpha = 0.25f)
@@ -49,25 +60,52 @@ fun DragHandle(modifier: Modifier) {
 // to the queue.
 private val QueueSwipeFill: Color get() = OctoColors.Accent.copy(alpha = 0.22f)
 
-// Shown behind a row being swiped right: a wash of the accent, and what the
-// swipe does at the start.
+// Shown behind a row being swiped right, over the strip the row has moved
+// off (`revealed`, in pixels): a wash of the accent, and what the swipe does
+// at the start. The far edge fades out, so the words never end in a hard
+// cut where the row still covers them.
 @Composable
-fun QueueSwipeBackground(active: Boolean, action: SwipeAction, shape: Shape) {
+fun QueueSwipeBackground(active: Boolean, action: SwipeAction, shape: Shape, revealed: () -> Float) {
     if (!active) return
     val icon = when (action) {
         SwipeAction.PlayNext -> OctoIcons.PlayNext
         SwipeAction.AddToQueue -> OctoIcons.AddToQueue
         SwipeAction.Off -> return
     }
-    Row(
-        Modifier.fillMaxSize().background(QueueSwipeFill, shape).padding(horizontal = 24.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    val fade = with(LocalDensity.current) { QueueSwipeFade.toPx() }
+    Box(
+        Modifier
+            .fillMaxHeight()
+            .layout { measurable, constraints ->
+                val width = revealed().roundToInt().coerceIn(0, constraints.maxWidth)
+                val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                layout(width, placeable.height) { placeable.place(0, 0) }
+            }
+            .clip(shape)
+            .background(QueueSwipeFill)
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val start = (size.width - fade).coerceAtLeast(0f)
+                drawRect(
+                    Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = start, endX = size.width),
+                    blendMode = BlendMode.DstIn,
+                )
+            },
     ) {
-        Icon(painterResource(icon), contentDescription = null, tint = OctoColors.TextPrimary, modifier = Modifier.size(22.dp))
-        Text(action.label, style = OctoType.bodySmall, color = OctoColors.TextPrimary)
+        Row(
+            Modifier.fillMaxHeight().wrapContentWidth(Alignment.Start, unbounded = true).padding(start = 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(painterResource(icon), contentDescription = null, tint = OctoColors.TextPrimary, modifier = Modifier.size(22.dp))
+            Text(action.label, style = OctoType.bodySmall, color = OctoColors.TextPrimary, maxLines = 1, softWrap = false)
+        }
     }
 }
+
+// How far the wash's far edge fades into the row still covering it.
+private val QueueSwipeFade = 24.dp
 
 // Shown behind a row being swiped left: a wash of red and a bin at the end.
 @Composable
