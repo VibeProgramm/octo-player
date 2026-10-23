@@ -50,7 +50,8 @@ import app.winters.octo.home.HomeSection
 import app.winters.octo.ui.common.AlbumCard
 import app.winters.octo.ui.common.ArtistCircle
 import app.winters.octo.ui.common.LibrarySourceActions
-import app.winters.octo.ui.common.ScreenTitle
+import app.winters.octo.ui.common.PageHeader
+import app.winters.octo.ui.common.QuietButton
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.SongCard
 import app.winters.octo.ui.common.accessButtonLabel
@@ -118,7 +119,15 @@ fun HomeScreen(onOpen: (NavKey) -> Unit, vm: HomeViewModel = hiltViewModel()) {
     ) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
             val layout = homeLayout(access, accessDismissed, librarySongs)
-            item { ScreenTitle("Home") }
+            // Edit Home sits quietly at the end of the title's line once
+            // the shelves are drawn.
+            item {
+                PageHeader(
+                    "Home",
+                    onBack = null,
+                    trailing = if (layout.shelves && sections != null) ({ QuietButton(EDIT_HOME) { onOpen(HomeSectionsRoute) } }) else null,
+                )
+            }
             if (layout.askAccess) item(key = "access") { AccessCard(access, vm) }
             item(key = "resume") { ResumeCard() }
             item(key = "whats-new") { WhatsNewCard() }
@@ -132,8 +141,7 @@ fun HomeScreen(onOpen: (NavKey) -> Unit, vm: HomeViewModel = hiltViewModel()) {
                 }
                 layout.shelves -> {
                     // The shelves in the order kept in Settings, the hidden
-                    // ones left out, then a way to change them. Nothing is
-                    // drawn until the order is read.
+                    // ones left out. Nothing is drawn until the order is read.
                     val order = sections
                     order?.filter { it.shown }.orEmpty().forEach { entry ->
                         val title = entry.section.title
@@ -154,11 +162,6 @@ fun HomeScreen(onOpen: (NavKey) -> Unit, vm: HomeViewModel = hiltViewModel()) {
                             HomeSection.NotPlayedLately -> shelf(title, rediscovery.notPlayedLately, onOpen)
                             HomeSection.NeverFinished -> shelf(title, rediscovery.neverFinished, onOpen)
                             HomeSection.NeverPlayed -> shelf(title, rediscovery.neverPlayed, onOpen)
-                        }
-                    }
-                    if (order != null) moving(key = "edit-home") {
-                        Box(Modifier.fillMaxWidth().padding(top = 32.dp, bottom = 8.dp), contentAlignment = Alignment.Center) {
-                            GlazeButton(EDIT_HOME, onClick = { onOpen(HomeSectionsRoute) }, size = ButtonSize.Small)
                         }
                     }
                 }
