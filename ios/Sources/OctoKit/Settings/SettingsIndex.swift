@@ -78,8 +78,10 @@ public enum SettingsIndex {
                                            ["tempo", "pitch", "faster", "slower", "rate", "semitones"])
     public static let skipSilence = SettingEntry("skip_silence", .playback, "Skip silence", "Quiet stretches inside songs are skipped",
                                                  ["quiet", "gaps", "silent"])
+    public static let songSwipe = SettingEntry("swipe_action", .playback, "Swipe right on a song", "Play it next or add it to the end of the queue",
+                                               ["swipe", "gesture", "play next", "add to queue", "queue", "row", "song"], section: "Queue")
     public static let autoplay = SettingEntry("autoplay", .playback, "Autoplay", "Similar songs keep playing when the queue ends",
-                                              ["similar", "continue", "endless", "radio", "queue"])
+                                              ["similar", "continue", "endless", "radio", "queue"], section: "Queue")
     public static let resumeWired = SettingEntry("resume_wired", .playback, "Resume when headphones connect", "Plays again when a cable goes back in",
                                                  ["headphones", "cable", "wired", "usb", "plug"], section: "Headphones")
     public static let resumeBluetooth = SettingEntry("resume_bluetooth", .playback, "Resume when Bluetooth connects", "Plays again when Bluetooth reconnects",
@@ -327,7 +329,7 @@ public enum SettingsIndex {
 
     /// Every setting, in the order written.
     public static let all: [SettingEntry] = [
-        crossfade, crossfadeLength, crossfadeCurve, smartTransitions, filterSweeps, matchTempo, speed, skipSilence, autoplay,
+        crossfade, crossfadeLength, crossfadeCurve, smartTransitions, filterSweeps, matchTempo, speed, skipSilence, songSwipe, autoplay,
         resumeWired, resumeBluetooth, resumeAlways, castKeepPlaying,
         radioDiscovery, radioAdventure, radioVariety, radioFavorites, liveRadioNear, radioStations,
     ] + sound + [

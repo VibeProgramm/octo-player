@@ -589,6 +589,31 @@ final class Player {
         }
     }
 
+    /// Add to queue with an undo: the songs go at the end, before any Autoplay songs still to come,
+    /// and undo finds the run of those songs nearest there and takes it out.
+    func appendUndoable(_ songs: [Song], inserted: @escaping (@escaping () -> Void) -> Void) {
+        Task { [weak self] in
+            guard let self else { return }
+            let items = await self.playable.items(songs, source: .you).compactMap { $0 }
+            guard !items.isEmpty else { return }
+            self.whenRestored { [weak self] in self?.putLastUndoable(items, inserted: inserted) }
+        }
+    }
+
+    private func putLastUndoable(_ items: [QueueItem], inserted: @escaping (@escaping () -> Void) -> Void) {
+        // Where the songs go, which is where undo looks first.
+        let queue = engine.queue
+        let near = ownSongsAt(queue.count, upcoming: queue.upcoming(), autoplay: queue.items.map { $0.source == .autoplay })
+        engine.add(items)
+        let ids = items.map(\.trackId)
+        inserted { [weak self] in
+            guard let self else { return }
+            if let first = findInserted(self.engine.queue.trackIds, ids, insertedAt: near) {
+                self.engine.remove(from: first, to: first + ids.count)
+            }
+        }
+    }
+
     func addAutoplay(_ items: [QueueItem]) {
         engine.add(items, at: engine.queue.count)
     }

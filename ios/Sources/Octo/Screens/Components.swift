@@ -88,6 +88,17 @@ enum SongLead: Equatable {
     case ranked(Int)
 }
 
+/// A song row's swipe right, as Settings say: play next, add to the queue, or none at all.
+@MainActor
+func queueSwipe(for song: Song, actions: LibraryActions) -> RowSwipe {
+    let action = AppSettings.shared.player.swipeAction
+    switch action {
+    case .off: return .none
+    case .playNext: return .queue(action) { actions.playNextUndoable(song) }
+    case .addToQueue: return .queue(action) { actions.addToQueueUndoable(song) }
+    }
+}
+
 /// One song in a list, from the library or found online. A tap plays (or picks it while the list
 /// is picking); a long press opens its menu; a swipe right puts it next in the queue on lists
 /// where a swipe does nothing else.
@@ -99,7 +110,7 @@ struct TrackRow: View {
     var context = SongMenuContext()
     /// The row's key for picking: its id, or its playlist row on a playlist page.
     var selectKey: String?
-    var swipe: SwipeKind = .playNext
+    var swipe: SwipeKind = .queue
     /// Whether this list offers add: a find ends with the add button, and a library song keeps
     /// the same space empty when `addSpace` so lengths line up.
     var offersAdd = false
@@ -116,7 +127,8 @@ struct TrackRow: View {
 
     /// What a swipe does on this row.
     enum SwipeKind {
-        case none, playNext
+        /// Plays the song next or adds it to the queue, as Settings say.
+        case none, queue
         case remove(() -> Void)
     }
 
@@ -189,7 +201,7 @@ struct TrackRow: View {
         .songSwipes(rowSwipe, enabled: !selecting)
         .accessibilityAddTraits(selecting && picked ? .isSelected : [])
         .accessibilityAction(named: "Play next") { actions.playNextUndoable(song) }
-        .accessibilityAction(named: "Add to queue") { player.append([song]) }
+        .accessibilityAction(named: "Add to queue") { actions.addToQueueUndoable(song) }
     }
 
     private var menuSubject: SongSubject {
@@ -201,7 +213,7 @@ struct TrackRow: View {
     private var rowSwipe: RowSwipe {
         switch swipe {
         case .none: .none
-        case .playNext: .playNext { actions.playNextUndoable(song) }
+        case .queue: queueSwipe(for: song, actions: actions)
         case .remove(let run): .remove(run)
         }
     }
@@ -463,10 +475,10 @@ struct SongRow: View {
         }
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: OctoRadius.row))
         .contextMenu { SongMenuItems(subject: menuSubject(shown)) }
-        .songSwipes(.playNext { actions.playNextUndoable(shown) }, enabled: !selecting)
+        .songSwipes(queueSwipe(for: shown, actions: actions), enabled: !selecting)
         .accessibilityAddTraits(selecting && picked ? .isSelected : [])
         .accessibilityAction(named: "Play next") { actions.playNextUndoable(shown) }
-        .accessibilityAction(named: "Add to queue") { player.append([shown]) }
+        .accessibilityAction(named: "Add to queue") { actions.addToQueueUndoable(shown) }
     }
 
     /// The song's menu, which offers Select on a list that can pick.

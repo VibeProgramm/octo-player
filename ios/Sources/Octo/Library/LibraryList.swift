@@ -62,9 +62,11 @@ private struct SongSwipes: ViewModifier {
         if inList {
             content
                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                    if enabled, case .playNext(let run) = swipe {
-                        Button(action: run) { Label("Play next", systemImage: OctoIcon.playNext.symbol) }
-                            .tint(OctoColor.accent)
+                    if enabled, case .queue(let action, let run) = swipe {
+                        Button(action: run) {
+                            Label(action.label, systemImage: (action == .addToQueue ? OctoIcon.addToQueue : OctoIcon.playNext).symbol)
+                        }
+                        .tint(OctoColor.accent)
                     }
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {

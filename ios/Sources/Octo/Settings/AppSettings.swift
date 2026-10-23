@@ -159,6 +159,7 @@ final class AppSettings {
     /// Motion. Read wherever motion is drawn.
     var motionReduced: Bool { player.reduceMotion || UIAccessibility.isReduceMotionEnabled }
     func setLibraryOnly(_ on: Bool) { update { $0.libraryOnly = on } }
+    func setSwipeAction(_ value: SwipeAction) { update { $0.swipeAction = value } }
     func setAccent(_ accent: AccentChoice) { update { $0.accent = accent } }
     func setGlassTint(_ on: Bool) { update { $0.glassTint = on } }
     func setAmbientStrength(_ strength: AmbientStrength) { update { $0.ambient.strength = strength } }
@@ -483,6 +484,7 @@ final class AppSettings {
         static let castRenderers = "cast_renderers"
         static let castKeepPlaying = "cast_keep_playing"
         static let libraryOnly = "library_only"
+        static let swipeAction = "swipe_action"
         static let accent = "accent_color"
         static let glassTint = "accent_glass"
 
@@ -559,6 +561,7 @@ final class AppSettings {
         p.castRenderers = bool(Keys.castRenderers, d.castRenderers)
         p.castKeepPlaying = bool(Keys.castKeepPlaying, d.castKeepPlaying)
         p.libraryOnly = bool(Keys.libraryOnly, d.libraryOnly)
+        p.swipeAction = SwipeAction.stored(s.string(forKey: Keys.swipeAction), or: d.swipeAction)
         p.accent = AccentChoice.stored(s.string(forKey: Keys.accent), or: d.accent)
         p.glassTint = bool(Keys.glassTint, d.glassTint)
         p.animatedArt = AnimatedArtSetting.from(key: s.string(forKey: AnimatedArtSetting.prefKey))
@@ -603,6 +606,7 @@ final class AppSettings {
         put(\.castRenderers, Keys.castRenderers)
         put(\.castKeepPlaying, Keys.castKeepPlaying)
         put(\.libraryOnly, Keys.libraryOnly)
+        put(\.swipeAction, Keys.swipeAction) { $0.storedName }
         put(\.accent, Keys.accent) { $0.storedName }
         put(\.glassTint, Keys.glassTint)
         put(\.animatedArt, AnimatedArtSetting.prefKey) { $0.storedName }

@@ -166,6 +166,15 @@ final class LibraryActions {
         }
     }
 
+    /// Adds a song to the queue, from a swipe or a screen reader, with an Undo that takes that one
+    /// song back out.
+    func addToQueueUndoable(_ song: Song) {
+        let router = router
+        player.appendUndoable([song]) { undo in
+            router.show("Added to queue", action: "Undo") { undo() }
+        }
+    }
+
     /// Plays the song then up to 50 songs like it, in place of the queue. A song found online the
     /// library has not met yet starts the player's own radio from it.
     func startRadio(_ track: LibraryTrack, song: Song) async {
