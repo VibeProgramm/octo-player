@@ -1,4 +1,4 @@
-**Charts from any country**: look at another country's charts, make it your own, and pin the ones you like.
+**Charts from any country**: look at another country's charts, make it yours, or add its playlists, and a tidier top on every page.
 
 ## Sound
 
@@ -6,9 +6,10 @@
 
 ## Library
 
-- **Charts from any country.** Tap the country beside Charts to look at another country's charts, with its own genres.
-- **Use as my country** makes the country you are looking at your own, so Popular right now and your other chart playlists follow it. Same as the server goes back to your server's country.
-- **Pin** up to three countries and their charts come as playlists too, like Popular right now · Japan, in every app you use with Octo.
+- **Charts from any country.** Tap the country button on Charts and pick a country. Just look here shows its charts on this page only, and nothing is saved.
+- **Use Japan for my charts** (or any country) makes it yours, so Popular right now, your other chart playlists and Home follow it in every app. Same as the server goes back to your server's country.
+- **Also add a country's playlists** for up to three countries, like Popular right now · Japan, in every app you use with Octo. Remove them the same way.
+- Charts has Play and Shuffle at the top, beside the chips.
 
 ## Playback
 
@@ -28,6 +29,7 @@
 
 ## Everyday touches
 
+- Pages you open from the Library and Settings have one tidy top: the back button and the page's name on one line, and the page's sort or filters on the line under it. Titles are never cut.
 - Country lists have a search field: type part of a name, or a two-letter code like JP, to find a country. Live radio's country list has it too.
 
 ## Settings
