@@ -92,7 +92,7 @@ object SettingsIndex {
         listOf("quiet", "gaps", "silent"),
     )
     val SongSwipe = add(
-        "swipe_action", SettingsPage.Playback, "Swipe right on a song", "Play it next or add it to the end of the queue",
+        "swipe_action", SettingsPage.Playback, "Swipe right", "Play it next or add it to the end of the queue",
         listOf("swipe", "gesture", "play next", "add to queue", "queue", "row", "song"), section = "Queue",
     )
     val Autoplay = add(

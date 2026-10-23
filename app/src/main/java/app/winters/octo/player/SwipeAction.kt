@@ -4,7 +4,7 @@ package app.winters.octo.player
 // is on, at the end of the queue, or nothing. Kept by name, as the other
 // apps keep it.
 enum class SwipeAction(val label: String, val detail: String) {
-    PlayNext("Play next", "Right after the song that's on"),
+    PlayNext("Play next", "After the current song"),
     AddToQueue("Add to queue", "At the end of the queue"),
-    Off("Off", "Swiping a song does nothing"),
+    Off("Off", "Swiping does nothing"),
 }
