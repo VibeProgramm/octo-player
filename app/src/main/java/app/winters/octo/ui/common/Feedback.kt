@@ -5,7 +5,10 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -34,6 +37,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -95,6 +99,9 @@ val LocalFeedback = staticCompositionLocalOf<Feedback> { error("No feedback host
 // The gap between the message and the top of the bottom bar.
 private val AboveBar = 10.dp
 
+// How far the action's capsule sits in from the pill's top, bottom and end.
+private val ActionInset = 7.dp
+
 // Shows the current message as a small glass pill just above the bottom
 // bar, in the same glass as the bar. It grows in from a little smaller and
 // fades, all on the drawing layer, so nothing behind it is laid out again
@@ -151,9 +158,7 @@ fun FeedbackHost(feedback: Feedback, modifier: Modifier = Modifier) {
                     .align(Alignment.Center)
                     .padding(
                         start = if (current.icon != null) 16.dp else 20.dp,
-                        end = if (current.action != null) 6.dp else 20.dp,
-                        top = 12.dp,
-                        bottom = 12.dp,
+                        end = if (current.action != null) 0.dp else 20.dp,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -167,22 +172,41 @@ fun FeedbackHost(feedback: Feedback, modifier: Modifier = Modifier) {
                     color = OctoColors.TextPrimary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.weight(1f, fill = false).padding(vertical = 12.dp),
                 )
                 val action = current.action
                 if (action != null) {
-                    Text(
-                        action,
-                        style = OctoType.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = OctoColors.TextPrimary,
-                        modifier = Modifier
+                    // The action as a button: a capsule of the accent with the
+                    // page's dark ink, which every accent keeps at AA, sitting
+                    // in from the pill's end as far as from its top and bottom.
+                    // The capsule and the space around it, up to the pill's
+                    // round end, take the tap.
+                    val press = remember { MutableInteractionSource() }
+                    val pressed by press.collectIsPressedAsState()
+                    Box(
+                        Modifier
                             .clip(CircleShape)
-                            .clickable {
+                            .clickable(interactionSource = press, indication = null, role = Role.Button) {
                                 current.onAction?.invoke()
                                 feedback.dismiss(current)
                             }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                    )
+                            .padding(ActionInset),
+                    ) {
+                        Box(
+                            Modifier
+                                .heightIn(min = 34.dp)
+                                .background(OctoColors.Accent.copy(alpha = if (pressed) 0.82f else 1f), CircleShape)
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                action,
+                                style = OctoType.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = OctoColors.Background,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 }
             }
         }

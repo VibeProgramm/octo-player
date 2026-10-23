@@ -137,7 +137,7 @@ fun LyricsPage(onBack: () -> Unit, highlight: String?, vm: LyricsSettingsViewMod
             )
         }
         SettingsGroup(title = "Synced lyrics", icon = OctoIcons.Lyrics) {
-            ChoiceRow(SettingsIndex.LyricsStyle, value = look.style.label, onClick = {
+            ChoiceRow(SettingsIndex.LyricsStyle, value = look.style.label, answers = LyricsStyle.entries.map { it.label }, onClick = {
                 val options = LyricsStyle.entries
                 sheet.show(
                     ChoiceRequest(

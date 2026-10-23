@@ -142,7 +142,7 @@ fun ScrobblingPage(onBack: () -> Unit, highlight: String?, vm: ScrobblingViewMod
             SettingsGroup(
                 footer = "If your server already sends its plays, choose Only songs on this phone so none count twice.",
             ) {
-                ChoiceRow(SettingsIndex.SendPlays, value = prefs.sendPlays.label, onClick = {
+                ChoiceRow(SettingsIndex.SendPlays, value = prefs.sendPlays.label, answers = modes.map { it.label }, onClick = {
                     sheet.show(
                         ChoiceRequest(SettingsIndex.SendPlays.title, modes.map { Choice(it.label, it.detail) }, modes.indexOf(prefs.sendPlays)) {
                             vm.setSendPlays(modes[it])

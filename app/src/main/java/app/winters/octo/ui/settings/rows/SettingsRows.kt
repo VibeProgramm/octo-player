@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -41,8 +42,10 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,6 +60,7 @@ import app.winters.octo.ui.common.LocalChoiceSheet
 import app.winters.octo.ui.common.choiceAnchor
 import app.winters.octo.ui.settings.SettingEntry
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 private val GroupShape = RoundedCornerShape(20.dp)
 
@@ -204,7 +208,9 @@ fun SwitchRow(
 
 // A setting with a few answers: its title on the left, the current one on
 // the right, as the desktop reads them, and a chevron. Tapping it pops the
-// answers up beside the row.
+// answers up beside the row. `answers` names every answer, so the value
+// keeps the width of the widest and the row never changes height between
+// them.
 @Composable
 fun ChoiceRow(
     entry: SettingEntry?,
@@ -213,11 +219,11 @@ fun ChoiceRow(
     enabled: Boolean = true,
     title: String = entry?.title.orEmpty(),
     helper: String? = null,
+    answers: List<String> = emptyList(),
 ) {
     val sheet = LocalChoiceSheet.current
     RowFrame(entry, Modifier.choiceAnchor(sheet).clickable(enabled = enabled, role = Role.Button, onClick = onClick)) {
-        Label(title, helper, enabled)
-        Reading(value, enabled)
+        TitleValue(title, helper, value, enabled, answers = answers)
         Icon(
             painterResource(OctoIcons.Chevron),
             contentDescription = null,
@@ -227,22 +233,57 @@ fun ChoiceRow(
     }
 }
 
-// A row's current value on its right: quieter than the title, kept to the
-// end of the line, and never taking more than its share of the row. It
-// fills that share so the words, and the chevron after them, sit at the
-// row's end rather than halfway along it.
+// A row's title, with the line under it, beside its current value. The
+// value is quieter, kept to the end of the line, at most two lines, and
+// takes only the room its words need (the widest of `answers` when given),
+// up to its share of the row: 0.8 to the title's 1. The title takes all
+// the rest, so a short value never leaves the title wrapping beside an
+// empty gap.
 @Composable
-private fun RowScope.Reading(value: String, enabled: Boolean = true) {
-    Text(
-        value,
-        style = OctoType.bodySmall,
-        color = if (enabled) OctoColors.TextSecondary else OctoColors.TextMuted,
-        textAlign = TextAlign.End,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.weight(0.8f),
-    )
+private fun RowScope.TitleValue(
+    title: String,
+    below: String?,
+    value: String,
+    enabled: Boolean = true,
+    titleColor: Color = OctoColors.TextPrimary,
+    answers: List<String> = emptyList(),
+) {
+    val measurer = rememberTextMeasurer()
+    Layout(
+        content = {
+            Column {
+                Text(title, style = OctoType.body, color = if (enabled) titleColor else OctoColors.TextMuted)
+                below?.let { Text(it, style = OctoType.caption, color = OctoColors.TextMuted, modifier = Modifier.padding(top = 2.dp)) }
+            }
+            Text(
+                value,
+                style = OctoType.bodySmall,
+                color = if (enabled) OctoColors.TextSecondary else OctoColors.TextMuted,
+                textAlign = TextAlign.End,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        modifier = Modifier.weight(1f),
+    ) { (label, reading), constraints ->
+        val room = (constraints.maxWidth - TitleValueGap.roundToPx()).coerceAtLeast(0)
+        val widest = answers.maxOfOrNull { measurer.measure(it, OctoType.bodySmall, maxLines = 1, softWrap = false).size.width } ?: 0
+        val need = maxOf(reading.maxIntrinsicWidth(Constraints.Infinity), widest)
+        val width = minOf(need, (room * ValueShare).roundToInt())
+        val shown = reading.measure(Constraints.fixedWidth(width))
+        val words = label.measure(Constraints(maxWidth = room - width))
+        val height = maxOf(words.height, shown.height, constraints.minHeight)
+        layout(constraints.maxWidth, height) {
+            words.placeRelative(0, (height - words.height) / 2)
+            shown.placeRelative(constraints.maxWidth - shown.width, (height - shown.height) / 2)
+        }
+    }
 }
+
+// The gap between a row's title and its value, as the row spaces its parts,
+// and the most of the row a value may take.
+private val TitleValueGap = 12.dp
+private const val ValueShare = 0.8f / 1.8f
 
 // An icon tinted to its place, or a brand's mark in its own colours.
 @Composable
@@ -295,12 +336,13 @@ fun ActionRow(
     title: String = entry?.title.orEmpty(),
 ) {
     RowFrame(entry, Modifier.clickable(enabled = enabled && !busy, role = Role.Button, onClick = onClick)) {
-        Label(title, helper, enabled, titleColor = if (destructive) OctoColors.Error else OctoColors.TextPrimary)
-        when {
-            busy -> CircularProgressIndicator(color = OctoColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-            trailing != null -> Reading(trailing, enabled)
-            else -> Unit
+        val titleColor = if (destructive) OctoColors.Error else OctoColors.TextPrimary
+        if (trailing != null && !busy) {
+            TitleValue(title, helper, trailing, enabled, titleColor)
+        } else {
+            Label(title, helper, enabled, titleColor = titleColor)
         }
+        if (busy) CircularProgressIndicator(color = OctoColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
         if (chevron && !busy) {
             Icon(
                 painterResource(OctoIcons.Chevron),
@@ -316,8 +358,7 @@ fun ActionRow(
 @Composable
 fun InfoRow(entry: SettingEntry?, value: String, title: String = entry?.title.orEmpty(), helper: String? = null) {
     RowFrame(entry) {
-        Label(title, helper)
-        Reading(value)
+        TitleValue(title, helper, value)
     }
 }
 
