@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -77,15 +78,16 @@ import app.winters.octo.ui.common.GlassIconButton
 import app.winters.octo.ui.common.LetterRail
 import app.winters.octo.ui.common.LocalReduceMotion
 import app.winters.octo.ui.common.Pickable
-import app.winters.octo.ui.common.PlayPills
-import app.winters.octo.ui.common.QuietButton
 import app.winters.octo.ui.common.RAIL_MIN_ITEMS
 import app.winters.octo.ui.common.Refreshable
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.SelectableSongs
 import app.winters.octo.ui.common.SongRow
 import app.winters.octo.ui.common.SortButton
-import app.winters.octo.ui.common.TitleWithSort
+import app.winters.octo.ui.common.HeaderMore
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.PageHeader
+import app.winters.octo.ui.common.PlayShuffleButtons
 import app.winters.octo.ui.common.TopOnNewOrder
 import app.winters.octo.ui.common.letterRuns
 import app.winters.octo.ui.common.letteredRows
@@ -213,12 +215,10 @@ private fun Separator() {
 @Composable
 fun AlbumsScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: LibraryViewModel = hiltViewModel()) {
     val albums by vm.albums.collectAsStateWithLifecycle()
-    LibraryPage("Albums", onBack, action = {
+    LibraryPage("Albums", onBack, count = listCount(albums, "album"), action = {
         albums?.let { SortButton(SortList.Albums, it.order, onChange = { order -> vm.setOrder(SortList.Albums, order) }) }
-    }, buttons = {
-        PlayButtons(albums, "album", vm::playAlbums) {
-            QuietButton("Random album") { vm.randomAlbum()?.let { onOpen(AlbumRoute(it.id)) } }
-        }
+    }, actions = playActions(albums, vm::playAlbums) {
+        listOf(MoreItem("Random album", OctoIcons.Shuffle, detail = "Open one album picked at random", opensPage = true) { vm.randomAlbum()?.let { onOpen(AlbumRoute(it.id)) } })
     }) {
         Loaded(albums) { sorted ->
             val grid = rememberLazyGridState()
@@ -249,9 +249,9 @@ fun AlbumsScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: LibraryViewMo
 @Composable
 fun ArtistsScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: LibraryViewModel = hiltViewModel()) {
     val artists by vm.artists.collectAsStateWithLifecycle()
-    LibraryPage("Artists", onBack, action = {
+    LibraryPage("Artists", onBack, count = listCount(artists, "artist"), action = {
         artists?.let { SortButton(SortList.Artists, it.order, onChange = { order -> vm.setOrder(SortList.Artists, order) }) }
-    }, buttons = { PlayButtons(artists, "artist", vm::playArtists) }) {
+    }, actions = playActions(artists, vm::playArtists)) {
         Loaded(artists) { sorted ->
             SortedList(sorted, key = { it.id }) { artist ->
                 ArtistRow(artist) { onOpen(ArtistRoute(artist.id)) }
@@ -283,8 +283,11 @@ fun SongsScreen(onBack: () -> Unit, onOpen: (NavKey) -> Unit = {}, vm: LibraryVi
         vm.filterSongs(query.cleared())
     }
     BackHandler(enabled = searching) { closeSearch() }
-    LibraryPage("Songs", onBack, action = {
+    val all = songs?.items?.size ?: 0
+    val count = if (query.filters) filteredCount(shown?.items?.size ?: 0, all) else listCount(songs, "song")
+    LibraryPage("Songs", onBack, count = count, action = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            songs?.let { SortButton(SortList.Songs, it.order, onChange = { order -> vm.setOrder(SortList.Songs, order) }) }
             if (songs?.items?.isNotEmpty() == true) {
                 GlassIconButton(
                     if (searching) OctoIcons.Close else OctoIcons.Search,
@@ -300,9 +303,8 @@ fun SongsScreen(onBack: () -> Unit, onOpen: (NavKey) -> Unit = {}, vm: LibraryVi
                     lit = searching,
                 )
             }
-            songs?.let { SortButton(SortList.Songs, it.order, onChange = { order -> vm.setOrder(SortList.Songs, order) }) }
         }
-    }, buttons = {
+    }, actions = playActions(shown, vm::playSongs), panel = {
         if (songs != null) {
             SearchPanel(searching) {
                 SongFilterRow(
@@ -315,8 +317,6 @@ fun SongsScreen(onBack: () -> Unit, onOpen: (NavKey) -> Unit = {}, vm: LibraryVi
                 )
             }
         }
-        val all = songs?.items?.size ?: 0
-        PlayButtons(shown, "song", vm::playSongs, details = if (query.filters) filteredCount(shown?.items?.size ?: 0, all) else null)
     }) {
         Loaded(songs) { _ ->
             val list = shown
@@ -370,14 +370,17 @@ private fun <T> SortedList(sorted: Sorted<T>, key: (T) -> Any, row: @Composable 
     }
 }
 
-// A page inside the library: the back button, a title with the list's sort
-// button beside it, the buttons that play the list, then the list.
+// A page inside the library: the back button and the title with the
+// list's count, then one control line with the list's sort button and the
+// round Play, Shuffle and More, then `panel` (the opened search) and the list.
 @Composable
 private fun LibraryPage(
     title: String,
     onBack: () -> Unit,
+    count: String?,
     action: @Composable () -> Unit,
-    buttons: @Composable () -> Unit = {},
+    actions: (@Composable RowScope.() -> Unit)? = null,
+    panel: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     Refreshable {
@@ -385,8 +388,8 @@ private fun LibraryPage(
             Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp),
             header = {
                 Column {
-                    TitleWithSort(title, onBack, sort = action)
-                    buttons()
+                    PageHeader(title, onBack, count = count, control = action, actions = actions)
+                    panel()
                 }
             },
             content = content,
@@ -460,36 +463,23 @@ private fun SearchPanel(open: Boolean, content: @Composable () -> Unit) {
     ) { content() }
 }
 
-// Play and Shuffle for the whole list, once it has something in it: how
-// many `noun`s it holds on the left (or `details`), then room for one
-// quieter action, then the small glass Play and Shuffle.
-@Composable
-private fun PlayButtons(
+// How many a list holds, for the title line: "2,835 songs".
+internal fun listCount(list: Sorted<*>?, noun: String): String? {
+    val count = list?.items?.size ?: return null
+    return "%,d %s".format(count, if (count == 1) noun else "${noun}s")
+}
+
+// Play and Shuffle for the whole list, once it has something in it, and a
+// More button with `more`'s lesser actions.
+private fun playActions(
     list: Sorted<*>?,
-    noun: String,
     onPlay: (shuffle: Boolean) -> Unit,
-    details: String? = null,
-    extra: @Composable () -> Unit = {},
-) {
-    if (list == null || list.items.isEmpty()) return
-    val count = list.items.size
-    Row(
-        // The right edge lines up with the sort capsule's above: the glass
-        // sits 7dp inside its 48dp touch target.
-        Modifier.fillMaxWidth().padding(start = 20.dp, end = 13.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(
-            details ?: "%,d %s".format(count, if (count == 1) noun else "${noun}s"),
-            style = OctoType.caption,
-            color = OctoColors.TextMuted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        extra()
-        PlayPills(onPlay = { onPlay(false) }, onShuffle = { onPlay(true) })
+    more: () -> List<MoreItem> = { emptyList() },
+): (@Composable RowScope.() -> Unit)? {
+    if (list == null || list.items.isEmpty()) return null
+    return {
+        PlayShuffleButtons({ onPlay(false) }, { onPlay(true) })
+        HeaderMore(more())
     }
 }
 
