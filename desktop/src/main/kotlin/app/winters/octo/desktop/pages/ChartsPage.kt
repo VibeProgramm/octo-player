@@ -72,6 +72,7 @@ fun ChartsPage(app: AppState, visit: Visit) {
     val list = rememberListState(app.navigator, visit)
     val choices = charts.choices?.chart.orEmpty()
     val top = charts.lists[charts.key(charts.selected, charts.country)]
+    val failed = charts.failures[charts.key(charts.selected, charts.country)] ?: charts.country?.let { charts.choiceFailures[it] }
     // The line under the title keeps the last chart's words for the same
     // country while the next chart comes, so nothing under it moves.
     var shownCaption by remember(charts.country) { mutableStateOf<String?>(null) }
@@ -91,6 +92,7 @@ fun ChartsPage(app: AppState, visit: Visit) {
         }
         when {
             charts.offered == false -> item(key = "none") { NothingHere("No charts here", "This server doesn't have charts.") }
+            top == null && failed != null -> item(key = "failed") { NothingHere("Couldn't get this chart", failed) }
             top == null -> item(key = "loading") { LoadingLine() }
             top.entry.none { it.song != null } -> item(key = "empty") {
                 NothingHere("Nothing in this chart right now", "Apple Music has no songs for it at the moment. Try another.")
@@ -123,6 +125,7 @@ private fun ChartsTitle(app: AppState, charts: Charts, detail: String?) {
                             Modifier.onGloballyPositioned { anchor = it.boundsInWindow().roundToIntRect() },
                             height = 28.dp,
                             quiet = true,
+                            enabled = !charts.saving,
                         )
                         Spacer(Modifier.width(Space.S))
                         if (charts.country != null) CountryActions(charts)

@@ -290,9 +290,66 @@ class ChartsTest {
         charts.useAsMine()
         until { charts.problem != null }
 
-        assertEquals("Couldn't save. Try again.", charts.problem)
+        // The server's own words when it refused for a reason the listener can act on.
+        assertEquals("Too many countries in an hour. Try again later.", charts.problem)
         assertEquals("jp", charts.country)
         assertFalse(charts.saving)
+        scope.cancel()
+    }
+
+    @Test
+    fun anyOtherFailedSaveSaysThePlainLine() = runBlocking {
+        serveV3()
+        server.answerBy("pinChartCountry") { server.failed(70, "Something broke.") }
+        val scope = CoroutineScope(Dispatchers.Default + Job())
+        val charts = charts(v3, scope)
+        charts.loadChoices()
+        until { charts.own != null }
+        charts.pickCountry("jp")
+
+        charts.togglePin()
+        until { charts.problem != null }
+
+        assertEquals("Couldn't save. Try again.", charts.problem)
+        scope.cancel()
+    }
+
+    @Test
+    fun aCountryChangedElsewhereAsksForTheOwnChartAgain() = runBlocking {
+        serveV3()
+        val scope = CoroutineScope(Dispatchers.Default + Job())
+        val charts = charts(v3, scope)
+        charts.loadChoices()
+        charts.load("34")
+        until { charts.own != null && charts.lists["|34"] != null }
+
+        // Another device made Brazil the listener's own.
+        setting = "br"
+        charts.opened()
+        until { charts.lists["|34"]?.country == "br" }
+
+        assertEquals(2, asked("getTopChart").count { it.url.queryParameter("country") == null })
+        scope.cancel()
+    }
+
+    @Test
+    fun aRefusedCountrySaysWhyAndIsAskedAgainWhenPickedAgain() = runBlocking {
+        serveV3()
+        val scope = CoroutineScope(Dispatchers.Default + Job())
+        val charts = charts(v3, scope)
+        charts.loadChoices()
+        until { charts.own != null }
+        server.answerBy("getTopChart") { server.failed(0, "Too many countries in an hour. Try again later.") }
+
+        charts.pickCountry("jp")
+        charts.load("34", "jp")
+        until { charts.failures[charts.key("34", "jp")] != null }
+        assertEquals("Too many countries in an hour. Try again later.", charts.failures[charts.key("34", "jp")])
+
+        serveV3()
+        charts.pickCountry("jp")
+        until { charts.lists[charts.key("34", "jp")] != null }
+        assertNull(charts.failures[charts.key("34", "jp")])
         scope.cancel()
     }
 

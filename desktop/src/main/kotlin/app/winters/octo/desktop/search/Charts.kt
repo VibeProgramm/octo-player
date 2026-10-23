@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.winters.octo.desktop.server.Connection
 import app.winters.octo.discovery.CHART_SAVE_FAILED
+import app.winters.octo.discovery.chartRefusal
 import app.winters.octo.discovery.chartSongs
 import app.winters.octo.subsonic.CHART_COUNTRY_AUTO
 import app.winters.octo.subsonic.CHART_OVERALL
@@ -25,6 +26,10 @@ import kotlinx.coroutines.launch
 // charts a country has.
 private const val CHART_KEPT_MS = 60 * 60 * 1000L
 private const val CHOICES_KEPT_MS = 24 * 60 * 60 * 1000L
+
+// What a chart that did not come says, when the server gave no words of
+// its own for it.
+const val CHART_NOT_READ = "Octo didn't answer. Try again in a moment."
 
 // The Charts page's server side: which charts a country has (Popular right
 // now, Best New Songs, Trending Songs and the genres) and each chart's
@@ -57,6 +62,11 @@ class Charts(private val connection: Connection, private val scope: CoroutineSco
 
     // Each chart asked for, by `key`; an empty list when it had nothing.
     val lists = mutableStateMapOf<String, TopSongs>()
+
+    // Why a chart (by `key`) or a country's charts (by country) did not
+    // come: the server's words when it refused, until it is asked again.
+    val failures = mutableStateMapOf<String, String>()
+    val choiceFailures = mutableStateMapOf<String, String>()
 
     var saving by mutableStateOf(false)
         private set
@@ -146,16 +156,34 @@ class Charts(private val connection: Connection, private val scope: CoroutineSco
         choicesJobs[at] = scope.launch {
             if (!offered()) return@launch
             if (country != null && !countries()) return@launch
+            choiceFailures.remove(at)
             val got = try {
                 connection.client.charts(country)
             } catch (e: SubsonicException) {
+                if (country != null) choiceFailures[at] = chartRefusal(e) ?: CHART_NOT_READ
                 return@launch
             }
+            if (country == null) ownAnswered(got)
             choicesBy[at] = got
             choicesAt[at] = System.currentTimeMillis()
             // The chart in view stays when the country has it.
             if (country == this@Charts.country) keepSelected()
         }
+    }
+
+    // The listener's own charts as the server says them now. When their
+    // country changed elsewhere (another device, the dashboard), the charts
+    // kept for the old one are asked for again; a country looked at that
+    // became their own is shown as their own.
+    private fun ownAnswered(got: ChartChoices) {
+        val now = got.country ?: return
+        val before = choicesBy[""]?.country
+        val ownKeys = lists.keys.filter { it.startsWith("|") }
+        if ((before != null && !before.equals(now, ignoreCase = true)) || ownKeys.any { lists[it]?.country?.equals(now, ignoreCase = true) == false }) {
+            ownKeys.forEach { listsAt.remove(it) }
+            if (country == null) load(selected)
+        }
+        if (country.equals(now, ignoreCase = true)) country = null
     }
 
     // A chart's songs, kept an hour per country: the whole chart (50, or
@@ -168,9 +196,11 @@ class Charts(private val connection: Connection, private val scope: CoroutineSco
         if (at != null && System.currentTimeMillis() - at < CHART_KEPT_MS) return
         jobs[key] = scope.launch {
             if (!offered()) return@launch
+            failures.remove(key)
             val got = try {
                 connection.client.topChart(chartSongs(chart), chart, country)
             } catch (e: SubsonicException) {
+                failures[key] = chartRefusal(e) ?: CHART_NOT_READ
                 return@launch
             }
             lists[key] = got
@@ -180,9 +210,14 @@ class Charts(private val connection: Connection, private val scope: CoroutineSco
 
     // Shows the charts of a country; the listener's own stops looking at
     // another.
+    // Picking the same country again asks again for what did not come.
     fun pickCountry(code: String) {
         val target = code.takeIf { it != own?.country }
-        if (target == country) return
+        if (target == country) {
+            if (target != null && choiceFailures.containsKey(target)) loadChoices(target)
+            if (failures.containsKey(key(selected, target))) load(selected, target)
+            return
+        }
         country = target
         problem = null
         keepSelected()
@@ -197,7 +232,8 @@ class Charts(private val connection: Connection, private val scope: CoroutineSco
     // Makes the country looked at the listener's own.
     fun useAsMine() {
         val code = country ?: return
-        save({ it.setChartCountry(code) }) { country = null }
+        // Only back to their own when the country looked at is still the one saved.
+        save({ it.setChartCountry(code) }) { if (country == code) country = null }
     }
 
     // Follows the server's country again: saved when the listener had
@@ -220,8 +256,9 @@ class Charts(private val connection: Connection, private val scope: CoroutineSco
     }
 
     // A save changes the listener's own lists, so every chart and list of
-    // charts kept is let go and the answer is kept as the listener's own;
-    // the page's charts are then asked for again.
+    // charts kept is due again (still drawn until the new one comes) and
+    // the answer is kept as the listener's own; the page's charts are then
+    // asked for again. A refusal shows the server's words.
     private fun save(call: suspend (SubsonicClient) -> ChartChoices, then: () -> Unit) {
         if (saving) return
         saving = true
@@ -230,20 +267,16 @@ class Charts(private val connection: Connection, private val scope: CoroutineSco
             val got = try {
                 call(connection.client)
             } catch (e: SubsonicException) {
-                null
-            }
-            saving = false
-            if (got == null) {
-                problem = CHART_SAVE_FAILED
+                saving = false
+                problem = chartRefusal(e) ?: CHART_SAVE_FAILED
                 return@launch
             }
+            saving = false
             jobs.values.forEach { it.cancel() }
             jobs.clear()
-            lists.clear()
             listsAt.clear()
             choicesJobs.values.forEach { it.cancel() }
             choicesJobs.clear()
-            choicesBy.clear()
             choicesAt.clear()
             choicesBy[""] = got
             choicesAt[""] = System.currentTimeMillis()
