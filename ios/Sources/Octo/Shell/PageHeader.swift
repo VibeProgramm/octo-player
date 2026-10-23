@@ -15,6 +15,7 @@ struct PageHeader: View {
     var count: String?
     var back = true
     @Environment(\.dismiss) private var dismiss
+    @Environment(PageTop.self) private var top: PageTop?
     @ScaledMetric(relativeTo: .largeTitle) private var size: CGFloat = 32
 
     init(_ title: String, count: String? = nil, back: Bool = true) {
@@ -29,6 +30,10 @@ struct PageHeader: View {
                 GlazedIconButton(.back, label: "Back", size: 40) { goBack() }
                     .alignmentGuide(.pageTitleLine) { d in d[VerticalAlignment.center] }
                     .padding(.leading, 16)
+                    // Once it scrolls away, the page's floating back button stands in for it.
+                    .onScrollVisibilityChange(threshold: 0.5) { shown in top?.gone = !shown }
+                    .onAppear { top?.gone = false }
+                    .onDisappear { top?.gone = true }
             }
             if let count {
                 ViewThatFits(in: .horizontal) {
