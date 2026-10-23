@@ -52,7 +52,7 @@ private func charts(country: String? = "us", setting: String? = "auto", pinned: 
         #expect(choices.map(\.title) == ["Just look here", "Use Japan for my charts", "Also add Japan's playlists"])
         #expect(choices.map(\.detail) == ["Nothing is saved", "Your chart playlists and Home switch to Japan, in every app",
                                           "Keeps yours and adds Popular right now · Japan and the rest"])
-        #expect(choices.allSatisfy(\.enabled))
+        #expect(choices.allSatisfy { $0.enabled })
     }
 
     @Test func aPinnedCountryOffersRemovingItsPlaylists() {
