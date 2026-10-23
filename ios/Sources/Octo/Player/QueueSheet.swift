@@ -55,16 +55,7 @@ struct QueueSheet: View {
         let headed = runs.count > 1 || runs.first.map { $0.source != QueueSource.none } ?? false
         ScrollViewReader { reader in
             VStack(alignment: .leading, spacing: 0) {
-                Text("Up next")
-                    .font(.octoSection)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 20)
-                    .accessibilityAddTraits(.isHeader)
-                Text(summary(coming))
-                    .font(.octoCaption)
-                    .foregroundStyle(OctoColor.textMuted)
-                    .padding(.horizontal, 20)
-                tools(reader, now: now, hasPlayed: !played.isEmpty, hasOthers: !played.isEmpty || !coming.isEmpty)
+                heading(reader, coming: coming, now: now, hasPlayed: !played.isEmpty, hasOthers: !played.isEmpty || !coming.isEmpty)
                 QueueScroll(position: $position, onGeometry: scrolled) {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(played) { entry in
@@ -131,39 +122,53 @@ struct QueueSheet: View {
         return "\(songsCount(own.count)) · \(asLength(seconds))" + (added > 0 ? " · \(added) from Autoplay" : "")
     }
 
-    private func tools(_ reader: ScrollViewProxy, now: QueueEntry?, hasPlayed: Bool, hasOthers: Bool) -> some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 2) {
-                tool("Now playing", enabled: now != nil) {
-                    guard let now else { return }
-                    withAnimation(.octoTween(fixed: 300)) { reader.scrollTo(now.id, anchor: .top) }
-                }
-                tool("Clear", enabled: hasOthers) { clear() }
-                tool("Remove played", enabled: hasPlayed) { removePlayed() }
-                tool("Save as playlist", enabled: now != nil) { saving = true }
-                    .namePopover(isPresented: $saving, title: "New playlist", placeholder: "Playlist name", action: "Create") { name in
-                        save(name)
-                    }
+    /// One line: "Up next" with what is to come, then a round button back to the song on now and
+    /// More, which clears, removes what played, or saves the queue as a playlist.
+    private func heading(_ reader: ScrollViewProxy, coming: [QueueEntry], now: QueueEntry?, hasPlayed: Bool,
+                         hasOthers: Bool) -> some View {
+        HStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Up next")
+                    .font(.octoSection)
+                    .foregroundStyle(.white)
+                    .fixedSize()
+                    .accessibilityAddTraits(.isHeader)
+                Text(summary(coming))
+                    .font(.octoCaption)
+                    .foregroundStyle(OctoColor.textMuted)
+                    .lineLimit(1)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                guard let now else { return }
+                withAnimation(.octoTween(fixed: 300)) { reader.scrollTo(now.id, anchor: .top) }
+            } label: {
+                Image(systemName: "scope")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .glassEffect(LibraryLook.resting, in: .circle)
+                    .frame(width: 48, height: 48)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(PressScale())
+            .disabled(now == nil)
+            .opacity(now == nil ? OctoInkColor.disabled : 1)
+            .accessibilityLabel("Now playing")
+            GlassMoreMenu {
+                Button("Clear", systemImage: OctoIcon.delete.symbol, role: .destructive) { clear() }
+                    .disabled(!hasOthers)
+                Button("Remove played", systemImage: OctoIcon.check.symbol) { removePlayed() }
+                    .disabled(!hasPlayed)
+                Button("Save as playlist", systemImage: OctoIcon.addToPlaylist.symbol) { saving = true }
+                    .disabled(now == nil)
+            }
+            .namePopover(isPresented: $saving, title: "New playlist", placeholder: "Playlist name", action: "Create") { name in
+                save(name)
+            }
         }
-        .scrollIndicators(.hidden)
-        .scrollBounceBehavior(.basedOnSize)
-    }
-
-    private func tool(_ label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.octoLabel)
-                .foregroundStyle(enabled ? OctoColor.accent : OctoColor.textMuted)
-                .lineLimit(1)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(ToolPress())
-        .disabled(!enabled)
+        .padding(.leading, 20)
+        .padding(.trailing, 13)
     }
 
     // MARK: Rows
@@ -484,16 +489,6 @@ private struct SwipeAway<Content: View>: View {
                         }
                     }
             )
-    }
-}
-
-/// A tool under the heading: no shape of its own, a soft wash under the finger.
-private struct ToolPress: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background {
-                if configuration.isPressed { Capsule().fill(OctoColor.menuPress) }
-            }
     }
 }
 
