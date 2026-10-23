@@ -223,6 +223,14 @@ public func keptSummary(serverOnly: Int, done: Int) -> String {
 
 // MARK: Playlists
 
+/// A playlist page's one details line: its songs and length, how far its downloads are while it
+/// is kept downloaded, and how many songs only this phone has while the playlist is also on the
+/// server. "12 songs · 45:10 · 3 of 9 downloaded · 2 songs only on this phone".
+public func playlistDetails(songs: Int, length: String?, kept: String?, phoneOnly: Int, onServer: Bool) -> String {
+    let mine = onServer && phoneOnly > 0 ? (phoneOnly == 1 ? "1 song only on this phone" : "\(phoneOnly) songs only on this phone") : nil
+    return [songsCount(songs), songs > 0 ? length : nil, kept, mine].compactMap { $0 }.joined(separator: " · ")
+}
+
 /// Which playlists hold which of the songs, from (playlist, song) rows.
 public func holdingsByPlaylist(_ rows: [(String, String)]) -> [String: Set<String>] {
     var out: [String: Set<String>] = [:]

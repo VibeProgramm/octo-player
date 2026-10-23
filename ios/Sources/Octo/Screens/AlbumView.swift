@@ -3,8 +3,9 @@ import SwiftUI
 
 // MARK: Album
 
-/// An album's page: the cover, the title and who it is by, the play line with the heart, Play
-/// and Shuffle, sharing and downloading, then its songs disc by disc and more by the artist.
+/// An album's page: the cover, the title and who it is by, the details line with the heart and
+/// More (sharing, downloading and the rest), Play and Shuffle, then its songs disc by disc and
+/// more by the artist.
 struct AlbumView: View {
     let album: Album
     @Environment(Library.self) private var library
@@ -49,7 +50,6 @@ struct AlbumView: View {
         LibraryList {
             if let shown {
                 header(shown)
-                about
                 songs(shown)
                 if !more.isEmpty {
                     Shelf(title: "More by \(shown.artist)") {
@@ -155,6 +155,9 @@ struct AlbumView: View {
     /// server copies come from, or the server's own album the page shows.
     private var loopAlbumId: String? { serverAlbum ?? online?.id }
 
+    /// Under the cover: the title, who it is by, one details line (year, songs, length, genre,
+    /// rating, how much is in the library) with the heart and More at its end, then Play and
+    /// Shuffle. Sharing, downloading, adding the missing songs and Only my songs are in More.
     @ViewBuilder
     private func header(_ album: LibraryAlbum) -> some View {
         VStack(spacing: 0) {
@@ -178,73 +181,71 @@ struct AlbumView: View {
             }
             .buttonStyle(.plain)
             .padding(.top, 4)
-            HStack(spacing: 8) {
-                Text(details(album))
+            HStack(spacing: 0) {
+                Text(fullDetails(album))
                     .font(.octoCaption)
                     .foregroundStyle(OctoColor.textMuted)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, 8)
                 FavoriteHeart(on: state.favoriteAlbumIds.contains(album.id)) {
                     actions.setFavorite(album: album.id, !state.favoriteAlbumIds.contains(album.id))
                 }
+                GlassMoreMenu { moreItems(album) }
             }
             .padding(.top, 14)
+            .padding(.trailing, -7)
             PlayShuffle(enabled: !listed.isEmpty) {
                 actions.play(listed, source: album.title)
             } shuffle: {
                 actions.play(listed, shuffled: true, source: album.title)
             }
             .padding(.top, 10)
-            quietActions(album)
         }
         .padding(.horizontal, 20)
         .padding(.top, detailTopGap)
         .padding(.bottom, 12)
     }
 
+    /// The details line: year, songs and length, then the genre and the average rating when the
+    /// songs have them, then how many of the songs are in the library while some are not.
+    private func fullDetails(_ album: LibraryAlbum) -> String {
+        let genre = albumGenre(tracks.map(\.genre))
+        let average = averageRating(tracks.map { state.rating(of: $0) })
+        let note = finds.isEmpty ? nil : albumLibraryNote(inLibrary: tracks.count, songs: (whole ?? tracks).count)
+        return [details(album), genre, average.map { "★ \(starsText($0)) average" }, note].compactMap { $0 }.joined(separator: " • ")
+    }
+
+    /// The album's other actions, in More.
     @ViewBuilder
-    private func quietActions(_ album: LibraryAlbum) -> some View {
+    private func moreItems(_ album: LibraryAlbum) -> some View {
         let serverOnly = tracks.filter { !$0.onPhone }
-        let canShare = state.canShare && shareAlbumId != nil
-        if canShare || !serverOnly.isEmpty {
-            HStack(spacing: 0) {
-                if canShare {
-                    Menu {
-                        ShareLinkItems(target: .album(album.id), title: album.title, heading: "Share \"\(album.title)\"")
-                    } label: {
-                        HStack(spacing: 0) {
-                            QuietActionLabel(icon: .share, text: "Share")
-                            if actions.makingLink?.target == .album(album.id) { LoadingSpinner(size: 18) }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-                if !serverOnly.isEmpty {
-                    let held = serverOnly.filter { state.kept($0.id) != nil }.count
-                    let done = serverOnly.filter { state.kept($0.id)?.status == .done }.count
-                    QuietAction(icon: held < serverOnly.count ? .download : (done < serverOnly.count ? .downloading : .downloaded),
-                                text: albumDownloadLabel(songs: serverOnly.count, held: held, done: done),
-                                enabled: held < serverOnly.count) {
-                        state.offline.download(serverOnly.map(\.id))
-                    }
-                }
-                Spacer(minLength: 0)
+        if state.canShare && shareAlbumId != nil {
+            Menu {
+                ShareLinkItems(target: .album(album.id), title: album.title, heading: "Share \"\(album.title)\"")
+            } label: {
+                Label("Share", systemImage: OctoIcon.share.symbol)
             }
-            .padding(.horizontal, -10)
-            .padding(.top, 4)
+        }
+        if !serverOnly.isEmpty {
+            let held = serverOnly.filter { state.kept($0.id) != nil }.count
+            let done = serverOnly.filter { state.kept($0.id)?.status == .done }.count
+            Button {
+                state.offline.download(serverOnly.map(\.id))
+            } label: {
+                Label(albumDownloadLabel(songs: serverOnly.count, held: held, done: done),
+                      systemImage: (held < serverOnly.count ? OctoIcon.download : (done < serverOnly.count ? .downloading : .downloaded)).symbol)
+            }
+            .disabled(held >= serverOnly.count)
         }
         if !finds.isEmpty {
-            HStack(spacing: 0) {
-                addMissing
-                if !libraryOnly {
-                    QuietAction(icon: .library, text: "Only my songs", checked: onlyMine) { onlyMine.toggle() }
-                }
-                Spacer(minLength: 0)
-                if let note = albumLibraryNote(inLibrary: tracks.count, songs: (whole ?? tracks).count) {
-                    Text(note).font(.octoCaption).foregroundStyle(OctoColor.textMuted).lineLimit(1)
-                }
+            addMissing
+            if !libraryOnly {
+                Toggle(isOn: $onlyMine) { Label("Only my songs", systemImage: OctoIcon.library.symbol) }
             }
-            .padding(.leading, -10)
+        }
+        if let genre = albumGenre(tracks.map(\.genre)) {
+            Button { router.go(.library(.genre(genre))) } label: { Label("Go to \(genre)", systemImage: OctoIcon.genres.symbol) }
         }
     }
 
@@ -253,40 +254,16 @@ struct AlbumView: View {
     private var addMissing: some View {
         let waiting = finds.filter { downloads.state($0.asSong.id) == .none }
         if !waiting.isEmpty {
-            QuietAction(icon: .addToLibrary, text: addMissingLabel(missing: waiting.count)) {
+            Button {
                 Task { for song in waiting.map(\.asSong) { _ = await downloads.request(song) } }
+            } label: {
+                Label(addMissingLabel(missing: waiting.count), systemImage: OctoIcon.addToLibrary.symbol)
             }
         } else if finds.contains(where: { downloads.state($0.asSong.id) == .requested }) {
-            QuietAction(icon: .downloading, text: downloads.keepsLog ? "Adding, show downloads" : "Adding",
-                        enabled: downloads.keepsLog) { router.showServerDownloads() }
-        }
-    }
-
-    @ViewBuilder
-    private var about: some View {
-        let genre = albumGenre(tracks.map(\.genre))
-        let average = averageRating(tracks.map { state.rating(of: $0) })
-        if genre != nil || average != nil {
-            HStack(spacing: 16) {
-                if let genre {
-                    Button { router.go(.library(.genre(genre))) } label: {
-                        Text(genre).font(.octoCaption).foregroundStyle(OctoColor.accent).padding(.vertical, 6).padding(.horizontal, 4)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Open genre")
-                }
-                if let average {
-                    HStack(spacing: 4) {
-                        IconView(.starFilled, size: 12, color: OctoColor.textMuted)
-                        Text("\(starsText(average)) average").font(.octoCaption).foregroundStyle(OctoColor.textMuted)
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(averageRatingSpoken(average))
-                }
+            Button { router.showServerDownloads() } label: {
+                Label(downloads.keepsLog ? "Adding, show downloads" : "Adding", systemImage: OctoIcon.downloading.symbol)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 12)
+            .disabled(!downloads.keepsLog)
         }
     }
 
@@ -465,28 +442,27 @@ struct ArtistView: View {
         VStack(spacing: 0) {
             ArtCover(artwork: artist?.artwork, size: 160, radius: 80)
             Text(artist?.name ?? name).font(.octoTitle).multilineTextAlignment(.center).padding(.top, 16).bigTitle()
+            // The counts, then Radio and the heart on the same line.
             if let artist {
-                Text("\(albumsCount(artist.albumCount)) • \(songsCount(artist.songCount))")
-                    .font(.octoCaption)
-                    .foregroundStyle(OctoColor.textMuted)
-                    .padding(.top, 4)
-            }
-            HStack(spacing: 0) {
-                if !songs.isEmpty {
-                    QuietAction(icon: .radio, text: "Radio") {
-                        let seeds = songs
-                        Task { await actions.startRadio(seeds: seeds) }
+                HStack(spacing: 0) {
+                    Text("\(albumsCount(artist.albumCount)) • \(songsCount(artist.songCount))")
+                        .font(.octoCaption)
+                        .foregroundStyle(OctoColor.textMuted)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.trailing, 8)
+                    if !songs.isEmpty {
+                        QuietAction(icon: .radio, text: "Radio") {
+                            let seeds = songs
+                            Task { await actions.startRadio(seeds: seeds) }
+                        }
                     }
-                    .padding(.leading, -10)
-                }
-                Spacer(minLength: 0)
-                if let artist {
                     FavoriteHeart(on: state.favoriteArtistIds.contains(artist.id)) {
                         actions.setFavorite(artist: artist.id, !state.favoriteArtistIds.contains(artist.id))
                     }
                 }
+                .padding(.top, 8)
             }
-            .padding(.top, 8)
             if !songs.isEmpty {
                 PlayShuffle { actions.play(songs, source: artistName) } shuffle: { actions.play(songs, shuffled: true, source: artistName) }
                     .padding(.top, 4)
@@ -639,32 +615,22 @@ struct PlaylistsView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     FirstRowMark().id("top")
-                    TitleWithButtons(title: "Playlists") { if playlists != nil { SortButton(list: .playlists) } }
-                        .padding(.top, detailTopGap)
-                        .bigTitle()
-                    ForEach(playlistsLead(importNote: importNote != nil), id: \.self) { lead in
-                        switch lead {
-                        case .newPlaylist:
-                            Button { actions.askNewPlaylist(.tracks([])) } label: {
-                                PlaylistLine(name: "New playlist") { LeadTile(icon: .addToLibrary) }
+                    VStack(spacing: 0) {
+                        PageHeader("Playlists", count: playlists.map { _ in countText(shown.count + liveLists.lists.count, "playlist", "playlists") })
+                        ControlLine {
+                            if playlists != nil { SortButton(list: .playlists) }
+                        } actions: {
+                            // The ways to make a list, in the order the page once listed them.
+                            GlassMoreMenu(icon: .addToLibrary, label: "New") {
+                                Button("New playlist", systemImage: OctoIcon.addToLibrary.symbol) { actions.askNewPlaylist(.tracks([])) }
+                                Button("New live list", systemImage: "wand.and.stars") { router.go(.liveListEditor(id: nil)) }
+                                Button("Import a playlist file", systemImage: OctoIcon.folder.symbol) { importing = true }
                             }
-                            .buttonStyle(SqueezeStyle())
-                        case .newLiveList:
-                            Button { router.go(.liveListEditor(id: nil)) } label: {
-                                PlaylistLine(name: "New live list", subtitle: "Songs picked by rules, always up to date") {
-                                    LiveMarkTile(size: 56, radius: OctoRadius.artS)
-                                }
-                            }
-                            .buttonStyle(SqueezeStyle())
-                        case .importFile:
-                            Button { importing = true } label: {
-                                PlaylistLine(name: "Import a playlist file", subtitle: "M3U or M3U8") { LeadTile(icon: .folder) }
-                            }
-                            .buttonStyle(SqueezeStyle())
-                        case .importNote:
-                            if let importNote { importNoteView(importNote) }
                         }
                     }
+                    .padding(.top, pageTopGap)
+                    .bigTitle()
+                    if let importNote { importNoteView(importNote) }
                     ForEach(liveLists.lists, id: \.id) { list in
                         NavigationLink(value: Route.liveList(id: list.id)) {
                             PlaylistLine(name: list.name, subtitle: liveListCoverLine) { liveCover(list) }
@@ -948,6 +914,7 @@ struct PlaylistPage: View {
     @Environment(Library.self) private var library
     @Environment(LibraryState.self) private var state
     @Environment(LibraryActions.self) private var actions
+    @Environment(OfflineDownloads.self) private var offline
     @Environment(\.dismiss) private var dismiss
     @State private var summary: PlaylistSummary?
     @State private var rows: [PlaylistTrack] = []
@@ -961,16 +928,6 @@ struct PlaylistPage: View {
         LibraryList {
             if let summary {
                 header(summary)
-                KeepDownloadedLine(tracks: rows.map(\.track), playlistId: summary.id)
-                if summary.onServer, phoneOnly > 0 {
-                    Text(phoneOnlyNote(phoneOnly))
-                        .font(.octoBodySmall)
-                        .foregroundStyle(OctoColor.textMuted)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 8)
-                }
                 if read, rows.isEmpty {
                     MutedNote("This playlist is empty. Long press any song and choose Add to playlist.", vertical: 20)
                 }
@@ -1015,13 +972,16 @@ struct PlaylistPage: View {
                 .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
             Text(playlist.name).font(.octoTitle).multilineTextAlignment(.center).padding(.top, 20).bigTitle()
             HStack(spacing: 8) {
-                Text(rows.isEmpty ? "0 songs" : "\(songsCount(rows.count)) · \(asLength(length))")
+                Text(playlistDetails(songs: rows.count, length: asLength(length),
+                                     kept: keptDownloadedWords(offline, tracks: tracks, playlistId: playlist.id),
+                                     phoneOnly: phoneOnly, onServer: playlist.onServer))
                     .font(.octoCaption)
                     .foregroundStyle(OctoColor.textMuted)
-                    .lineLimit(2)
+                    .lineLimit(3)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if rows.count > 1 { ReorderButton(editMode: $editMode) }
                 Menu {
+                    KeepDownloadedToggle(tracks: tracks, playlistId: playlist.id)
                     PlaylistOptionsItems(playlist: playlist, serverOnly: tracks.contains { !$0.onPhone && !$0.isFound }) { dismiss() }
                 } label: {
                     QuietActionLabel(icon: .more, text: "More")
