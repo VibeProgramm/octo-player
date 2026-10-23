@@ -10,12 +10,14 @@ import app.winters.octo.catalog.isFind
 import app.winters.octo.data.SessionRepository
 import app.winters.octo.data.SessionState
 import app.winters.octo.discovery.Discovery
+import app.winters.octo.family.FamilyHub
 import app.winters.octo.listening.parseServerTime
 import app.winters.octo.playback.tracksByIds
 import app.winters.octo.subsonic.FORM_POST_EXTENSION
 import app.winters.octo.subsonic.PlaylistWithSongs
 import app.winters.octo.subsonic.SubsonicClient
 import app.winters.octo.subsonic.SubsonicException
+import app.winters.octo.subsonic.isFamilyPlaylist
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,6 +55,7 @@ class PlaylistSync @Inject constructor(
     private val catalog: CatalogDao,
     private val discovery: Discovery,
     private val store: PlaylistSyncStore,
+    private val family: FamilyHub,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -186,6 +189,12 @@ class PlaylistSync @Inject constructor(
             val notice = row.serverId?.let(notices::get)
             if (row.serverId != null && notice != row.octoNotice) user.markNotice(row.id, notice)
         }
+        // Which of them the server lists as the family's.
+        val families = keep.associate { it.id to isFamilyPlaylist(it.owner, client.username) }
+        for (row in user.serverPlaylists(server.sourceId)) {
+            val isFamily = row.serverId?.let(families::get) ?: continue
+            if (isFamily != row.family) user.markFamily(row.id, isFamily)
+        }
         if (steps.isNotEmpty()) {
             // Counts only, like the library sync's line.
             val kinds = steps.groupingBy { it::class.simpleName }.eachCount().entries.joinToString { "${it.value} ${it.key}" }
@@ -216,11 +225,15 @@ class PlaylistSync @Inject constructor(
     private suspend fun import(server: Server, serverId: String, stamp: String) {
         val full = server.client.playlist(serverId)
         val rows = rowsOf(full) ?: return
-        val twin = user.phonePlaylists().filter { it.name == full.name }.firstOrNull { playlist ->
+        val isFamily = isFamilyPlaylist(full.owner, server.client.username)
+        val songs = syncedSongsText(full.entry.map { it.id })
+        val twin =user.phonePlaylists().filter { it.name == full.name }.firstOrNull { playlist ->
             user.playlistItems(playlist.id).map { it.trackId } == rows.map { it.trackId }
         }
         if (twin != null) {
             user.linkPlaylist(twin.id, serverId, server.sourceId, twin.updatedAt, twin.name, stamp)
+            user.markFamily(twin.id, isFamily)
+            user.markFamilyBase(twin.id, songs)
             return
         }
         val now = System.currentTimeMillis()
@@ -236,6 +249,8 @@ class PlaylistSync @Inject constructor(
             syncedAt = at,
             syncedName = full.name,
             serverStamp = stamp,
+            family = isFamily,
+            syncedSongs = songs,
         )
         user.insertServerPlaylist(row, items(id, rows))
     }
@@ -247,17 +262,26 @@ class PlaylistSync @Inject constructor(
         val before = user.playlistRow(step.localId) ?: return
         val full = server.client.playlist(step.serverId)
         val fromServer = rowsOf(full) ?: return
-        val local = user.playlistItems(before.id).map { Row(it.trackId, it.serverSongId) }
+        val localItems = user.playlistItems(before.id)
+        val local = localItems.map { Row(it.trackId, it.serverSongId) }
         val copies = serverCopies(server.sourceId, local.map { it.trackId })
         val rows = withPhoneOnly(fromServer, local) { serverSongFor(it, copies[it.trackId].orEmpty()) == null }
         val updated = if (step.keepName) {
             // Still counts as changed here until the name reaches the server.
-            before.copy(serverStamp = step.stamp)
+            before.copy(serverStamp = step.stamp, syncedSongs = syncedSongsText(full.entry.map { it.id }))
         } else {
             val at = maxOf(System.currentTimeMillis(), before.updatedAt + 1)
-            before.copy(name = full.name, updatedAt = at, syncedAt = at, syncedName = full.name, serverStamp = step.stamp)
+            before.copy(
+                name = full.name,
+                updatedAt = at,
+                syncedAt = at,
+                syncedName = full.name,
+                serverStamp = step.stamp,
+                syncedSongs = syncedSongsText(full.entry.map { it.id }),
+            )
         }
-        if (!user.takeServerSongs(before, items(before.id, rows), updated)) return
+        val kept = if (before.family) keptRowIds(localItems.map { it.id to it.trackId }, rows) else emptyList()
+        if (!user.takeServerSongs(before, items(before.id, rows, kept), updated)) return
         if (step.keepName) {
             server.client.updatePlaylist(step.serverId, name = before.name)
             val stamp = listingStamp(server, step.serverId) ?: return
@@ -269,6 +293,8 @@ class PlaylistSync @Inject constructor(
     // both last agreed, it is settled like a sync would instead.
     private suspend fun push(server: Server, playlist: PlaylistEntity) {
         val serverId = playlist.serverId ?: return
+        // A family playlist is never replaced whole: its own changes go on top.
+        if (playlist.family) return pushFamily(server, playlist, serverId)
         val linked = playlist.linked() ?: return
         val client = server.client
         val listed = client.playlists().firstOrNull { it.id == serverId }
@@ -293,6 +319,59 @@ class PlaylistSync @Inject constructor(
         user.markSynced(playlist.id, playlist.updatedAt, playlist.name, after)
     }
 
+    // Sends a family playlist's own changes since both sides last agreed, on
+    // top of everyone else's: songs taken out here by their place in the
+    // server's list now, songs added here at the end, then its name. The
+    // phone then takes the server's list and name. Removals wait while the
+    // server shows fewer songs than it holds (one it could not read), since
+    // places count over all of them; a listener who hears only clean songs
+    // sees too few of them to take any out, so theirs come back instead.
+    private suspend fun pushFamily(server: Server, playlist: PlaylistEntity, serverId: String) {
+        val client = server.client
+        val there = client.playlist(serverId)
+        val current = there.entry.map { it.id }
+        val phone = familySongsToSend(server, playlist.id)
+        val base = syncedSongsOf(playlist.syncedSongs) ?: phone
+        val wanted = familyChanges(base, phone, current)
+        val cleanOnly = family.me?.abilities?.cleanOnly == true
+        val miscount = !cleanOnly && wanted.removeAt.isNotEmpty() &&
+            client.playlists().firstOrNull { it.id == serverId }?.songCount != current.size
+        val changes = if (cleanOnly || miscount) wanted.copy(removeAt = emptyList()) else wanted
+        if (!changes.none) {
+            client.updatePlaylist(serverId, songIdsToAdd = changes.add, songIndexesToRemove = changes.removeAt, formPost = server.formPost)
+            // Kept before anything else can fail, so nothing is sent twice.
+            user.markFamilyBase(playlist.id, syncedSongsText(if (miscount) base + changes.add else phone))
+        }
+        if (playlist.name != playlist.syncedName && playlist.name != there.name) {
+            try {
+                client.updatePlaylist(serverId, name = playlist.name)
+            } catch (e: SubsonicException.Server) {
+                // Only its maker or a family manager may rename it; the
+                // server's name comes back below.
+                if (e.code != 50) throw e
+            }
+        }
+        // Still changed here: sent again once the server shows every song.
+        if (miscount) return
+        val stamp = listingStamp(server, serverId) ?: return
+        val full = client.playlist(serverId)
+        val fromServer = rowsOf(full) ?: return
+        val localItems = user.playlistItems(playlist.id)
+        val local = localItems.map { Row(it.trackId, it.serverSongId) }
+        val copies = serverCopies(server.sourceId, local.map { it.trackId })
+        val rows = withPhoneOnly(fromServer, local) { serverSongFor(it, copies[it.trackId].orEmpty()) == null }
+        val at = maxOf(System.currentTimeMillis(), playlist.updatedAt + 1)
+        val updated = playlist.copy(
+            name = full.name,
+            updatedAt = at,
+            syncedAt = at,
+            syncedName = full.name,
+            serverStamp = stamp,
+            syncedSongs = syncedSongsText(full.entry.map { it.id }),
+        )
+        user.takeServerSongs(playlist, items(playlist.id, rows, keptRowIds(localItems.map { it.id to it.trackId }, rows)), updated)
+    }
+
     // Makes a phone playlist on the server and links the two.
     private suspend fun create(server: Server, playlist: PlaylistEntity) {
         if (playlist.serverId != null || playlist.sourceId != server.sourceId) return
@@ -310,6 +389,10 @@ class PlaylistSync @Inject constructor(
             server.client.deletePlaylist(serverId)
         } catch (_: SubsonicException.NotFound) {
             // Already gone.
+        } catch (e: SubsonicException.Server) {
+            // Not allowed (a family playlist for anyone but a manager): never
+            // tried again; it comes back to the phone with the next sync.
+            if (e.code != 50) throw e
         }
         store.removeDeleted(server.account, serverId)
     }
@@ -320,6 +403,15 @@ class PlaylistSync @Inject constructor(
         val rows = user.playlistItems(localId).map { Row(it.trackId, it.serverSongId) }
         val copies = serverCopies(server.sourceId, rows.map { it.trackId })
         return rows.mapNotNull { serverSongFor(it, copies[it.trackId].orEmpty()) }
+    }
+
+    // A family playlist's songs as the server knows them: each song from the
+    // server's copy by the id the server gave it, a song added here by its
+    // copy on the server; songs only on the phone left out.
+    private suspend fun familySongsToSend(server: Server, localId: String): List<String> {
+        val rows = user.playlistItems(localId).map { Row(it.trackId, it.serverSongId) }
+        val copies = serverCopies(server.sourceId, rows.map { it.trackId })
+        return rows.mapNotNull { it.serverSongId ?: serverSongFor(it, copies[it.trackId].orEmpty()) }
     }
 
     // Each library song's copies on this server, by song.
@@ -337,10 +429,12 @@ class PlaylistSync @Inject constructor(
         return serverRows(playlist.entry.map { it.id }, ids)
     }
 
-    private suspend fun items(playlistId: String, rows: List<Row>): List<PlaylistItemEntity> {
+    // The rows of a playlist's songs, each keeping the id given for its place (0 for a new one).
+    private suspend fun items(playlistId: String, rows: List<Row>, ids: List<Long?> = emptyList()): List<PlaylistItemEntity> {
         val keys = catalog.tracksByIds(rows.map { it.trackId }.filterNot(::isFind)).associate { it.id to it.relinkKey }
         return rows.mapIndexed { position, row ->
             PlaylistItemEntity(
+                id = ids.getOrNull(position) ?: 0,
                 playlistId = playlistId,
                 trackId = row.trackId,
                 relinkKey = keys[row.trackId].orEmpty(),
@@ -357,16 +451,16 @@ class PlaylistSync @Inject constructor(
         server.client.playlists().firstOrNull { it.id == serverId }?.let { stampOf(it.changed, it.songCount) }
 
     // For a server too old to answer with the playlist it made: the newest
-    // one of the user's by that name that no phone playlist is linked to.
+    // one of the user's own by that name that no phone playlist is linked to
+    // (never a family playlist).
     private suspend fun newestNamed(server: Server, name: String): String? {
         val linked = user.serverPlaylists(server.sourceId).mapNotNullTo(HashSet()) { it.serverId }
-        return importable(server.client.playlists(), emptySet(), server.client.username)
-            .filter { it.name == name && it.id !in linked }
+        return newestNamedCandidates(server.client.playlists(), name, server.client.username, linked)
             .maxByOrNull { it.created.orEmpty() }?.id
     }
 
     private fun PlaylistEntity.linked(): LinkedPlaylist? =
-        serverId?.let { LinkedPlaylist(id, it, name, edited, syncedName, serverStamp) }
+        serverId?.let { LinkedPlaylist(id, it, name, edited, syncedName, serverStamp, family) }
 
     private class Server(val client: SubsonicClient, val sourceId: String, val account: String, val formPost: Boolean)
 
