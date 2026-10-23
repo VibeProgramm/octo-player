@@ -39,6 +39,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import app.winters.octo.catalog.PlaylistSummary
+import app.winters.octo.catalog.TrackEntity
 import app.winters.octo.catalog.UserDao
 import app.winters.octo.design.AccentButton
 import app.winters.octo.design.GlassPopup
@@ -58,6 +59,7 @@ import app.winters.octo.playlists.playlistFileName
 import app.winters.octo.ui.common.CloudMark
 import app.winters.octo.ui.common.Feedback
 import app.winters.octo.ui.common.GlassMenuAction
+import app.winters.octo.ui.common.GlassMenuSwitch
 import app.winters.octo.ui.common.GlassMenuBack
 import app.winters.octo.ui.common.GlassMenuHeading
 import app.winters.octo.ui.common.GlassMenuNote
@@ -94,13 +96,15 @@ sealed interface PlaylistSheet {
 
     // Rename or delete a playlist, or save one only on the phone to the
     // server when `canSave`. `onServer` is one kept with the server.
-    // `canDownload` when some of its songs are only on a server.
+    // `canDownload` when some of its songs are only on a server. `keep`,
+    // the playlist's songs, offers its Keep downloaded switch, from its page.
     data class Options(
         val id: String,
         val name: String,
         val onServer: Boolean = false,
         val canSave: Boolean = false,
         val canDownload: Boolean = false,
+        val keep: List<TrackEntity>? = null,
     ) : PlaylistSheet
     data class Rename(val id: String, val name: String) : PlaylistSheet
     data class Delete(val id: String, val name: String, val onServer: Boolean = false) : PlaylistSheet
@@ -282,6 +286,7 @@ fun PlaylistSheetsHost(sheets: PlaylistSheets, vm: PlaylistSheetsViewModel = hil
                             sheets.close()
                         })
                     }
+                    sheet.keep?.let { tracks -> keepPlaylistItem(sheet.id, tracks)?.let { GlassMenuSwitch(it) } }
                     GlassMenuAction(OctoIcons.Share, "Export as M3U", onClick = {
                         exporting = sheet.id
                         sheets.close()

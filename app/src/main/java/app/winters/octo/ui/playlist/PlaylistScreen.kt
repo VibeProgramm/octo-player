@@ -179,18 +179,27 @@ fun PlaylistScreen(
                                 val onServer = playlist.sourceId != null
                                 val canDownload = tracks.any { !it.track.onPhone && !isFind(it.track.id) }
                                 sheets.show(
-                                    PlaylistSheet.Options(playlist.id, playlist.name, onServer, canSave = serverAvailable && !onServer, canDownload = canDownload),
+                                    PlaylistSheet.Options(
+                                        playlist.id,
+                                        playlist.name,
+                                        onServer,
+                                        canSave = serverAvailable && !onServer,
+                                        canDownload = canDownload,
+                                        keep = tracks.map { it.track },
+                                    ),
                                 )
                             },
+                            // How far Keep downloaded has got, and the songs the
+                            // server's copy lacks, join the size and length.
+                            facts = listOfNotNull(
+                                keepPlaylistProgress(playlist.id, tracks.map { it.track }),
+                                if (playlist.sourceId != null && phoneOnly > 0) phoneOnlyNote(phoneOnly) else null,
+                            ),
                         ) { modifier, shape ->
                             PlaylistArtwork(playlist.id, playlist.name, current.covers, 240.dp, modifier, shape, footer = phonePlaylistFooter(tracks.size), glyph = playlistGlyph(playlist.octoNotice, null)) {
                                 PlaylistCover(current.covers, 240.dp, modifier, shape)
                             }
                         }
-                    }
-                    item(key = "keep") { KeepPlaylistDownloaded(playlist.id, tracks.map { it.track }) }
-                    if (playlist.sourceId != null && phoneOnly > 0) {
-                        item(key = "phone-only") { EmptyNote(phoneOnlyNote(phoneOnly)) }
                     }
                     if (rows.isEmpty()) {
                         item(key = "empty") { EmptyNote("This playlist is empty. Long press any song and choose Add to playlist.") }
@@ -253,7 +262,7 @@ fun PlaylistScreen(
 // have no copy there.
 internal fun phoneOnlyNote(count: Int): String =
     if (count == 1) {
-        "1 song is only on this phone and is not in the server's copy"
+        "1 song only on this phone, not in the server's copy"
     } else {
-        "$count songs are only on this phone and are not in the server's copy"
+        "$count songs only on this phone, not in the server's copy"
     }

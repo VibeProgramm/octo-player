@@ -54,7 +54,8 @@ class MoreItem(
 // opening a glass menu of the page's lesser actions beside it. With nothing
 // to offer it is not drawn. A `quiet` one is the plain icon with no glass,
 // for a sheet's top, where the glass would frost the page under the sheet;
-// its menu frosts `backdrop`.
+// its menu frosts `backdrop`. `icon` puts another mark on the button, like
+// the plus of a menu of things to make.
 @Composable
 fun HeaderMore(
     items: List<MoreItem>,
@@ -62,11 +63,12 @@ fun HeaderMore(
     title: String = "More",
     quiet: Boolean = false,
     backdrop: HazeState = LocalHaze.current,
+    @DrawableRes icon: Int = OctoIcons.More,
 ) {
     if (items.isEmpty()) return
     var open by remember { mutableStateOf(false) }
     val spot = modifier.pressSpot(LocalPressSpot.current)
-    if (quiet) QuietIconAction(OctoIcons.More, title, { open = true }, spot) else HeaderButton(OctoIcons.More, title, { open = true }, spot)
+    if (quiet) QuietIconAction(icon, title, { open = true }, spot) else HeaderButton(icon, title, { open = true }, spot)
     GlassPopup(
         visible = open,
         anchor = rememberOpenedBeside(open),
@@ -77,7 +79,7 @@ fun HeaderMore(
         GlassMenuPage {
             items.forEach { item ->
                 if (item.checked != null) {
-                    MoreSwitch(item)
+                    GlassMenuSwitch(item)
                 } else {
                     GlassMenuAction(
                         item.icon,
@@ -99,10 +101,10 @@ fun HeaderMore(
 
 private val RowShape = RoundedCornerShape(14.dp)
 
-// A switch in the More menu: the icon, what it does with its line, and the
+// A switch in a glass menu: the icon, what it does with its line, and the
 // switch at the end. The whole line flips it.
 @Composable
-private fun MoreSwitch(item: MoreItem) {
+fun GlassMenuSwitch(item: MoreItem) {
     val checked = item.checked == true
     val interaction = remember { MutableInteractionSource() }
     Row(

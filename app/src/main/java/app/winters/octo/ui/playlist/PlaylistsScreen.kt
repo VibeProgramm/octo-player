@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.flowOn
 import app.winters.octo.catalog.mosaicCovers
 import app.winters.octo.covers.playlistGlyph
 import app.winters.octo.livelists.LiveListSongs
+import app.winters.octo.design.OctoIcons
 import app.winters.octo.ui.common.phonePlaylistFooter
 import app.winters.octo.ui.common.PlaylistArtwork
 import android.net.Uri
@@ -35,13 +36,14 @@ import app.winters.octo.sort.Sorted
 import app.winters.octo.sort.sortPlaylists
 import app.winters.octo.ui.common.Refreshable
 import app.winters.octo.ui.common.SortButton
-import app.winters.octo.ui.common.TitleWithSort
+import app.winters.octo.ui.common.HeaderMore
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.TopOnNewOrder
 import app.winters.octo.ui.common.screenPadding
 import app.winters.octo.ui.common.songs
 import app.winters.octo.ui.common.sortedRows
 import app.winters.octo.ui.livelists.LiveListLine
-import app.winters.octo.ui.livelists.NewLiveListLine
 import app.winters.octo.ui.menu.CollectionTarget
 import app.winters.octo.ui.menu.LocalSongMenu
 import app.winters.octo.ui.nav.LiveListEditRoute
@@ -140,22 +142,24 @@ class PlaylistsViewModel @Inject constructor(
     }
 }
 
-// The lines above the playlists, in order.
-enum class PlaylistsLead(val key: String) {
-    New("new"),
-    NewLive("new-live"),
-    Import("import"),
-    ImportNote("import-note"),
+// What the plus on the header makes, in order: a playlist, a live list, or
+// a playlist from a file. Liked songs is not here; hearted songs live on
+// the Favorites page.
+enum class PlaylistsAdd(val label: String, val detail: String?) {
+    New("New playlist", null),
+    NewLive("New live list", "Songs picked by rules, always up to date"),
+    Import("Import a playlist file", "M3U or M3U8"),
 }
 
-// The lead lines to show: making a playlist or a live list, importing, then
-// how the last import went while there is one. Liked songs is not here;
-// hearted songs live on the Favourites page.
-fun playlistsLead(importNote: Boolean): List<PlaylistsLead> =
-    PlaylistsLead.entries.filter { it != PlaylistsLead.ImportNote || importNote }
+private fun PlaylistsAdd.icon(): Int = when (this) {
+    PlaylistsAdd.New -> OctoIcons.AddToPlaylist
+    PlaylistsAdd.NewLive -> OctoIcons.Filter
+    PlaylistsAdd.Import -> OctoIcons.Folder
+}
 
-// Every playlist: ways to make or import one, then the listener's own and
-// the server's in the chosen order, the one changed last at the top to
+// Every playlist: a plus on the header to make or import one, how the last
+// import went while there is one, then the listener's own and the server's
+// in the chosen order, the one changed last at the top to
 // begin with, then the lists Octo made, by kind.
 @Composable
 fun PlaylistsScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: PlaylistsViewModel = hiltViewModel()) {
@@ -174,20 +178,28 @@ fun PlaylistsScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: PlaylistsV
     Refreshable {
         LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = screenPadding()) {
             item(key = "title") {
-                TitleWithSort("Playlists", onBack) {
-                    playlists?.let { sorted -> SortButton(SortList.Playlists, sorted.order, vm::setOrder) }
-                }
+                PageHeader(
+                    "Playlists",
+                    onBack,
+                    control = { playlists?.let { sorted -> SortButton(SortList.Playlists, sorted.order, vm::setOrder) } },
+                    actions = {
+                        HeaderMore(
+                            PlaylistsAdd.entries.map { add ->
+                                MoreItem(add.label, add.icon(), detail = add.detail, opensPage = add != PlaylistsAdd.Import) {
+                                    when (add) {
+                                        PlaylistsAdd.New -> sheets.show(PlaylistSheet.Create())
+                                        PlaylistsAdd.NewLive -> onOpen(LiveListEditRoute())
+                                        PlaylistsAdd.Import -> pickFile.launch(PlaylistFileTypes)
+                                    }
+                                }
+                            },
+                            title = "New playlist, live list or import",
+                            icon = OctoIcons.AddToLibrary,
+                        )
+                    },
+                )
             }
-            playlistsLead(importNote = importState != null).forEach { lead ->
-                item(key = lead.key) {
-                    when (lead) {
-                        PlaylistsLead.New -> NewPlaylistLine { sheets.show(PlaylistSheet.Create()) }
-                        PlaylistsLead.NewLive -> NewLiveListLine { onOpen(LiveListEditRoute()) }
-                        PlaylistsLead.Import -> ImportPlaylistLine { pickFile.launch(PlaylistFileTypes) }
-                        PlaylistsLead.ImportNote -> importState?.let { ImportNote(it) }
-                    }
-                }
-            }
+            importState?.let { state -> item(key = "import-note") { ImportNote(state) } }
             items(liveLists, key = { "live:${it.id}" }) { list ->
                 LiveListLine(list, liveCovers[list.id].orEmpty(), onClick = { onOpen(LiveListRoute(list.id)) }, onLongClick = { sheets.show(PlaylistSheet.LiveOptions(list.id, list.name)) })
             }

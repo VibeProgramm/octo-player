@@ -43,8 +43,11 @@ import app.winters.octo.design.elevation3
 import app.winters.octo.ui.common.Artwork
 import app.winters.octo.ui.common.CloudMark
 import app.winters.octo.ui.common.ListRowSide
-import app.winters.octo.ui.common.PlayRow
-import app.winters.octo.ui.common.QuietIconAction
+import app.winters.octo.ui.common.HeaderButton
+import app.winters.octo.ui.common.HeaderControlLine
+import app.winters.octo.ui.common.LocalPressSpot
+import app.winters.octo.ui.common.PlayShuffleButtons
+import app.winters.octo.ui.common.pressSpot
 import app.winters.octo.ui.common.asLength
 import app.winters.octo.ui.common.songs
 import coil3.compose.AsyncImage
@@ -133,17 +136,9 @@ fun PlaylistLine(
     }
 }
 
-// The first line of a list of playlists, for making a new one.
-@Composable
-fun NewPlaylistLine(onClick: () -> Unit) {
-    PlaylistLine("New playlist", null, onClick) {
-        IconTile(painterResource(OctoIcons.AddToLibrary), OctoColors.BackgroundTertiary, 56.dp)
-    }
-}
-
-// The top of a song-list page: its picture and name, then a quiet line with
-// its size and length, and Play and Shuffle under it once there is something
-// to play. `onMore` adds a more button at the end of the quiet line.
+// The top of a song-list page: its picture and name, then one quiet line
+// with its size, length and `facts`, then one control line with round Play
+// and Shuffle, once there is something to play, and More (`onMore`) at the end.
 @Composable
 fun ListHeader(
     title: String,
@@ -152,26 +147,43 @@ fun ListHeader(
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onMore: (() -> Unit)? = null,
+    facts: List<String> = emptyList(),
     picture: @Composable (Modifier, Shape) -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        picture(Modifier.elevation3(HeaderShape), HeaderShape)
-        Spacer(Modifier.height(20.dp))
-        Text(title, style = OctoType.title, color = OctoColors.TextPrimary, textAlign = TextAlign.Center)
-        PlayRow(
-            details = if (songCount == 0) songs(0) else "${songs(songCount)} · ${(durationMs / 1000).toInt().asLength()}",
-            onPlay = onPlay,
-            onShuffle = onShuffle,
-            modifier = Modifier.padding(top = 14.dp),
-            playable = songCount > 0,
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (onMore != null) QuietIconAction(OctoIcons.More, "More", onMore)
+            picture(Modifier.elevation3(HeaderShape), HeaderShape)
+            Spacer(Modifier.height(20.dp))
+            Text(title, style = OctoType.title, color = OctoColors.TextPrimary, textAlign = TextAlign.Center)
+            Text(
+                listHeaderFacts(songCount, durationMs, facts).joinToString(" · "),
+                style = OctoType.bodySmall,
+                color = OctoColors.TextMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        if (songCount > 0 || onMore != null) {
+            HeaderControlLine(
+                control = null,
+                filters = null,
+                actions = {
+                    if (songCount > 0) PlayShuffleButtons(onPlay, onShuffle)
+                    if (onMore != null) HeaderButton(OctoIcons.More, "More", onMore, Modifier.pressSpot(LocalPressSpot.current))
+                },
+                modifier = Modifier.padding(start = 12.dp, end = 16.dp, top = 10.dp),
+            )
         }
     }
 }
+
+// The quiet line under a list's name: its songs, their length once there
+// are any, then anything more the page says about it.
+fun listHeaderFacts(songCount: Int, durationMs: Long, facts: List<String>): List<String> =
+    listOfNotNull(songs(songCount), if (songCount == 0) null else (durationMs / 1000).toInt().asLength()) + facts
 
 // A plain line under the header when a list has nothing in it.
 @Composable

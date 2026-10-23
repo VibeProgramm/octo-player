@@ -49,12 +49,6 @@ fun LiveListLine(list: LiveList, covers: List<String>, onClick: () -> Unit, onLo
     }
 }
 
-// The line for making a live list, under New playlist, saying what one is.
-@Composable
-fun NewLiveListLine(onClick: () -> Unit) {
-    PlaylistLine("New live list", "Songs picked by rules, always up to date", onClick) { LiveMarkTile(56.dp) }
-}
-
 const val LIVE_LIST = "Live list"
 
 // A ready-made live list, offered while the listener has none.
