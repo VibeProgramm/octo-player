@@ -26,7 +26,8 @@ struct SearchView: View {
             // songs only.
             field
                 .padding(.top, 8)
-            ControlLine(fills: false) {
+            // Library songs only moves into More on a phone with no room for it.
+            ControlLine(fills: false, overflow: libraryOnlyOverflow) {
                 // The five kinds do not fit on one line on the smallest phone, so they are a menu.
                 Menu {
                     Picker("Show", selection: $model.filter) {
@@ -37,9 +38,6 @@ struct SearchView: View {
                     ChoiceChip(text: model.filter.label)
                 }
                 .accessibilityLabel("Show \(model.filter.label)")
-                if model.signedIn {
-                    OnOffChip(text: LibraryOnlyWords.setting, on: libraryOnly) { AppSettings.shared.setLibraryOnly(!libraryOnly) }
-                }
             } actions: {
                 EmptyView()
             }
@@ -68,6 +66,17 @@ struct SearchView: View {
             if let raw = note.object as? Int, let kind = SearchFilter(rawValue: raw) { model.filter = kind }
         }
         #endif
+    }
+
+    /// "Library songs only" as a chip after the kinds, or as a switch in More.
+    private var libraryOnlyOverflow: [LineOverflow] {
+        guard model.signedIn else { return [] }
+        let on = libraryOnly
+        return [LineOverflow("libraryOnly", priority: 1, trailing: true) {
+            OnOffChip(text: LibraryOnlyWords.setting, on: on) { AppSettings.shared.setLibraryOnly(!on) }
+        } row: {
+            Toggle(LibraryOnlyWords.setting, isOn: Binding(get: { on }, set: { AppSettings.shared.setLibraryOnly($0) }))
+        }]
     }
 
     // MARK: The field

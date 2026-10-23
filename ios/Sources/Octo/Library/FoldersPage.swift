@@ -135,9 +135,7 @@ struct FoldersPage: View {
         let shown = shownNames
         return VStack(alignment: .leading, spacing: 0) {
             PageHeader(shown.last ?? "Folders", count: levelCount).bigTitle()
-            ControlLine(fills: false) {
-                if shown.count > 1 { crumbs(shown) }
-            } actions: {
+            ControlLine(overflow: crumbsOverflow(shown)) {
                 switch path.last {
                 case .phone, .phoneFolder:
                     let node = phone?.root.at(phoneNames)
@@ -172,7 +170,27 @@ struct FoldersPage: View {
         return false
     }
 
-    /// The path from the start, each earlier place a way back to it, kept scrolled to its end.
+    /// The places above, first on the line; on a phone with no room for them, "In <place>" in
+    /// More holds the same places.
+    private func crumbsOverflow(_ shown: [String]) -> [LineOverflow] {
+        guard shown.count > 1 else { return [] }
+        return [LineOverflow("path", priority: 1) {
+            crumbs(shown)
+        } row: {
+            Menu {
+                crumbPlaces(shown)
+            } label: {
+                Label("In \(shown[shown.count - 2])", systemImage: OctoIcon.folder.symbol)
+            }
+        }]
+    }
+
+    private func crumbPlaces(_ shown: [String]) -> some View {
+        ForEach(Array(shown.dropLast().enumerated()), id: \.offset) { index, name in
+            Button(name) { goTo(depth: index, of: shown.count) }
+        }
+    }
+
     /// The places the folder is in, as a menu button named for the one just above it: each
     /// earlier place, nearest last, goes back to it. A path never scrolls sideways.
     private func crumbs(_ shown: [String]) -> some View {

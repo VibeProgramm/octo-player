@@ -179,15 +179,8 @@ struct AlbumsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(spacing: 0) {
                         PageHeader("Albums", count: sorted.flatMap { $0.items.isEmpty ? nil : countText($0.items.count, "album", "albums") })
-                        ControlLine {
-                            SortButton(list: .albums)
-                        } actions: {
+                        ControlLine(overflow: [.sort(.albums)], more: randomAlbum(sorted?.items ?? [])) {
                             if let sorted, !sorted.items.isEmpty {
-                                GlassMoreMenu {
-                                    Button("Random album", systemImage: "dice") {
-                                        if let album = sorted.items.randomElement() { router.go(.album(album.asAlbum)) }
-                                    }
-                                }
                                 RoundPlayShuffle {
                                     playAll(sorted.items, shuffled: false)
                                 } shuffle: {
@@ -232,6 +225,14 @@ struct AlbumsView: View {
         }
     }
 
+    /// Random album, More's own row while there are albums.
+    private func randomAlbum(_ albums: [LibraryAlbum]) -> AnyView? {
+        guard !albums.isEmpty else { return nil }
+        return AnyView(Button("Random album", systemImage: "dice") {
+            if let album = albums.randomElement() { router.go(.album(album.asAlbum)) }
+        })
+    }
+
     /// Plays every album in the order shown, each album's songs in album order.
     private func playAll(_ albums: [LibraryAlbum], shuffled: Bool) {
         Task {
@@ -258,9 +259,7 @@ struct ArtistsView: View {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
                     VStack(spacing: 0) {
                         PageHeader("Artists", count: sorted.flatMap { $0.items.isEmpty ? nil : countText($0.items.count, "artist", "artists") })
-                        ControlLine {
-                            SortButton(list: .artists)
-                        } actions: {
+                        ControlLine(overflow: [.sort(.artists)]) {
                             if let sorted, !sorted.items.isEmpty {
                                 RoundPlayShuffle {
                                     playAll(sorted.items, shuffled: false)
@@ -376,14 +375,10 @@ struct FavoritesView: View {
         VStack(spacing: 0) {
             PageHeader("Favorites", count: countWords)
             if let segment {
-                ControlLine(fills: true) {
-                    switch segment {
-                    case .songs: SortButton(list: .liked)
-                    case .albums, .artists: SortButton(list: .favorites)
-                    }
-                } chips: {
-                    GlassSegments(options: FavoriteSegment.allCases.map { ($0, $0.rawValue) },
-                                  selection: Binding(get: { segment }, set: { self.segment = $0 }))
+                let selection = Binding(get: { segment }, set: { self.segment = $0 })
+                ControlLine(fills: true, overflow: [.sort(segment == .songs ? .liked : .favorites)], more: keepDownloaded(segment),
+                            chipsMenu: AnyView(segmentsMenu(selection))) {
+                    GlassSegments(options: FavoriteSegment.allCases.map { ($0, $0.rawValue) }, selection: selection)
                 } actions: {
                     if segment == .songs, let songs, !songs.isEmpty {
                         RoundPlayShuffle {
@@ -392,14 +387,29 @@ struct FavoritesView: View {
                             actions.play(songs, shuffled: true, source: "Favorites")
                         }
                     }
-                    if segment == .songs, let songs, offersKeepDownloaded(offline, tracks: songs, playlistId: nil) {
-                        GlassMoreMenu { KeepDownloadedToggle(tracks: songs) }
-                    }
                 }
             }
         }
         .padding(.top, pageTopGap)
         .bigTitle()
+    }
+
+    /// Keep downloaded, More's own row on Liked songs while it is offered.
+    private func keepDownloaded(_ segment: FavoriteSegment) -> AnyView? {
+        guard segment == .songs, let songs, offersKeepDownloaded(offline, tracks: songs, playlistId: nil) else { return nil }
+        return AnyView(KeepDownloadedToggle(tracks: songs))
+    }
+
+    /// The three parts as one menu button, for a phone where even shrunk the segments do not fit.
+    private func segmentsMenu(_ selection: Binding<FavoriteSegment>) -> some View {
+        Menu {
+            Picker("Show", selection: selection) {
+                ForEach(FavoriteSegment.allCases, id: \.self) { part in Text(part.rawValue).tag(part) }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            ChoiceChip(text: selection.wrappedValue.rawValue)
+        }
     }
 
     /// The count of the segment shown, and for Liked songs kept downloaded how far that is.

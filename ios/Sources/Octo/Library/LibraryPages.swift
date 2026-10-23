@@ -97,15 +97,7 @@ struct SongsPage: View {
             LibraryList {
                 VStack(spacing: 0) {
                     PageHeader("Songs", count: songsCountWords(list))
-                    ControlLine {
-                        SortButton(list: .songs)
-                    } actions: {
-                        if let sorted, !sorted.items.isEmpty {
-                            GlassIconButton(icon: searching ? .close : .search,
-                                            label: searching ? "Close the search" : "Search these songs", lit: searching) {
-                                if searching { closeSearch() } else { openSearch() }
-                            }
-                        }
+                    ControlLine(overflow: lineOverflow) {
                         RoundPlayShuffle(enabled: !list.isEmpty) {
                             actions.play(list, source: "Songs")
                         } shuffle: {
@@ -181,6 +173,24 @@ struct SongsPage: View {
             await applyFilters()
         }
         .task(id: query) { await applyFilters() }
+    }
+
+    /// Sort, then Search, which move into More in that order when the line runs out of room.
+    private var lineOverflow: [LineOverflow] {
+        var items = [LineOverflow.sort(.songs)]
+        if let sorted, !sorted.items.isEmpty {
+            let words = searching ? "Close the search" : "Search these songs"
+            items.append(LineOverflow("search", priority: 2, trailing: true) {
+                GlassIconButton(icon: searching ? .close : .search, label: words, lit: searching) {
+                    if searching { closeSearch() } else { openSearch() }
+                }
+            } row: {
+                Button(words, systemImage: (searching ? OctoIcon.close : OctoIcon.search).symbol) {
+                    if searching { closeSearch() } else { openSearch() }
+                }
+            })
+        }
+        return items
     }
 
     /// The count on the title's line: how many songs, or how many of them the filters leave.
@@ -444,10 +454,9 @@ struct HistoryPage: View {
         LibraryList {
             VStack(spacing: 0) {
                 PageHeader("History", count: shownTracks.map { songsCount($0.count) })
-                ControlLine(fills: true) {
+                ControlLine(fills: true, overflow: lineOverflow, chipsMenu: AnyView(segmentsMenu)) {
                     GlassSegments(options: [(false, "Recently played"), (true, "Most played")], selection: $mostPlayed)
                 } actions: {
-                    if mostPlayed { rangeMenu }
                     RoundPlayShuffle(enabled: !(shownTracks ?? []).isEmpty) {
                         actions.play(shownTracks ?? [], source: "History")
                     } shuffle: {
@@ -505,6 +514,39 @@ struct HistoryPage: View {
         guard let all else { return nil }
         var seen = Set<String>()
         return all.filter { seen.insert($0.id).inserted }
+    }
+
+    /// The range, while Most played shows: it moves into More first when the line runs out of room.
+    private var lineOverflow: [LineOverflow] {
+        guard mostPlayed else { return [] }
+        return [LineOverflow("range", priority: 1, trailing: true) {
+            rangeMenu
+        } row: {
+            Menu {
+                rangePicker
+            } label: {
+                Label("Range: \(range.label)", systemImage: OctoIcon.history.symbol)
+            }
+        }]
+    }
+
+    /// The two lists as one menu button, for a phone where even shrunk the segments do not fit.
+    private var segmentsMenu: some View {
+        Menu {
+            Picker("Show", selection: $mostPlayed) {
+                Text("Recently played").tag(false)
+                Text("Most played").tag(true)
+            }
+            .pickerStyle(.inline)
+        } label: {
+            ChoiceChip(text: mostPlayed ? "Most played" : "Recently played")
+        }
+    }
+
+    private var rangePicker: some View {
+        Picker("Most played in", selection: $range) {
+            ForEach(HistoryRange.allCases, id: \.self) { range in Text(range.label).tag(range) }
+        }
     }
 
     /// The time range Most played covers, at the end of the segments' line.
@@ -573,12 +615,9 @@ struct DownloadsPage: View {
             VStack(spacing: 0) {
                 PageHeader("Downloads", count: rows.isEmpty ? nil : summaryWords(rows))
                 if !rows.isEmpty {
-                    ControlLine {
-                        SortButton(list: .downloads)
-                    } actions: {
-                        GlassMoreMenu {
-                            Button("Remove all", systemImage: OctoIcon.delete.symbol, role: .destructive) { confirming = true }
-                        }
+                    ControlLine(overflow: [.sort(.downloads)],
+                                more: AnyView(Button("Remove all", systemImage: OctoIcon.delete.symbol, role: .destructive) { confirming = true })) {
+                        EmptyView()
                     }
                 }
             }

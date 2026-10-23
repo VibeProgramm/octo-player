@@ -213,22 +213,7 @@ struct SortButton: View {
     var body: some View {
         let order = library.order(list)
         Menu {
-            // The two directions, the option's own starting one first; another one reorders at once.
-            Picker("Direction", selection: Binding(get: { order.descending },
-                                                   set: { library.setOrder(list, ListOrder(order.by, descending: $0)) })) {
-                ForEach(directionChoices(order.by), id: \.descending) { choice in
-                    Label(choice.label, systemImage: choice.descending ? "arrow.down" : "arrow.up").tag(choice.descending)
-                }
-            }
-            .pickerStyle(.palette)
-            // Another option comes in its own starting direction.
-            Picker("Sort by", selection: Binding(get: { order.by.id }, set: { id in
-                guard let option = list.options.first(where: { $0.id == id }), option.id != order.by.id else { return }
-                library.setOrder(list, order.picking(option))
-            })) {
-                ForEach(list.options, id: \.id) { option in Text(option.label).tag(option.id) }
-            }
-            .pickerStyle(.inline)
+            SortMenuItems(list: list)
         } label: {
             HStack(spacing: 7) {
                 IconView(.sort, size: 16, color: .white.opacity(0.72))
@@ -252,6 +237,55 @@ struct SortButton: View {
         .accessibilityLabel("Sorted by \(order.by.label), \(sortScale(order.by).label(descending: order.descending))")
         .accessibilityHint("Change the order")
         .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// What the sort menu holds: the two directions, the option's own starting one first, then the
+/// options. Another option comes in its own starting direction; another direction reorders at
+/// once.
+struct SortMenuItems: View {
+    let list: SortList
+    @Environment(LibraryState.self) private var library
+
+    var body: some View {
+        let order = library.order(list)
+        Picker("Direction", selection: Binding(get: { order.descending },
+                                               set: { library.setOrder(list, ListOrder(order.by, descending: $0)) })) {
+            ForEach(directionChoices(order.by), id: \.descending) { choice in
+                Label(choice.label, systemImage: choice.descending ? "arrow.down" : "arrow.up").tag(choice.descending)
+            }
+        }
+        .pickerStyle(.palette)
+        Picker("Sort by", selection: Binding(get: { order.by.id }, set: { id in
+            guard let option = list.options.first(where: { $0.id == id }), option.id != order.by.id else { return }
+            library.setOrder(list, order.picking(option))
+        })) {
+            ForEach(list.options, id: \.id) { option in Text(option.label).tag(option.id) }
+        }
+        .pickerStyle(.inline)
+    }
+}
+
+/// Sort as a row in More, once the line has no room for the button: "Sort: Date liked", opening
+/// the same choices.
+struct SortMoreRow: View {
+    let list: SortList
+    @Environment(LibraryState.self) private var library
+
+    var body: some View {
+        Menu {
+            SortMenuItems(list: list)
+        } label: {
+            Label("Sort: \(library.order(list).by.label)", systemImage: OctoIcon.sort.symbol)
+        }
+        .menuOrder(.fixed)
+    }
+}
+
+extension LineOverflow {
+    /// A list's Sort button, the first thing to move into More.
+    static func sort(_ list: SortList, priority: Int = 1) -> LineOverflow {
+        LineOverflow("sort", priority: priority) { SortButton(list: list) } row: { SortMoreRow(list: list) }
     }
 }
 

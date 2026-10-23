@@ -617,9 +617,7 @@ struct PlaylistsView: View {
                     FirstRowMark().id("top")
                     VStack(spacing: 0) {
                         PageHeader("Playlists", count: playlists.map { _ in countText(shown.count + liveLists.lists.count, "playlist", "playlists") })
-                        ControlLine {
-                            if playlists != nil { SortButton(list: .playlists) }
-                        } actions: {
+                        ControlLine(overflow: playlists == nil ? [] : [.sort(.playlists)]) {
                             // The ways to make a list, in the order the page once listed them.
                             GlassMoreMenu(icon: .addToLibrary, label: "New") {
                                 Button("New playlist", systemImage: OctoIcon.addToLibrary.symbol) { actions.askNewPlaylist(.tracks([])) }

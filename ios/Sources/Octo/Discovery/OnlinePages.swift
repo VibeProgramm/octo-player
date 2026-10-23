@@ -331,13 +331,7 @@ struct ChartsView: View {
     /// Best New Songs, Trending Songs, then the country's genres, the one shown checked), and
     /// Play and Shuffle held at the right.
     private var controlLine: some View {
-        ControlLine {
-            if canPickCountry {
-                Button { picking = true } label: { ChoiceChip(text: shownCountryName, systemImage: OctoIcon.globe.symbol) }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Chart country: \(shownCountryName)")
-            }
-        } chips: {
+        ControlLine(fills: false, overflow: countryOverflow) {
             if let shown = chosenChartLabel(choices, selected: selected) {
                 Menu {
                     Picker("Chart", selection: Binding(get: { selected }, set: { pick($0) })) {
@@ -361,6 +355,19 @@ struct ChartsView: View {
     }
 
     // MARK: The country
+
+    /// The country button, first on the line; on a phone with no room for it, "Country: Japan"
+    /// in More opens the same picker.
+    private var countryOverflow: [LineOverflow] {
+        guard canPickCountry else { return [] }
+        return [LineOverflow("country", priority: 1) {
+            Button { picking = true } label: { ChoiceChip(text: shownCountryName, systemImage: OctoIcon.globe.symbol) }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Chart country: \(shownCountryName)")
+        } row: {
+            Button("Country: \(shownCountryName)", systemImage: OctoIcon.globe.symbol) { picking = true }
+        }]
+    }
 
     private var canPickCountry: Bool { countriesOn && !none && !(own?.countries.isEmpty ?? true) }
 

@@ -47,36 +47,50 @@ struct LiveRadioPage: View {
 
     // MARK: The place and the choices
 
-    /// Line two: the place, which opens the place chooser, then the order and the radius.
+    /// Line two: the place, which opens the place chooser, then the order and the radius, which
+    /// move into More, the order first, on a phone with no room for them.
     private func controlLine(_ place: LivePlace) -> some View {
-        ControlLine {
+        ControlLine(overflow: [orderOverflow, radiusOverflow]) {
             Button { choosing = true } label: { ChoiceChip(text: place.label, systemImage: "location.fill") }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Near \(place.label)")
                 .accessibilityHint("Change the place")
-        } chips: {
-            Menu {
-                Picker("Order", selection: Binding(get: { radio.sort }, set: { radio.setSort($0) })) {
-                    ForEach(LiveSort.allCases, id: \.self) { sort in
-                        Label(sort.label, systemImage: sort == .distance ? "location" : "flame").tag(sort)
-                    }
-                }
-            } label: {
-                ChoiceChip(text: radio.sort.label, systemImage: "arrow.up.arrow.down")
-            }
-            .accessibilityLabel("Order: \(radio.sort.label)")
-            Menu {
-                Picker("Within", selection: Binding(get: { radio.radiusIndex }, set: { radio.setRadius($0) })) {
-                    ForEach(Array(radio.radiusChoices.enumerated()), id: \.offset) { index, choice in
-                        Text("Within \(choice.label)").tag(index)
-                    }
-                }
-            } label: {
-                ChoiceChip(text: "Within \(radio.radius.label)", systemImage: "scope")
-            }
-            .accessibilityLabel("Within \(radio.radius.label)")
         } actions: {
             EmptyView()
+        }
+    }
+
+    private var orderPicker: some View {
+        Picker("Order", selection: Binding(get: { radio.sort }, set: { radio.setSort($0) })) {
+            ForEach(LiveSort.allCases, id: \.self) { sort in
+                Label(sort.label, systemImage: sort == .distance ? "location" : "flame").tag(sort)
+            }
+        }
+    }
+
+    private var radiusPicker: some View {
+        Picker("Within", selection: Binding(get: { radio.radiusIndex }, set: { radio.setRadius($0) })) {
+            ForEach(Array(radio.radiusChoices.enumerated()), id: \.offset) { index, choice in
+                Text("Within \(choice.label)").tag(index)
+            }
+        }
+    }
+
+    private var orderOverflow: LineOverflow {
+        LineOverflow("order", priority: 1) {
+            Menu { orderPicker } label: { ChoiceChip(text: radio.sort.label, systemImage: "arrow.up.arrow.down") }
+                .accessibilityLabel("Order: \(radio.sort.label)")
+        } row: {
+            Menu { orderPicker } label: { Label("Order: \(radio.sort.label)", systemImage: "arrow.up.arrow.down") }
+        }
+    }
+
+    private var radiusOverflow: LineOverflow {
+        LineOverflow("radius", priority: 2) {
+            Menu { radiusPicker } label: { ChoiceChip(text: "Within \(radio.radius.label)", systemImage: "scope") }
+                .accessibilityLabel("Within \(radio.radius.label)")
+        } row: {
+            Menu { radiusPicker } label: { Label("Within \(radio.radius.label)", systemImage: "scope") }
         }
     }
 
