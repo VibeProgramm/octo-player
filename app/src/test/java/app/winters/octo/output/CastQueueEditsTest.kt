@@ -12,6 +12,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.MediaSession
 import androidx.test.core.app.ApplicationProvider
 import app.winters.octo.playback.OctoPlayer
+import app.winters.octo.playback.endOfOwnSongs
 import app.winters.octo.playback.markedAutoplay
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -140,6 +141,24 @@ class CastQueueEditsTest {
         cast(abc() + song("p").markedAutoplay(), shuffle = true)
         controller.addMediaItems(listOf(MediaItem.Builder().setMediaId("d").build()))
         assertQueue(listOf("a", "b", "c", "d", "p"))
+    }
+
+    @Test
+    fun addToQueueLooksBeforeAutoplaySongsStillToCome() {
+        cast(abc() + song("x").markedAutoplay() + song("y").markedAutoplay())
+        assertEquals(3, endOfOwnSongs(controller))
+    }
+
+    @Test
+    fun addToQueueLooksBeforeAutoplaySongsStillToComeShuffled() {
+        cast(abc() + song("x").markedAutoplay() + song("y").markedAutoplay(), shuffle = true)
+        assertEquals(3, endOfOwnSongs(controller))
+    }
+
+    @Test
+    fun addToQueueLooksAtTheEndWithNoAutoplaySongs() {
+        cast(abc())
+        assertEquals(3, endOfOwnSongs(controller))
     }
 
     @Test

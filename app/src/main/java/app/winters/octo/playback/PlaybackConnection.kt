@@ -5,7 +5,6 @@ import android.content.Context
 import android.media.AudioManager
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
-import androidx.media3.common.C
 import androidx.media3.common.DeviceInfo
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -296,21 +295,6 @@ class PlaybackConnection @Inject constructor(
         }
     }
 
-    // Where songs added to the end of the queue go: before the first
-    // Autoplay song still to come in play order, otherwise at the very end.
-    private fun endOfOwnSongs(c: Player): Int {
-        val count = c.mediaItemCount
-        val timeline = c.currentTimeline
-        val upcoming = buildList {
-            var i = if (timeline.isEmpty) C.INDEX_UNSET else timeline.getNextWindowIndex(c.currentMediaItemIndex, Player.REPEAT_MODE_OFF, c.shuffleModeEnabled)
-            while (i != C.INDEX_UNSET && size < count) {
-                add(i)
-                i = timeline.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, c.shuffleModeEnabled)
-            }
-        }
-        return ownSongsAt(count, upcoming, List(count) { c.getMediaItemAt(it).isAutoplay })
-    }
-
     // ---- End of adding with an undo ----
 
     private fun withController(action: (MediaController) -> Unit) {
@@ -399,4 +383,11 @@ class PlaybackConnection @Inject constructor(
     // songs to unless it plays them bit for bit.
     private fun outputRate(): Int? =
         context.getSystemService(AudioManager::class.java)?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
+}
+
+// Where songs added to the end of the queue go: before the first Autoplay
+// song still to come in play order, otherwise at the very end.
+internal fun endOfOwnSongs(player: Player): Int {
+    val count = player.mediaItemCount
+    return ownSongsAt(count, upcoming(player), List(count) { player.getMediaItemAt(it).isAutoplay })
 }
