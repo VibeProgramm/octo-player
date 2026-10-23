@@ -405,7 +405,14 @@ private fun LetterHeading(letter: Char) {
 // A list this long, ordered by name, gets the letter rail.
 const val RAIL_MIN_ITEMS = 60
 
-private val RailWidth = 24.dp
+// Whether a list shows the letter rail: ordered by name (it has headings)
+// and long enough.
+fun railShows(byName: Boolean, count: Int): Boolean = byName && count >= RAIL_MIN_ITEMS
+
+// How wide the letter rail is. A list that shows it keeps this much room
+// at its end, so the rail never sits over a row's length or a cover.
+val LetterRailWidth = 24.dp
+private val RailWidth = LetterRailWidth
 private val BubbleSize = 64.dp
 
 // The letters of a long list ordered by name, down its right edge. Touching

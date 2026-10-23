@@ -78,7 +78,8 @@ import app.winters.octo.ui.common.GlassIconButton
 import app.winters.octo.ui.common.LetterRail
 import app.winters.octo.ui.common.LocalReduceMotion
 import app.winters.octo.ui.common.Pickable
-import app.winters.octo.ui.common.RAIL_MIN_ITEMS
+import app.winters.octo.ui.common.LetterRailWidth
+import app.winters.octo.ui.common.railShows
 import app.winters.octo.ui.common.Refreshable
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.SelectableSongs
@@ -223,11 +224,13 @@ fun AlbumsScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: LibraryViewMo
         Loaded(albums) { sorted ->
             val grid = rememberLazyGridState()
             TopOnNewOrder(sorted.order, grid)
+            val names = sorted.headings
+            val rail = railShows(names != null, sorted.items.size)
             Box(Modifier.fillMaxSize()) {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(150.dp),
                     state = grid,
-                    contentPadding = ListPadding,
+                    contentPadding = listPadding(rail),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
@@ -235,8 +238,7 @@ fun AlbumsScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: LibraryViewMo
                         AlbumCard(album, onClick = { onOpen(AlbumRoute(album.id)) }, modifier = Modifier.animateItem(), width = null)
                     }
                 }
-                val names = sorted.headings
-                if (names != null && sorted.items.size >= RAIL_MIN_ITEMS) {
+                if (rail && names != null) {
                     val stops = remember(names) { railStops(letterRuns(names), headed = false) }
                     LetterRail(stops, onJump = { grid.requestScrollToItem(it) }, modifier = Modifier.fillMaxSize().padding(RailPadding))
                 }
@@ -340,9 +342,11 @@ fun SongsScreen(onBack: () -> Unit, onOpen: (NavKey) -> Unit = {}, vm: LibraryVi
 internal fun filteredCount(shown: Int, all: Int): String = "%,d of %,d %s".format(shown, all, if (all == 1) "song" else "songs")
 
 // Grids keep side margins; lists of rows run edge to edge. Both leave room
-// at the bottom for the floating bar.
-private val ListPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 140.dp)
-private val RowsPadding = PaddingValues(top = 4.dp, bottom = 140.dp)
+// at the bottom for the floating bar, and at the end for the letter rail
+// while it shows: the grid its own margin past the rail, the rows the
+// rail's width.
+private fun listPadding(rail: Boolean) = PaddingValues(start = 20.dp, end = if (rail) LetterRailWidth + 8.dp else 20.dp, top = 4.dp, bottom = 140.dp)
+private fun rowsPadding(rail: Boolean) = PaddingValues(end = if (rail) LetterRailWidth else 0.dp, top = 4.dp, bottom = 140.dp)
 
 // The letter rail runs beside the rows, clear of the floating bar.
 private val RailPadding = PaddingValues(top = 8.dp, bottom = 132.dp)
@@ -355,15 +359,16 @@ private fun <T> SortedList(sorted: Sorted<T>, key: (T) -> Any, row: @Composable 
     TopOnNewOrder(sorted.order, state)
     val names = sorted.headings
     val runs = remember(names) { names?.let(::letterRuns) }
+    val rail = railShows(runs != null, sorted.items.size)
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = RowsPadding) {
+        LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = rowsPadding(rail)) {
             if (runs != null) {
                 letteredRows(sorted.items, runs, key) { row(it) }
             } else {
                 sortedRows(sorted.items, key) { row(it) }
             }
         }
-        if (runs != null && sorted.items.size >= RAIL_MIN_ITEMS) {
+        if (rail && runs != null) {
             val stops = remember(runs) { railStops(runs, headed = true) }
             LetterRail(stops, onJump = { state.requestScrollToItem(it) }, modifier = Modifier.fillMaxSize().padding(RailPadding))
         }
