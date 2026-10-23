@@ -70,7 +70,7 @@ private fun CountryLine(row: CountryRow, pick: (String?) -> Unit, close: () -> U
             close()
         },
         detail = row.detail,
-        checked = row.chosen,
+        selected = row.chosen,
     )
 }
 

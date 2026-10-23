@@ -365,8 +365,9 @@ private val MenuRowShape = RoundedCornerShape(8.dp)
 // Under the pointer it sits in a quiet accent-tinted pill, at once. A
 // `destructive` one (deleting, removing) says so in soft red words; its
 // icon stays white like every other. `leading` draws something wider than
-// an icon in its place (a row of stars); `checked` marks the choice in use
-// with the accent pill, a heavier word and a white tick.
+// an icon in its place (a row of stars); `checked` ticks a switch that is on
+// or one of several picked. `selected` marks the one choice in use in a
+// menu of choices with the accent pill and a heavier word; it is ticked too.
 @Composable
 fun MenuRow(
     text: String,
@@ -379,6 +380,7 @@ fun MenuRow(
     interactionSource: MutableInteractionSource? = null,
     leading: (@Composable () -> Unit)? = null,
     checked: Boolean = false,
+    selected: Boolean = false,
 ) {
     val interaction = interactionSource ?: remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -388,7 +390,7 @@ fun MenuRow(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 6.dp)
-            .then(if (checked) Modifier.background(OctoColors.AccentSelected, MenuRowShape) else Modifier)
+            .then(if (selected) Modifier.background(OctoColors.AccentSelected, MenuRowShape) else Modifier)
             .menuRowPress(MenuRowShape) { if ((hovered || pressed || focused) && enabled) 1f else 0f }
             .hoverable(interaction, enabled = enabled)
             .pointerHoverIcon(if (enabled) PointerIcon.Hand else PointerIcon.Default)
@@ -400,7 +402,7 @@ fun MenuRow(
                 onClick = onClick,
             )
             .semantics {
-                if (checked) selected = true
+                if (checked || selected) this.selected = true
                 if (more) stateDescription = "Opens more"
             }
             .height(MenuRowHeight.Pointer)
@@ -411,7 +413,7 @@ fun MenuRow(
         if (leading != null) leading() else if (icon != null) Glyph(icon, size = 16.dp, tint = if (enabled) Color.White else OctoColors.TextMuted)
         Txt(
             text,
-            if (checked) OctoType.bodySmall.copy(fontWeight = FontWeight.Medium) else OctoType.bodySmall,
+            if (selected) OctoType.bodySmall.copy(fontWeight = FontWeight.Medium) else OctoType.bodySmall,
             when {
                 !enabled -> OctoColors.TextMuted
                 destructive -> OctoColors.Destructive
@@ -420,7 +422,7 @@ fun MenuRow(
             Modifier.weight(1f),
         )
         if (detail != null) Txt(detail, OctoType.caption, OctoColors.TextMuted)
-        if (checked) Glyph(OctoIcons.Check, size = 16.dp, tint = OctoColors.TextPrimary)
+        if (checked || selected) Glyph(OctoIcons.Check, size = 16.dp, tint = OctoColors.TextPrimary)
         if (more) Glyph(OctoIcons.Chevron, size = 16.dp, tint = OctoColors.TextMuted)
     }
 }
