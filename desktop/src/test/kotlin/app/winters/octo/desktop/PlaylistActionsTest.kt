@@ -110,6 +110,21 @@ class PlaylistActionsTest {
     }
 
     @Test
+    fun aFamilyPlaylistIsNeverReordered() {
+        server.answer("createPlaylist")
+        val app = app()
+        server.answer(
+            "getPlaylists",
+            """"playlists":{"playlist":[{"id":"f1","name":"Road trip","owner":"Family","songCount":2,"readonly":false}]}""",
+        )
+        app.refreshPlaylists()
+        waitFor { app.playlists.any { it.id == "f1" } }
+        app.reorderPlaylist("f1", listOf(two, one))
+        assertEquals(FAMILY_KEEPS_ORDER, app.notice)
+        assertTrue(callsTo("createPlaylist").isEmpty())
+    }
+
+    @Test
     fun aReorderTheServerRefusesGoesBackAndSaysSo() {
         server.fail("createPlaylist", 50, "Not allowed")
         val app = app()

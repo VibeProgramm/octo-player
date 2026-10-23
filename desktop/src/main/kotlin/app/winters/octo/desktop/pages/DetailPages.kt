@@ -63,7 +63,8 @@ import app.winters.octo.subsonic.Album
 // clicking the line under it; its songs move and come out from their menu.
 // Changes show at once and go back if the server refuses them. The bar under
 // the heading filters the songs; moves and removals still go by the
-// playlist's own places.
+// playlist's own places. A family playlist can be renamed (Octo decides for a
+// non-manager) but neither reordered nor described.
 @Composable
 fun PlaylistPage(app: AppState, visit: Visit, id: String) {
     val connection = app.connection ?: return

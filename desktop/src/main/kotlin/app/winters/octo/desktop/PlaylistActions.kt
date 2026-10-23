@@ -73,6 +73,10 @@ const val FAMILY_KEEPS_ORDER = "A family playlist keeps the order songs were add
 // fewer songs than it holds, so places in the list could point at others.
 const val FAMILY_MISCOUNT = "Octo couldn't read every song in this family playlist just now, so nothing was taken out. Try again in a moment."
 
+// Why songs were not taken out of a family playlist: it changed since its
+// page read it, so places on the page could point at other songs.
+const val FAMILY_CHANGED = "This family playlist changed since it was shown, so nothing was taken out. It's up to date now; try again."
+
 // A refused playlist change in the server's own words when it says why
 // (error 50, not allowed), otherwise the usual line.
 internal fun playlistFailure(e: SubsonicException): String {

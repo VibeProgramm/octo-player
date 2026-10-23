@@ -209,19 +209,34 @@ suspend fun AppState.playlistSongs(id: String): List<Song> = connection?.client?
 
 // Takes rows out of a playlist by their places in it, all in one call so
 // no place moves before the others go. A family playlist is first checked
-// to show every song it holds, since Octo counts places over all of them.
+// to be exactly the list its page shows, with every song Octo holds, since
+// Octo counts places over that list.
 fun AppState.removeFromPlaylist(id: String, positions: List<Int>) {
     val client = connection?.client ?: return
     if (positions.isEmpty()) return
     val formPost = formPost
-    val family = playlists.firstOrNull { it.id == id }?.let { access(it).family } == true
+    val isFamily = playlists.firstOrNull { it.id == id }?.let { access(it).family } == true
+    val seen = playlistView(id)?.entry?.map { it.id }
     scope.launch {
         try {
-            if (family) {
-                val shown = client.playlist(id).entry.size
-                val held = client.playlists().firstOrNull { it.id == id }?.songCount
-                if (held != shown) {
+            if (isFamily) {
+                // Octo counts places over the list it shows this listener, so the
+                // page's copy must be that list now, with every song it holds, and
+                // the listener must not be one who hears only clean songs.
+                val me = family.plan()
+                if (me?.abilities?.cleanOnly != false) {
                     notice = FAMILY_MISCOUNT
+                    return@launch
+                }
+                val fresh = client.playlist(id).entry.map { it.id }
+                val held = client.playlists().firstOrNull { it.id == id }?.songCount
+                if (held != fresh.size) {
+                    notice = FAMILY_MISCOUNT
+                    return@launch
+                }
+                if (seen != fresh) {
+                    notice = FAMILY_CHANGED
+                    loadPlaylist(id)
                     return@launch
                 }
             }

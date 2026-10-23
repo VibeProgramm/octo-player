@@ -394,7 +394,8 @@ fun ColumnScope.ArtistMenu(app: AppState, id: String, name: String, starred: Str
 // The menu for a playlist, in the sidebar, on its page or in a list: play
 // it, pin it, rename it in place, copy it, write it to a file, and for the
 // listener's own, make it public or private or delete it (asked first, in
-// the menu itself).
+// the menu itself). A family playlist is renamed by anyone who can add to it
+// (Octo answers for its maker) and deleted only by a family manager.
 @Composable
 fun ColumnScope.PlaylistMenu(app: AppState, playlist: Playlist, close: () -> Unit) {
     var deleting by remember { mutableStateOf(false) }
@@ -570,7 +571,7 @@ fun ColumnScope.AddAgainMenu(app: AppState, question: AddQuestion, close: () -> 
 }
 
 // Adds songs dropped on a playlist: straight in when none are there yet,
-// else the question opens where they were dropped. Only the listener's own
-// playlists take songs; a drop on another's says so in the notice line.
+// else the question opens where they were dropped. Only playlists the
+// listener can add to take songs; a drop on another's says so in the notice line.
 fun addDroppedSongs(app: AppState, playlist: Playlist, songs: List<Song>, at: IntOffset) =
     app.addToPlaylistChecked(playlist, songs) { question -> app.popups.showAt(at) { close -> AddAgainMenu(app, question, close) } }
