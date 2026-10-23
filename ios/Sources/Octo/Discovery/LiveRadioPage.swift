@@ -2,9 +2,9 @@ import OctoKit
 import SwiftUI
 import UIKit
 
-/// Live radio near you: the place, the order and the radius, then every station the Radio
-/// Browser catalog lists around the place that this app plays. Tapping a station plays it; its
-/// menu keeps it on the phone, or, for a server's admin, adds it to the server.
+/// Live radio near you: one line with the place, the order and the radius, then every station
+/// the Radio Browser catalog lists around the place that this app plays. Tapping a station plays
+/// it; its menu keeps it on the phone, or, for a server's admin, adds it to the server.
 struct LiveRadioPage: View {
     @Environment(Player.self) private var player
     @State private var radio = LiveRadioStore.shared
@@ -14,10 +14,9 @@ struct LiveRadioPage: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle("Live radio near you")
+                PageHeader("Live radio near you")
                 if let place = radio.place {
-                    placeLine(place)
-                    controlsRow
+                    controlLine(place)
                     content(place)
                 } else {
                     PlaceChooser { radio.choose($0) }
@@ -29,7 +28,7 @@ struct LiveRadioPage: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 24)
             }
-            .padding(.top, detailTopGap)
+            .padding(.top, pageTopGap)
             .animation(.easeInOut(duration: 0.2), value: radio.found)
             .animation(.easeInOut(duration: 0.2), value: radio.sort)
         }
@@ -48,26 +47,14 @@ struct LiveRadioPage: View {
 
     // MARK: The place and the choices
 
-    private func placeLine(_ place: LivePlace) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "location.fill")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(OctoColor.accent)
-                .accessibilityHidden(true)
-            Text(place.label)
-                .font(.octoBody)
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            GlazeButton("Change", size: .small) { choosing = true }
-        }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 12)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var controlsRow: some View {
-        HStack(spacing: 8) {
+    /// Line two: the place, which opens the place chooser, then the order and the radius.
+    private func controlLine(_ place: LivePlace) -> some View {
+        ControlLine {
+            Button { choosing = true } label: { ChoiceChip(text: place.label, systemImage: "location.fill") }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Near \(place.label)")
+                .accessibilityHint("Change the place")
+        } chips: {
             Menu {
                 Picker("Order", selection: Binding(get: { radio.sort }, set: { radio.setSort($0) })) {
                     ForEach(LiveSort.allCases, id: \.self) { sort in
@@ -88,9 +75,9 @@ struct LiveRadioPage: View {
                 ChoiceChip(text: "Within \(radio.radius.label)", systemImage: "scope")
             }
             .accessibilityLabel("Within \(radio.radius.label)")
+        } actions: {
+            EmptyView()
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 12)
     }
 
     // MARK: The stations
