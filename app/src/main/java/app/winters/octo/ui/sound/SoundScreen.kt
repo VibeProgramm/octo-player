@@ -63,13 +63,11 @@ import app.winters.octo.sound.FilterType
 import app.winters.octo.sound.ParametricEqFile
 import app.winters.octo.sound.ReplayGainMode
 import app.winters.octo.sound.SoundSettings
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.LocalHaze
 import app.winters.octo.ui.common.PopupNameForm
 import app.winters.octo.ui.common.PopupQuestion
 import app.winters.octo.ui.common.rememberOpenedBeside
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.Segmented
 import app.winters.octo.ui.common.screenPadding
 import app.winters.octo.ui.settings.Card
@@ -128,9 +126,9 @@ fun SoundScreen(onBack: () -> Unit, vm: SoundViewModel = hiltViewModel()) {
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(screenPadding(extraTop = DetailTopGap)),
+                .padding(screenPadding()),
         ) {
-            ScreenTitle("Sound")
+            PageHeader("Sound", onBack)
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 OutputLine(output.label, perOutput, vm::setPerOutput)
                 EqualizerCard(settings, vm, onSave = { show(SoundSheet.SavePreset) }, onDelete = { show(SoundSheet.DeletePreset(it)) })
@@ -140,7 +138,6 @@ fun SoundScreen(onBack: () -> Unit, vm: SoundViewModel = hiltViewModel()) {
                 CorrectionCard(settings, vm)
             }
         }
-        BackButton(onBack)
         SoundSheetHost(sheet, lastSheet, vm, onClose = { sheet = null })
     }
 }

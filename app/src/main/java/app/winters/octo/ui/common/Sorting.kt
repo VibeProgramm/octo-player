@@ -101,8 +101,9 @@ private val SortMarkTint = Color.White.copy(alpha = 0.72f)
 fun sortArrowTurn(descending: Boolean): Float = if (descending) 180f else 0f
 
 // The order a list is in, as a small glass capsule at its top: the sort
-// mark, what it goes by in white, and an arrow for which way it runs. A tap
-// pops the sort list up beside it.
+// mark, what it goes by in white, and an arrow for which way it runs. In a
+// page header short of room it shows the marks alone, its words kept for a
+// screen reader. A tap pops the sort list up beside it.
 @Composable
 fun SortButton(list: SortList, order: SortOrder, onChange: (SortOrder) -> Unit, modifier: Modifier = Modifier) {
     val sheet = LocalChoiceSheet.current
@@ -111,6 +112,7 @@ fun SortButton(list: SortList, order: SortOrder, onChange: (SortOrder) -> Unit, 
     val press by animateFloatAsState(if (pressed) 0.94f else 1f, spring(0.45f, 600f), label = "sort press")
     val turn by animateFloatAsState(sortArrowTurn(order.descending), spring(0.7f, 300f), label = "sort arrow")
     val direction = sortScale(order.by).label(order.descending)
+    val compact = LocalHeaderCompact.current
     Box(
         modifier
             .heightIn(min = 48.dp)
@@ -135,7 +137,7 @@ fun SortButton(list: SortList, order: SortOrder, onChange: (SortOrder) -> Unit, 
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 Icon(painterResource(OctoIcons.Sort), contentDescription = null, tint = SortMarkTint, modifier = Modifier.size(16.dp))
-                Text(
+                if (!compact) Text(
                     order.by.label,
                     style = OctoType.label.copy(fontWeight = FontWeight.Medium),
                     color = OctoColors.TextPrimary,
@@ -175,39 +177,12 @@ fun SortBar(
     }
 }
 
-// A page's big title with its sort button at the end of the line, at the
-// page's 20dp edge. The title has more room under its words than over them,
-// so the button is lifted by the difference to sit level with the words.
-// The title is never shortened or broken inside a word: when it and the
-// buttons do not both fit whole on one line, the buttons go on a line of
-// their own under it, at the same edge.
+// A page's header whose control is its sort button, beside the title on
+// the title's line; the button shows only its mark when its words do not
+// fit there.
 @Composable
-fun TitleWithSort(title: String, modifier: Modifier = Modifier, sort: @Composable () -> Unit) {
-    Layout(
-        content = {
-            ScreenTitle(title)
-            Box(Modifier.padding(end = 20.dp, bottom = 8.dp)) { sort() }
-        },
-        modifier = modifier,
-    ) { (titleText, buttons), constraints ->
-        val width = constraints.maxWidth
-        val buttonsPlaced = buttons.measure(Constraints(maxWidth = width))
-        val titleWidth = titleText.maxIntrinsicWidth(Constraints.Infinity)
-        if (titleFitsBeside(titleWidth, buttonsPlaced.width, width)) {
-            val titlePlaced = titleText.measure(Constraints(maxWidth = width - buttonsPlaced.width))
-            val height = maxOf(titlePlaced.height, buttonsPlaced.height)
-            layout(width, height) {
-                titlePlaced.place(0, (height - titlePlaced.height) / 2)
-                buttonsPlaced.place(width - buttonsPlaced.width, (height - buttonsPlaced.height) / 2)
-            }
-        } else {
-            val titlePlaced = titleText.measure(Constraints(maxWidth = width))
-            layout(width, titlePlaced.height + buttonsPlaced.height) {
-                titlePlaced.place(0, 0)
-                buttonsPlaced.place(width - buttonsPlaced.width, titlePlaced.height)
-            }
-        }
-    }
+fun TitleWithSort(title: String, onBack: () -> Unit, modifier: Modifier = Modifier, sort: @Composable () -> Unit) {
+    PageHeader(title, onBack, modifier, control = sort)
 }
 
 // Whether a page title, at its whole one-line width, fits beside its

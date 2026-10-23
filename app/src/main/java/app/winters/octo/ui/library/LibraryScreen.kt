@@ -69,10 +69,9 @@ import app.winters.octo.design.OctoType
 import app.winters.octo.livelists.liveListQueryFrom
 import app.winters.octo.sort.SortList
 import app.winters.octo.sort.Sorted
+import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.AlbumCard
 import app.winters.octo.ui.common.ArtistRow
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.EmptyLibraryNote
 import app.winters.octo.ui.common.GlassIconButton
 import app.winters.octo.ui.common.LetterRail
@@ -82,7 +81,6 @@ import app.winters.octo.ui.common.PlayPills
 import app.winters.octo.ui.common.QuietButton
 import app.winters.octo.ui.common.RAIL_MIN_ITEMS
 import app.winters.octo.ui.common.Refreshable
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.SelectableSongs
 import app.winters.octo.ui.common.SongRow
@@ -384,17 +382,15 @@ private fun LibraryPage(
 ) {
     Refreshable {
         CollapsingHeader(
-            Modifier.fillMaxSize().statusBarsPadding(),
+            Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp),
             header = {
                 Column {
-                    Spacer(Modifier.height(DetailTopGap))
-                    TitleWithSort(title, sort = action)
+                    TitleWithSort(title, onBack, sort = action)
                     buttons()
                 }
             },
             content = content,
         )
-        BackButton(onBack)
     }
 }
 

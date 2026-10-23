@@ -56,8 +56,6 @@ import app.winters.octo.sort.SortSettings
 import app.winters.octo.sort.Sorted
 import app.winters.octo.sort.sortDownloads
 import app.winters.octo.ui.common.Artwork
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.Feedback
 import app.winters.octo.ui.common.RemoveBackground
 import app.winters.octo.ui.common.SortButton
@@ -145,10 +143,9 @@ fun DownloadsScreen(onBack: () -> Unit, vm: OfflineDownloadsViewModel = hiltView
     val state = rememberLazyListState()
 
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Spacer(Modifier.height(DetailTopGap))
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
             val sorted = rows
-            TitleWithSort("Downloads") {
+            TitleWithSort("Downloads", onBack) {
                 if (sorted != null && sorted.items.isNotEmpty()) SortButton(SortList.Downloads, sorted.order, vm::setOrder)
             }
             if (sorted != null) {
@@ -194,7 +191,6 @@ fun DownloadsScreen(onBack: () -> Unit, vm: OfflineDownloadsViewModel = hiltView
                 }
             }
         }
-        BackButton(onBack)
     }
 }
 

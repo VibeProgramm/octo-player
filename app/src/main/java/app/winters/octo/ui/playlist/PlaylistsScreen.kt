@@ -33,8 +33,6 @@ import app.winters.octo.sort.SortOrder
 import app.winters.octo.sort.SortSettings
 import app.winters.octo.sort.Sorted
 import app.winters.octo.sort.sortPlaylists
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.Refreshable
 import app.winters.octo.ui.common.SortButton
 import app.winters.octo.ui.common.TitleWithSort
@@ -174,9 +172,9 @@ fun PlaylistsScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: PlaylistsV
     playlists?.let { TopOnNewOrder(it.order, state) }
 
     Refreshable {
-        LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = screenPadding(extraTop = DetailTopGap)) {
+        LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = screenPadding()) {
             item(key = "title") {
-                TitleWithSort("Playlists") {
+                TitleWithSort("Playlists", onBack) {
                     playlists?.let { sorted -> SortButton(SortList.Playlists, sorted.order, vm::setOrder) }
                 }
             }
@@ -208,6 +206,5 @@ fun PlaylistsScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: PlaylistsV
             }
             octoListRows(octoLists, onOpen)
         }
-        BackButton(onBack)
     }
 }

@@ -3,7 +3,6 @@ package app.winters.octo.ui.genre
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,13 +12,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -29,26 +25,22 @@ import androidx.navigation3.runtime.NavKey
 import app.winters.octo.catalog.AlbumEntity
 import app.winters.octo.catalog.CatalogDao
 import app.winters.octo.catalog.TrackEntity
-import app.winters.octo.design.OctoColors
-import app.winters.octo.design.OctoType
 import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.sort.SongScope
 import app.winters.octo.sort.SortList
 import app.winters.octo.sort.SortOrder
 import app.winters.octo.sort.Sorted
 import app.winters.octo.sort.SortedLibrary
+import app.winters.octo.design.OctoIcons
 import app.winters.octo.ui.common.AlbumCard
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
+import app.winters.octo.ui.common.HeaderButton
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Pickable
-import app.winters.octo.ui.common.PlayRow
 import app.winters.octo.ui.common.SelectableSongs
 import app.winters.octo.ui.common.SongRow
 import app.winters.octo.ui.common.SortBar
 import app.winters.octo.ui.common.TopOnNewOrder
-import app.winters.octo.ui.common.albums
 import app.winters.octo.ui.common.screenPadding
-import app.winters.octo.ui.common.songs
 import app.winters.octo.ui.nav.AlbumRoute
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
@@ -117,9 +109,16 @@ fun GenreScreen(
         sortedTracks?.let { TopOnNewOrder(it.order, state, top = 1 + albumRows.size) }
         val pickable = remember(tracks) { tracks.map { Pickable(it.id, it) } }
         SelectableSongs(pickable) {
-            LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = screenPadding(extraTop = DetailTopGap)) {
+            LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = screenPadding()) {
                 item(key = "header") {
-                    Header(name, albumList.size, tracks.size, onPlay = { vm.play(0) }, onShuffle = vm::shuffle)
+                    PageHeader(
+                        name,
+                        onBack,
+                        actions = {
+                            HeaderButton(OctoIcons.Play, "Play", { vm.play(0) }, enabled = tracks.isNotEmpty())
+                            HeaderButton(OctoIcons.Shuffle, "Shuffle", vm::shuffle, enabled = tracks.isNotEmpty())
+                        },
+                    )
                 }
                 items(albumRows, key = { "albums:${it.first().id}" }) { row ->
                     Row(
@@ -141,17 +140,6 @@ fun GenreScreen(
                 }
             }
         }
-        BackButton(onBack)
     }
 }
 
-@Composable
-private fun Header(name: String, albumCount: Int, songCount: Int, onPlay: () -> Unit, onShuffle: () -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(name, style = OctoType.title, color = OctoColors.TextPrimary, textAlign = TextAlign.Center)
-        PlayRow("${albums(albumCount)} • ${songs(songCount)}", onPlay, onShuffle, Modifier.padding(top = 14.dp))
-    }
-}

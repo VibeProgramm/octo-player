@@ -17,9 +17,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
-import app.winters.octo.ui.common.ScreenTitle
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.screenPadding
 
 // A settings page: the back button, the large title, and its groups one
@@ -41,12 +39,11 @@ fun SettingsPageFrame(
                 Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(screenPadding(extraTop = DetailTopGap)),
+                    .padding(screenPadding()),
             ) {
-                ScreenTitle(title)
+                PageHeader(title, onBack)
                 Column(verticalArrangement = Arrangement.spacedBy(24.dp), content = content)
             }
-            BackButton(onBack)
         }
     }
 }

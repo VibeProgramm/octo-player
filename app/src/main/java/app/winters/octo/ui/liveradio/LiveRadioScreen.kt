@@ -57,12 +57,10 @@ import app.winters.octo.liveradio.PlaceSource
 import app.winters.octo.liveradio.placeSourceLine
 import app.winters.octo.liveradio.radiusChoices
 import app.winters.octo.liveradio.radiusLabel
-import app.winters.octo.ui.common.BackButton
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.LocalChoiceSheet
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.Segmented
 import app.winters.octo.ui.common.COUNTRY_SEARCH_HINT
@@ -125,8 +123,8 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
     val place = search?.place
     val miles = vm.miles
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-            item(key = "title") { ScreenTitle(LIVE_NEAR_TITLE) }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+            item(key = "title") { PageHeader(LIVE_NEAR_TITLE, onBack) }
             if (search != null) {
                 if (place == null || vm.choosing) {
                     item(key = "chooser") {
@@ -199,7 +197,6 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
                 }
             }
         }
-        BackButton(onBack)
     }
 }
 

@@ -54,13 +54,11 @@ import app.winters.octo.query.decadesIn
 import app.winters.octo.query.genresIn
 import app.winters.octo.query.label
 import app.winters.octo.sort.SortOrder
-import app.winters.octo.ui.common.BackButton
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.LocalChoiceSheet
 import app.winters.octo.ui.common.QuietButton
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.SongRow
 import app.winters.octo.ui.common.SortRequest
@@ -205,8 +203,8 @@ fun LiveListEditScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-            item(key = "title") { ScreenTitle(if (new) "New live list" else "Edit live list") }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+            item(key = "title") { PageHeader(if (new) "New live list" else "Edit live list", onBack) }
             item(key = "name") {
                 GlassInput(draft.name, vm::rename, placeholder = liveListName(query), modifier = Modifier.padding(horizontal = 20.dp))
             }
@@ -281,7 +279,6 @@ fun LiveListEditScreen(
                 itemsIndexed(songs, key = { _, track -> track.id }) { index, track -> SongRow(track) { vm.play(index) } }
             }
         }
-        BackButton(onBack)
     }
 }
 

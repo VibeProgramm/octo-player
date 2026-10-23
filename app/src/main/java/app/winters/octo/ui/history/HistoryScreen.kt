@@ -52,13 +52,11 @@ import app.winters.octo.listening.mostPlayed
 import app.winters.octo.listening.rangeStart
 import app.winters.octo.listening.recentHistory
 import app.winters.octo.playback.PlaybackConnection
-import app.winters.octo.ui.common.BackButton
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.LocalChoiceSheet
 import app.winters.octo.ui.common.choiceAnchor
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.Segmented
 import app.winters.octo.ui.common.SongRow
@@ -116,9 +114,8 @@ class HistoryViewModel @Inject constructor(
 fun HistoryScreen(startMostPlayed: Boolean, onBack: () -> Unit, vm: HistoryViewModel = hiltViewModel()) {
     var most by rememberSaveable { mutableStateOf(startMostPlayed) }
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Spacer(Modifier.height(DetailTopGap))
-            ScreenTitle("History")
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
+            PageHeader("History", onBack)
             Segmented(
                 options = listOf("Recently played", "Most played"),
                 selected = if (most) 1 else 0,
@@ -127,7 +124,6 @@ fun HistoryScreen(startMostPlayed: Boolean, onBack: () -> Unit, vm: HistoryViewM
             )
             if (most) MostPlayed(vm) else RecentlyPlayed(vm)
         }
-        BackButton(onBack)
     }
 }
 

@@ -57,8 +57,6 @@ import app.winters.octo.sort.SortedLibrary
 import app.winters.octo.sort.sortFavourites
 import app.winters.octo.ui.common.AlbumCard
 import app.winters.octo.ui.common.ArtistRow
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.Feedback
 import app.winters.octo.ui.common.LocalSongSelection
 import app.winters.octo.ui.common.Pickable
@@ -171,9 +169,8 @@ fun FavouritesScreen(
     val segment = chosen
 
     Refreshable {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Spacer(Modifier.height(DetailTopGap))
-            TitleWithSort("Favorites") {
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
+            TitleWithSort("Favorites", onBack) {
                 when (segment) {
                     null -> Unit
                     FavouriteSegment.Songs -> songs?.let { SortButton(SortList.Liked, it.order, vm::setSongOrder) }
@@ -196,7 +193,6 @@ fun FavouritesScreen(
                 }
             }
         }
-        BackButton(onBack)
     }
 }
 

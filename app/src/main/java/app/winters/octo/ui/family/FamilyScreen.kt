@@ -2,6 +2,7 @@ package app.winters.octo.ui.family
 
 import app.winters.octo.ui.imports.GET_MY_MUSIC
 import app.winters.octo.ui.imports.IMPORT
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.LocalFeedback
 import app.winters.octo.design.OctoSwitch
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -67,9 +68,6 @@ import app.winters.octo.subsonic.FamilyMe
 import app.winters.octo.subsonic.FamilyMember
 import app.winters.octo.subsonic.FamilyRequest
 import app.winters.octo.subsonic.FamilyRequestState
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.screenPadding
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -98,8 +96,8 @@ fun FamilyScreen(onBack: () -> Unit, onImport: () -> Unit = {}, owner: FamilyShe
     }
     Box(Modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalFamilyCovers provides { id: String -> hub.coverRef(id) }) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-                item(key = "title") { ScreenTitle(FAMILY) }
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+                item(key = "title") { PageHeader(FAMILY, onBack) }
                 val info = model.info
                 if (info == null) {
                     item(key = "waiting") { Line(model.problem ?: "Asking the server about your plan.") }
@@ -116,7 +114,6 @@ fun FamilyScreen(onBack: () -> Unit, onImport: () -> Unit = {}, owner: FamilyShe
                 }
             }
         }
-        BackButton(onBack)
     }
     HandOverSheetHost(model, hub.serverAddress().orEmpty(), model.me?.username.orEmpty())
     InviteSheetHost(model, hub.serverAddress().orEmpty())
