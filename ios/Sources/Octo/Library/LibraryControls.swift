@@ -374,33 +374,6 @@ struct FavoriteHeart: View {
     }
 }
 
-/// A filter chip: the selected pill with white words while on, a faint fill with secondary
-/// words while off.
-struct FilterChip: View {
-    let text: String
-    let on: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            chipLabel(text, on: on)
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(on ? [.isSelected, .isToggle] : .isToggle)
-    }
-}
-
-func chipLabel(_ text: String, on: Bool) -> some View {
-    Text(text)
-        .font(LibraryLook.label)
-        .lineLimit(1)
-        .foregroundStyle(on ? Color.white : OctoColor.textSecondary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .frame(minHeight: 36)
-        .background(on ? LibraryLook.accentSelected : Color.white.opacity(0.07), in: Capsule())
-}
-
 /// A few choices side by side, as the system's segmented control.
 struct GlassSegments<Value: Hashable>: View {
     let options: [(value: Value, label: String)]

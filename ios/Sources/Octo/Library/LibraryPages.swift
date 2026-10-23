@@ -444,19 +444,8 @@ struct HistoryPage: View {
         LibraryList {
             VStack(spacing: 0) {
                 PageHeader("History", count: shownTracks.map { songsCount($0.count) })
-                // Which list, as a menu button: the two names do not fit beside the range and
-                // Play and Shuffle on the smallest phone.
-                ControlLine(fills: false) {
-                    Menu {
-                        Picker("Show", selection: $mostPlayed) {
-                            Text("Recently played").tag(false)
-                            Text("Most played").tag(true)
-                        }
-                        .pickerStyle(.inline)
-                    } label: {
-                        ChoiceChip(text: mostPlayed ? "Most played" : "Recently played")
-                    }
-                    .accessibilityLabel(mostPlayed ? "Most played" : "Recently played")
+                ControlLine(fills: true) {
+                    GlassSegments(options: [(false, "Recently played"), (true, "Most played")], selection: $mostPlayed)
                 } actions: {
                     if mostPlayed { rangeMenu }
                     RoundPlayShuffle(enabled: !(shownTracks ?? []).isEmpty) {
