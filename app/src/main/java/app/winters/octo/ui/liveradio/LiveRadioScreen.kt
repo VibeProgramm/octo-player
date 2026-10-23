@@ -7,22 +7,25 @@ import android.provider.Settings
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +35,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
@@ -46,6 +55,7 @@ import app.winters.octo.design.ButtonSize
 import app.winters.octo.design.GlassInput
 import app.winters.octo.design.GlazeButton
 import app.winters.octo.design.OctoColors
+import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
 import app.winters.octo.liveradio.LivePlace
 import app.winters.octo.liveradio.LiveSort
@@ -57,12 +67,14 @@ import app.winters.octo.liveradio.PlaceSource
 import app.winters.octo.liveradio.placeSourceLine
 import app.winters.octo.liveradio.radiusChoices
 import app.winters.octo.liveradio.radiusLabel
+import app.winters.octo.ui.common.HeaderChipBreak
+import app.winters.octo.ui.common.HeaderChips
+import app.winters.octo.ui.common.LocalHeaderCompact
 import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
 import app.winters.octo.ui.common.LocalChoiceSheet
 import app.winters.octo.ui.common.SectionTitle
-import app.winters.octo.ui.common.Segmented
 import app.winters.octo.ui.common.COUNTRY_SEARCH_HINT
 import app.winters.octo.ui.common.NO_COUNTRY_MATCHES
 import app.winters.octo.ui.common.choiceAnchor
@@ -124,7 +136,31 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
     val miles = vm.miles
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
-            item(key = "title") { PageHeader(LIVE_NEAR_TITLE, onBack) }
+            // The title, then one line: where the stations are found
+            // around (a tap changes it), their order, and how far around.
+            item(key = "title") {
+                PageHeader(
+                    LIVE_NEAR_TITLE,
+                    onBack,
+                    control = if (search == null || place == null) null else {
+                        { PlaceButton(place, onClick = { vm.choose(!vm.choosing) }) }
+                    },
+                    filters = if (search == null || place == null) null else {
+                        {
+                            val choices = radiusChoices(miles)
+                            HeaderChips {
+                                items(LiveSort.entries, key = { it.name }) { sort ->
+                                    RadiusChip(SortWords[sort.ordinal], chosen = sort == search.sort) { vm.setSort(sort) }
+                                }
+                                item(key = "break") { HeaderChipBreak() }
+                                itemsIndexed(choices, key = { _, radius -> "radius:$radius" }) { index, radius ->
+                                    RadiusChip(radiusLabel(miles, radius), chosen = index == search.radiusIndex.coerceIn(0, choices.lastIndex)) { vm.setRadius(index) }
+                                }
+                            }
+                        }
+                    },
+                )
+            }
             if (search != null) {
                 if (place == null || vm.choosing) {
                     item(key = "chooser") {
@@ -140,30 +176,6 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
                                 vm.findTyped(text)
                             },
                         )
-                    }
-                } else {
-                    item(key = "place") { PlaceLine(place, onChange = { vm.choose(true) }) }
-                }
-                if (place != null) {
-                    item(key = "sort") {
-                        Segmented(
-                            options = SortWords,
-                            selected = search.sort.ordinal,
-                            onSelect = { vm.setSort(LiveSort.entries[it]) },
-                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp),
-                        )
-                    }
-                    item(key = "radius") {
-                        val choices = radiusChoices(miles)
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
-                        ) {
-                            itemsIndexed(choices, key = { _, radius -> radius }) { index, radius ->
-                                RadiusChip(radiusLabel(miles, radius), chosen = index == search.radiusIndex.coerceIn(0, choices.lastIndex)) { vm.setRadius(index) }
-                            }
-                        }
                     }
                 }
                 when (val results = vm.results) {
@@ -200,19 +212,28 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
     }
 }
 
-// Where the stations are found around, with a way to change it.
+// Where the stations are found around, as a quiet capsule that changes
+// it: the place's name and a small chevron saying it opens. In a header too
+// short for the name it shows the globe alone, the name kept for a screen
+// reader. It is lit while the place is being changed.
 @Composable
-private fun PlaceLine(place: LivePlace, onChange: () -> Unit) {
+private fun PlaceButton(place: LivePlace, onClick: () -> Unit) {
+    val compact = LocalHeaderCompact.current
+    val near = "Near ${place.label}"
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        Modifier
+            .height(32.dp)
+            .clip(CircleShape)
+            .background(OctoColors.TextPrimary.copy(alpha = 0.08f))
+            .clickable(role = Role.Button, onClickLabel = "Change the place", onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = near }
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text("Near", style = OctoType.caption, color = OctoColors.TextMuted)
-            Text(place.label, style = OctoType.body, color = OctoColors.TextPrimary)
-        }
-        GlazeButton("Change", onClick = onChange, size = ButtonSize.Small)
+        Icon(painterResource(OctoIcons.Globe), contentDescription = null, tint = OctoColors.TextSecondary, modifier = Modifier.size(16.dp))
+        if (!compact) Text(place.label, style = OctoType.label, color = OctoColors.TextSecondary, maxLines = 1)
+        Icon(painterResource(OctoIcons.Chevron), contentDescription = null, tint = OctoColors.TextMuted, modifier = Modifier.size(12.dp).rotate(90f))
     }
 }
 
