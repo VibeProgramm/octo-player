@@ -128,28 +128,29 @@ fun SoundScreen(onBack: () -> Unit, vm: SoundViewModel = hiltViewModel()) {
                 .verticalScroll(rememberScrollState())
                 .padding(screenPadding()),
         ) {
-            PageHeader("Sound", onBack)
+            // The output these settings are for sits muted on the title line.
+            PageHeader("Sound", onBack, count = output.label)
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                OutputLine(output.label, perOutput, vm::setPerOutput)
                 EqualizerCard(settings, vm, onSave = { show(SoundSheet.SavePreset) }, onDelete = { show(SoundSheet.DeletePreset(it)) })
                 LoudnessCard(settings, vm)
                 BalanceCard(settings, vm)
                 CrossfeedCard(settings, headphones, vm)
                 CorrectionCard(settings, vm)
+                OutputLine(output.label, perOutput, vm::setPerOutput)
             }
         }
         SoundSheetHost(sheet, lastSheet, vm, onClose = { sheet = null })
     }
 }
 
-// Which output these settings are for, and whether each keeps its own.
+// At the foot: which output these settings are for, and whether each
+// output keeps its own.
 @Composable
 private fun OutputLine(label: String, perOutput: Boolean, onPerOutput: (Boolean) -> Unit) {
     Column(Modifier.padding(horizontal = 20.dp)) {
-        Text("Sound for $label", style = OctoType.body, color = OctoColors.TextPrimary)
         SwitchLine(
             label = "Each output keeps its own sound",
-            detail = "The speaker, headphones and each Bluetooth device remember their own settings.",
+            detail = "These settings are for $label. The speaker, headphones and each Bluetooth device remember their own settings.",
             checked = perOutput,
             onChange = onPerOutput,
         )
