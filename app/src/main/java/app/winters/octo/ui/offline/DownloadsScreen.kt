@@ -1,5 +1,6 @@
 package app.winters.octo.ui.offline
 
+import app.winters.octo.ui.common.sortItem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,8 +57,6 @@ import app.winters.octo.sort.sortDownloads
 import app.winters.octo.ui.common.Artwork
 import app.winters.octo.ui.common.Feedback
 import app.winters.octo.ui.common.RemoveBackground
-import app.winters.octo.ui.common.SortButton
-import app.winters.octo.ui.common.HeaderMore
 import app.winters.octo.ui.common.LocalHaze
 import app.winters.octo.ui.common.MoreItem
 import app.winters.octo.ui.common.PageHeader
@@ -156,10 +155,8 @@ fun DownloadsScreen(onBack: () -> Unit, vm: OfflineDownloadsViewModel = hiltView
                 "Downloads",
                 onBack,
                 count = sorted?.items?.let(::downloadsCount),
-                control = if (!any) null else ({ SortButton(SortList.Downloads, sorted.order, vm::setOrder) }),
-                actions = if (!any) null else ({
-                    HeaderMore(listOf(MoreItem(REMOVE_ALL, OctoIcons.Delete, destructive = true, opensPage = true) { confirming = true }))
-                }),
+                lead = if (!any) emptyList() else listOf(sortItem(SortList.Downloads, sorted.order, vm::setOrder)),
+                more = if (!any) emptyList() else listOf(MoreItem(REMOVE_ALL, OctoIcons.Delete, destructive = true, opensPage = true) { confirming = true }),
             )
             if (sorted != null) {
                 val list = sorted.items

@@ -1,5 +1,6 @@
 package app.winters.octo.ui.playlist
 
+import app.winters.octo.ui.common.sortItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOn
 import app.winters.octo.catalog.mosaicCovers
@@ -35,7 +36,6 @@ import app.winters.octo.sort.SortSettings
 import app.winters.octo.sort.Sorted
 import app.winters.octo.sort.sortPlaylists
 import app.winters.octo.ui.common.Refreshable
-import app.winters.octo.ui.common.SortButton
 import app.winters.octo.ui.common.HeaderMore
 import app.winters.octo.ui.common.MoreItem
 import app.winters.octo.ui.common.PageHeader
@@ -181,7 +181,7 @@ fun PlaylistsScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: PlaylistsV
                 PageHeader(
                     "Playlists",
                     onBack,
-                    control = { playlists?.let { sorted -> SortButton(SortList.Playlists, sorted.order, vm::setOrder) } },
+                    lead = listOfNotNull(playlists?.let { sorted -> sortItem(SortList.Playlists, sorted.order, vm::setOrder) }),
                     actions = {
                         HeaderMore(
                             PlaylistsAdd.entries.map { add ->

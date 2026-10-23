@@ -1,5 +1,8 @@
 package app.winters.octo.ui.liveradio
 
+import app.winters.octo.ui.common.ChoiceSheet
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.LineItem
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
@@ -7,25 +10,19 @@ import android.provider.Settings
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,12 +32,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
@@ -69,7 +60,6 @@ import app.winters.octo.liveradio.radiusChoices
 import app.winters.octo.liveradio.radiusLabel
 import app.winters.octo.ui.common.HeaderDropdown
 import app.winters.octo.ui.common.showDropdown
-import app.winters.octo.ui.common.LocalHeaderCompact
 import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
@@ -142,24 +132,7 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
                 PageHeader(
                     LIVE_NEAR_TITLE,
                     onBack,
-                    control = if (search == null || place == null) null else {
-                        { PlaceButton(place, onClick = { vm.choose(!vm.choosing) }) }
-                    },
-                    filters = if (search == null || place == null) null else {
-                        {
-                            val choices = radiusChoices(miles)
-                            val radius = search.radiusIndex.coerceIn(0, choices.lastIndex)
-                            val labels = choices.map { radiusLabel(miles, it) }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                HeaderDropdown(SortWords[search.sort.ordinal], onClick = {
-                                    showDropdown(sheet, "Order", SortWords, search.sort.ordinal) { vm.setSort(LiveSort.entries[it]) }
-                                }, clickLabel = "Choose the order")
-                                HeaderDropdown(labels[radius], onClick = {
-                                    showDropdown(sheet, "How far", labels, radius) { vm.setRadius(it) }
-                                }, clickLabel = "Choose how far")
-                            }
-                        }
-                    },
+                    lead = if (search == null || place == null) emptyList() else liveLine(place, search.sort, search.radiusIndex, miles, sheet, vm),
                 )
             }
             if (search != null) {
@@ -213,18 +186,27 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
     }
 }
 
-// Where the stations are found around, as a dropdown that changes it. In a
-// header too short for the place's name it shows the globe alone, the name
-// kept for a screen reader.
-@Composable
-private fun PlaceButton(place: LivePlace, onClick: () -> Unit) {
-    HeaderDropdown(
-        place.label,
-        onClick = onClick,
-        icon = OctoIcons.Globe,
-        showLabel = !LocalHeaderCompact.current,
-        description = "Near ${place.label}",
-        clickLabel = "Change the place",
+// The control line: where the stations are found around (a tap changes it),
+// their order and how far around, each a dropdown. On a narrow phone the
+// place shows its globe alone, then the order and the distance move into
+// More, then the place.
+private fun liveLine(place: LivePlace, sort: LiveSort, radiusIndex: Int, miles: Boolean, sheet: ChoiceSheet, vm: LiveRadioViewModel): List<LineItem> {
+    val choices = radiusChoices(miles)
+    val radius = radiusIndex.coerceIn(0, choices.lastIndex)
+    val labels = choices.map { radiusLabel(miles, it) }
+    val change = { vm.choose(!vm.choosing) }
+    val order = { showDropdown(sheet, "Order", SortWords, sort.ordinal) { vm.setSort(LiveSort.entries[it]) } }
+    val far = { showDropdown(sheet, "How far", labels, radius) { vm.setRadius(it) } }
+    return listOf(
+        LineItem("place", overflow = 2, more = MoreItem("Near ${place.label}", OctoIcons.Globe, detail = "Change the place", onClick = change), forms = 2) { form ->
+            HeaderDropdown(place.label, onClick = change, icon = OctoIcons.Globe, showLabel = form == 0, description = "Near ${place.label}", clickLabel = "Change the place")
+        },
+        LineItem("order", overflow = 0, more = MoreItem("Order: ${SortWords[sort.ordinal]}", OctoIcons.Sort, onClick = order)) { _ ->
+            HeaderDropdown(SortWords[sort.ordinal], onClick = order, clickLabel = "Choose the order")
+        },
+        LineItem("far", overflow = 1, more = MoreItem("How far: ${labels[radius]}", OctoIcons.Radio, onClick = far)) { _ ->
+            HeaderDropdown(labels[radius], onClick = far, clickLabel = "Choose how far")
+        },
     )
 }
 

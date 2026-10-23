@@ -62,7 +62,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -72,7 +71,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -101,9 +99,9 @@ private val SortMarkTint = Color.White.copy(alpha = 0.72f)
 fun sortArrowTurn(descending: Boolean): Float = if (descending) 180f else 0f
 
 // The order a list is in, as a small glass capsule at its top: the sort
-// mark, what it goes by in white, and an arrow for which way it runs. In a
-// page header short of room it shows the marks alone, its words kept for a
-// screen reader. A tap pops the sort list up beside it.
+// mark, what it goes by in white, and an arrow for which way it runs. A tap
+// pops the sort list up beside it. On a page header short of room it moves
+// into More (see sortItem).
 @Composable
 fun SortButton(list: SortList, order: SortOrder, onChange: (SortOrder) -> Unit, modifier: Modifier = Modifier) {
     val sheet = LocalChoiceSheet.current
@@ -112,7 +110,6 @@ fun SortButton(list: SortList, order: SortOrder, onChange: (SortOrder) -> Unit, 
     val press by animateFloatAsState(if (pressed) 0.94f else 1f, spring(0.45f, 600f), label = "sort press")
     val turn by animateFloatAsState(sortArrowTurn(order.descending), spring(0.7f, 300f), label = "sort arrow")
     val direction = sortScale(order.by).label(order.descending)
-    val compact = LocalHeaderCompact.current
     Box(
         modifier
             .heightIn(min = 48.dp)
@@ -137,7 +134,7 @@ fun SortButton(list: SortList, order: SortOrder, onChange: (SortOrder) -> Unit, 
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 Icon(painterResource(OctoIcons.Sort), contentDescription = null, tint = SortMarkTint, modifier = Modifier.size(16.dp))
-                if (!compact) Text(
+                Text(
                     order.by.label,
                     style = OctoType.label.copy(fontWeight = FontWeight.Medium),
                     color = OctoColors.TextPrimary,
@@ -177,13 +174,22 @@ fun SortBar(
     }
 }
 
-// A page's header whose control is its sort button, beside the title on
-// the title's line; the button shows only its mark when its words do not
-// fit there.
+// A list's sort button as a control line item, the first to move into More
+// when the line is short of room. There it is "Sort: Date liked", its
+// direction under it, and opens the same sort list.
 @Composable
-fun TitleWithSort(title: String, onBack: () -> Unit, modifier: Modifier = Modifier, sort: @Composable () -> Unit) {
-    PageHeader(title, onBack, modifier, control = sort)
+fun sortItem(list: SortList, order: SortOrder, onChange: (SortOrder) -> Unit, overflow: Int = 0): LineItem {
+    val sheet = LocalChoiceSheet.current
+    val direction = sortScale(order.by).label(order.descending)
+    return LineItem(
+        "sort",
+        overflow = overflow,
+        more = MoreItem(sortMoreLabel(order), OctoIcons.Sort, detail = direction) { sheet.show(SortRequest(list.options, order, onChange)) },
+    ) { _ -> SortButton(list, order, onChange) }
 }
+
+// What a sort button says in More: what the list goes by.
+fun sortMoreLabel(order: SortOrder): String = "Sort: ${order.by.label}"
 
 // Whether a page title, at its whole one-line width, fits beside its
 // buttons on a line `width` wide.

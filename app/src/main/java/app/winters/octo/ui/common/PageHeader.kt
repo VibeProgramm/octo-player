@@ -1,10 +1,8 @@
 package app.winters.octo.ui.common
 
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,8 +11,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -29,7 +25,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -50,32 +45,12 @@ val HeaderTitle = OctoType.display
 // actions, like Play and Shuffle.
 val HeaderButtonSize = 40.dp
 
-// Whether the page's control is drawn as its small form (an icon, or a
-// short code, its words kept for a screen reader) because its words do not
-// fit on the control line. A control that has a small form reads it.
-val LocalHeaderCompact = staticCompositionLocalOf { false }
-
-// The least room the filters keep on the control line beside a control
-// with its words; with less, the control takes its small form.
-private val FiltersMin = 96.dp
-
-// The room between the parts of the control line.
+// The room between the back button and the title.
 private val Gap = 10.dp
 
 // Half the height of the title's line, which holds a 48dp touch target
 // centered on the title's capitals.
 private val LineHalf = 24.dp
-
-// Whether the page's control takes its small form on the control line,
-// all in pixels: the line's width, the control's width with its words, the
-// actions at the end, and whether the line also holds filters, which keep
-// at least `filtersMin` beside the control.
-internal fun controlCompact(width: Int, control: Int, actions: Int, hasFilters: Boolean, gap: Int, filtersMin: Int): Boolean {
-    if (control <= 0) return false
-    val actionsPart = if (actions > 0) actions + gap else 0
-    val needed = control + actionsPart + (if (hasFilters) gap + filtersMin else 0)
-    return needed > width
-}
 
 // Where the title's line puts the title, in pixels: after the back button
 // (`back` wide, 0 without one) and its gap, at the title's own one-line
@@ -92,13 +67,14 @@ internal fun countFits(titleEnd: Int, count: Int, gap: Int, width: Int): Boolean
 // The top of a page that is not a tab, on two lines at most. The first
 // holds the back button and the big page title alone, the button on the
 // middle of the title's capitals. The second, the control line, holds
-// everything else: the page's own control first (a country or sort
-// button), then its filters (chips that scroll sideways), then its
-// actions (Play, Shuffle, More) at the end. A page with none of those has
-// the first line only. A `count` ("120 songs") sits muted at the end of the
-// title's line when it fits there whole, and is left off when it does not.
-// A page without a way back (a tab) keeps `trailing` at the end of the
-// title's line, for a quiet page action like Edit Home.
+// everything else (see HeaderControlLine): the page's own controls first
+// (`lead`, or one fixed `control`), its main choice as `segments`, then
+// Play and Shuffle (`tail`, or fixed `actions`) and More with `more` at the
+// end. On a narrow phone the lesser controls move into More. A page with
+// none of those has the first line only. A `count` ("120 songs") sits muted
+// at the end of the title's line when it fits there whole, and is left off
+// when it does not. A page without a way back (a tab) keeps `trailing` at
+// the end of the title's line, for a quiet page action like Edit Home.
 @Composable
 fun PageHeader(
     title: String,
@@ -106,11 +82,16 @@ fun PageHeader(
     modifier: Modifier = Modifier,
     count: String? = null,
     control: (@Composable () -> Unit)? = null,
-    filters: (@Composable () -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
+    lead: List<LineItem> = emptyList(),
+    segments: LineSegments? = null,
+    tail: List<LineItem> = emptyList(),
+    more: List<MoreItem> = emptyList(),
 ) {
-    val hasLine = control != null || filters != null || actions != null
+    val leading = fixedLead(control) + lead
+    val ending = tail + fixedTail(actions)
+    val hasLine = leading.isNotEmpty() || segments != null || ending.isNotEmpty() || more.isNotEmpty()
     Column(modifier.fillMaxWidth()) {
         TitleLine(
             title,
@@ -119,7 +100,9 @@ fun PageHeader(
             trailing,
             Modifier.padding(start = if (onBack != null) 12.dp else 20.dp, end = 16.dp, top = 8.dp, bottom = if (hasLine) 4.dp else 12.dp),
         )
-        if (hasLine) HeaderControlLine(control, filters, actions, Modifier.padding(start = 12.dp, end = 16.dp, bottom = 12.dp))
+        if (hasLine) {
+            HeaderControlLine(Modifier.padding(start = 12.dp, end = 16.dp, bottom = 12.dp), lead = leading, segments = segments, tail = ending, more = more)
+        }
     }
 }
 
@@ -163,49 +146,6 @@ private fun TitleLine(title: String, onBack: (() -> Unit)?, count: String?, trai
             // The count sits on the title's baseline.
             shownCount?.place(x + name.width + CountGap.roundToPx(), lift + name[FirstBaseline] - shownCount[FirstBaseline])
             shownEnd?.place(width - shownEnd.width, (middle - shownEnd.height / 2f).roundToInt())
-        }
-    }
-}
-
-private enum class Slot { Actions, Control, CompactControl, Filters }
-
-// A header's control line on its own, for a page whose top is not a page
-// title, like an album under its cover or a sheet: the control first, then
-// the filters, then the actions at the end.
-@Composable
-fun HeaderControlLine(
-    control: (@Composable () -> Unit)?,
-    filters: (@Composable () -> Unit)?,
-    actions: (@Composable RowScope.() -> Unit)?,
-    modifier: Modifier = Modifier,
-) {
-    SubcomposeLayout(modifier.fillMaxWidth()) { constraints ->
-        val width = constraints.maxWidth
-        val gap = Gap.roundToPx()
-        val acts = actions?.let { content ->
-            subcompose(Slot.Actions) { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { content() } }
-                .first().measure(Constraints(maxWidth = width))
-        }
-        val actionsPart = acts?.let { it.width + gap } ?: 0
-        val room = (width - actionsPart).coerceAtLeast(0)
-        val full = control?.let { subcompose(Slot.Control, it).firstOrNull() }
-        val compact = full != null &&
-            controlCompact(width, full.maxIntrinsicWidth(Constraints.Infinity), acts?.width ?: 0, filters != null, gap, FiltersMin.roundToPx())
-        val chosen = if (compact) {
-            subcompose(Slot.CompactControl) { CompositionLocalProvider(LocalHeaderCompact provides true) { control?.invoke() } }.firstOrNull()
-        } else {
-            full
-        }
-        val ctrl = chosen?.measure(Constraints(maxWidth = room))
-        val controlPart = ctrl?.let { it.width + gap } ?: 0
-        val chips = filters?.let { content ->
-            subcompose(Slot.Filters, content).firstOrNull()?.measure(Constraints.fixedWidth((room - controlPart).coerceAtLeast(0)))
-        }
-        val height = listOfNotNull(acts, ctrl, chips).maxOfOrNull { it.height } ?: 0
-        layout(width, height) {
-            ctrl?.place(0, (height - ctrl.height) / 2)
-            chips?.place(controlPart, (height - chips.height) / 2)
-            acts?.place(width - acts.width, (height - acts.height) / 2)
         }
     }
 }

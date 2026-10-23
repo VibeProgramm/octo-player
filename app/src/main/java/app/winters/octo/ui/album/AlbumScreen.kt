@@ -398,7 +398,6 @@ fun AlbumHeader(
         }
         HeaderControlLine(
             control = heart,
-            filters = null,
             actions = {
                 PlayShuffleButtons(onPlay, onShuffle)
                 HeaderMore(more)

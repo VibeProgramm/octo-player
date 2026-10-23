@@ -1,5 +1,8 @@
 package app.winters.octo.ui.folders
 
+import app.winters.octo.ui.common.playShuffleItems
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.LineItem
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -7,20 +10,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -31,7 +30,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,7 +56,6 @@ import app.winters.octo.ui.common.SortBar
 import app.winters.octo.ui.common.TopOnNewOrder
 import app.winters.octo.ui.common.screenPadding
 import app.winters.octo.ui.common.PageHeader
-import app.winters.octo.ui.common.PlayShuffleButtons
 import app.winters.octo.ui.common.HeaderDropdown
 import app.winters.octo.ui.common.LocalChoiceSheet
 import app.winters.octo.ui.common.showDropdown
@@ -116,25 +113,21 @@ fun FoldersScreen(onBack: () -> Unit, vm: FoldersViewModel = hiltViewModel()) {
                                     names.last(),
                                     onBack = { if (!vm.up()) onBack() },
                                     count = phoneNode?.let { folderCount(it.folders.size, it.songCount) },
-                                    filters = if (names.size > 1) ({ Breadcrumb(names, onCrumb = { vm.goTo(it - 1) }) }) else null,
-                                    actions = when (here) {
-                                        FolderStop.Top -> null
+                                    lead = listOfNotNull(if (names.size > 1) breadcrumbItem(names, onCrumb = { vm.goTo(it - 1) }) else null),
+                                    tail = when (here) {
+                                        FolderStop.Top -> emptyList()
                                         is FolderStop.Phone -> phoneNode?.let { node ->
-                                            {
-                                                PlayShuffleButtons(
-                                                    { vm.playPhone(node, shuffle = false) },
-                                                    { vm.playPhone(node, shuffle = true) },
-                                                    enabled = node.songCount > 0,
-                                                )
-                                            }
-                                        }
-                                        is FolderStop.Server -> ({
-                                            PlayShuffleButtons(
-                                                { vm.playServer(here.id, shuffle = false) },
-                                                { vm.playServer(here.id, shuffle = true) },
-                                                loading = gathering,
+                                            playShuffleItems(
+                                                { vm.playPhone(node, shuffle = false) },
+                                                { vm.playPhone(node, shuffle = true) },
+                                                enabled = node.songCount > 0,
                                             )
-                                        })
+                                        }.orEmpty()
+                                        is FolderStop.Server -> playShuffleItems(
+                                            { vm.playServer(here.id, shuffle = false) },
+                                            { vm.playServer(here.id, shuffle = true) },
+                                            loading = gathering,
+                                        )
                                     },
                                 )
                             }
@@ -244,16 +237,13 @@ private fun LazyListScope.songRows(list: List<TrackEntity>, order: SortOrder, vm
 // every folder on the way here, the nearest last; the title already names
 // this one. Picking one goes back there.
 @Composable
-private fun Breadcrumb(names: List<String>, onCrumb: (Int) -> Unit) {
+private fun breadcrumbItem(names: List<String>, onCrumb: (Int) -> Unit): LineItem {
     val sheet = LocalChoiceSheet.current
     val above = names.dropLast(1)
-    HeaderDropdown(
-        above.last(),
-        onClick = { showDropdown(sheet, "Go back to", above, -1, onCrumb) },
-        icon = OctoIcons.Folder,
-        description = "In ${above.last()}",
-        clickLabel = "Go back to a folder on the way",
-    )
+    val ask = { showDropdown(sheet, "Go back to", above, -1, onCrumb) }
+    return LineItem("way-back", overflow = 0, more = MoreItem("In ${above.last()}", OctoIcons.Folder, detail = "Go back to a folder on the way", onClick = ask)) { _ ->
+        HeaderDropdown(above.last(), onClick = ask, icon = OctoIcons.Folder, description = "In ${above.last()}", clickLabel = "Go back to a folder on the way")
+    }
 }
 
 // A folder line: icon, name, what it holds, and a chevron.

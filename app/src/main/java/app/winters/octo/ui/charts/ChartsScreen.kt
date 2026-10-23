@@ -1,8 +1,9 @@
 package app.winters.octo.ui.charts
 
-import androidx.compose.foundation.layout.Arrangement
+import app.winters.octo.ui.common.playShuffleItems
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.LineItem
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,12 +14,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -36,13 +33,9 @@ import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
 import app.winters.octo.ui.common.ChoiceSheet
 import app.winters.octo.ui.common.LocalChoiceSheet
-import app.winters.octo.ui.common.LocalHeaderCompact
 import app.winters.octo.ui.common.NO_COUNTRY_MATCHES
-import app.winters.octo.ui.common.DROPDOWN_CHROME_DP
-import app.winters.octo.ui.common.DROPDOWN_ICON_DP
 import app.winters.octo.ui.common.HeaderDropdown
 import app.winters.octo.ui.common.PageHeader
-import app.winters.octo.ui.common.PlayShuffleButtons
 import app.winters.octo.ui.common.showDropdown
 import app.winters.octo.ui.common.SongLead
 import app.winters.octo.ui.common.SongRow
@@ -76,23 +69,25 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
             item(key = "header") {
                 val chart = vm.choices.firstOrNull { it.id == vm.selected } ?: vm.choices.firstOrNull()
-                val form = rememberCountryForm(country, chart?.label)
+                // The country first, taking its code and then its globe alone
+                // before it moves into More; the chart button never moves.
                 PageHeader(
                     "Charts",
                     onBack,
-                    control = if (country == null && chart == null) null else {
-                        {
-                            Row(horizontalArrangement = Arrangement.spacedBy(ControlGap), verticalAlignment = Alignment.CenterVertically) {
-                                if (country != null) CountryButton(country, form, enabled = !vm.saving, onClick = { pickCountry(sheet, vm) })
-                                if (chart != null) {
-                                    HeaderDropdown(chart.label, onClick = { pickChart(sheet, vm) }, clickLabel = "Choose a chart")
-                                }
-                            }
-                        }
-                    },
-                    actions = {
-                        PlayShuffleButtons({ vm.play(0) }, vm::shuffle, enabled = songs.isNotEmpty())
-                    },
+                    lead = listOfNotNull(
+                        country?.let { code ->
+                            LineItem(
+                                "country",
+                                overflow = 0,
+                                more = MoreItem("Country: ${countryName(code)}", OctoIcons.Globe, enabled = !vm.saving) { pickCountry(sheet, vm) },
+                                forms = CountryForm.entries.size,
+                            ) { form -> CountryButton(code, CountryForm.entries[form], enabled = !vm.saving, onClick = { pickCountry(sheet, vm) }) }
+                        },
+                        chart?.let {
+                            LineItem("chart") { _ -> HeaderDropdown(it.label, onClick = { pickChart(sheet, vm) }, clickLabel = "Choose a chart") }
+                        },
+                    ),
+                    tail = playShuffleItems({ vm.play(0) }, vm::shuffle, enabled = songs.isNotEmpty()),
                 )
             }
             when {
@@ -123,30 +118,6 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
     }
 }
 
-// The room between the country and chart buttons.
-private val ControlGap = 8.dp
-
-// How the country button fits beside the chart button on this screen: its
-// name, its code, or the globe alone, measured with the header's own words.
-@Composable
-private fun rememberCountryForm(country: String?, chart: String?): CountryForm {
-    if (country == null) return CountryForm.Name
-    val measurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-    val screen = LocalConfiguration.current.screenWidthDp
-    return remember(country, chart, screen, density) {
-        fun words(text: String) = with(density) { measurer.measure(text, OctoType.label).size.width.toDp().value.toInt() }
-        val chrome = DROPDOWN_CHROME_DP + DROPDOWN_ICON_DP
-        countryForm(
-            room = controlRoom(screen),
-            chart = chart?.let { words(it) + DROPDOWN_CHROME_DP } ?: 0,
-            name = words(countryName(country)) + chrome,
-            code = words(country.uppercase()) + chrome,
-            gap = ControlGap.value.toInt(),
-        )
-    }
-}
-
 // The country in view, as a quiet capsule that opens every country: the
 // globe, the country, and a small chevron saying it opens. In `form` it is
 // the country's name, its two-letter code ("US"), or the globe alone, the
@@ -155,13 +126,11 @@ private fun rememberCountryForm(country: String?, chart: String?): CountryForm {
 @Composable
 private fun CountryButton(code: String, form: CountryForm, enabled: Boolean, onClick: () -> Unit) {
     val name = countryName(code)
-    // The header's own short form wins when it is shorter still.
-    val shown = if (LocalHeaderCompact.current && form == CountryForm.Name) CountryForm.Code else form
     HeaderDropdown(
-        if (shown == CountryForm.Code) code.uppercase() else name,
+        if (form == CountryForm.Code) code.uppercase() else name,
         onClick = onClick,
         icon = OctoIcons.Globe,
-        showLabel = shown != CountryForm.Globe,
+        showLabel = form != CountryForm.Globe,
         description = name,
         enabled = enabled,
         clickLabel = "Choose a country",

@@ -457,7 +457,7 @@ fun ArtistHeader(
             )
         }
         if (control != null || actions != null) {
-            HeaderControlLine(control, filters = null, actions = actions, modifier = Modifier.padding(start = 12.dp, end = 16.dp, top = 10.dp))
+            HeaderControlLine(control, actions = actions, modifier = Modifier.padding(start = 12.dp, end = 16.dp, top = 10.dp))
         }
     }
 }

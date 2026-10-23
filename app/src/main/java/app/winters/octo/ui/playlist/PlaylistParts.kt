@@ -170,7 +170,6 @@ fun ListHeader(
         if (songCount > 0 || onMore != null) {
             HeaderControlLine(
                 control = null,
-                filters = null,
                 actions = {
                     if (songCount > 0) PlayShuffleButtons(onPlay, onShuffle)
                     if (onMore != null) HeaderButton(OctoIcons.More, "More", onMore, Modifier.pressSpot(LocalPressSpot.current))

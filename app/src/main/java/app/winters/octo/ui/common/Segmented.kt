@@ -9,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -48,13 +47,8 @@ internal fun Segmented(
 }
 
 // The smallest the words of a control line's segments get. Smaller than
-// this, the choice is a dropdown instead.
+// this, the choice is a dropdown instead (see planLine).
 val SegmentMinText = 11.sp
-
-// Whether `count` segments fit across `room` dp with their widest words
-// `widest` dp wide at SegmentMinText: each takes an equal share of the
-// glaze, less its 4dp inside edges, and keeps 4dp either side of its words.
-fun segmentsFit(room: Int, count: Int, widest: Int): Boolean = count > 0 && room > 0 && (room - 8) / count - 8 >= widest
 
 // How wide the widest of `words` is, in dp, in `style` (by default a
 // segment's words at SegmentMinText).
@@ -64,29 +58,5 @@ fun rememberWidestWords(words: List<String>, style: TextStyle = OctoType.label.c
     val density = LocalDensity.current
     return remember(words, style, density) {
         words.maxOfOrNull { with(density) { measurer.measure(it, style).size.width.toDp().value }.toInt() + 1 } ?: 0
-    }
-}
-
-// The screen's width in dp, for working out what fits on a control line.
-@Composable
-fun screenWidthDp(): Int = LocalConfiguration.current.screenWidthDp
-
-// A control line's few choices: segments when they fit (`asSegments`),
-// otherwise a dropdown of the same choices, so the words are never cut and
-// nothing scrolls sideways.
-@Composable
-fun HeaderSegments(
-    options: List<String>,
-    selected: Int,
-    onSelect: (Int) -> Unit,
-    asSegments: Boolean,
-    title: String,
-    modifier: Modifier = Modifier,
-) {
-    if (asSegments) {
-        Segmented(options, selected, onSelect, modifier, fit = true)
-    } else {
-        val sheet = LocalChoiceSheet.current
-        HeaderDropdown(options[selected], onClick = { showDropdown(sheet, title, options, selected, onSelect) }, modifier = modifier, clickLabel = "Choose what to show")
     }
 }

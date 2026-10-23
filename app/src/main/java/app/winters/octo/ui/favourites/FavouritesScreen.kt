@@ -1,13 +1,14 @@
 package app.winters.octo.ui.favourites
 
+import app.winters.octo.ui.common.sortItem
+import app.winters.octo.ui.common.playShuffleItems
+import app.winters.octo.ui.common.LineSegments
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -60,18 +61,11 @@ import app.winters.octo.ui.common.ArtistRow
 import app.winters.octo.ui.common.Feedback
 import app.winters.octo.ui.common.LocalSongSelection
 import app.winters.octo.ui.common.Pickable
-import app.winters.octo.ui.common.HeaderSegments
-import app.winters.octo.ui.common.rememberWidestWords
-import app.winters.octo.ui.common.screenWidthDp
-import app.winters.octo.ui.common.segmentsFit
-import app.winters.octo.ui.common.HeaderMore
 import app.winters.octo.ui.common.PageHeader
-import app.winters.octo.ui.common.PlayShuffleButtons
 import app.winters.octo.ui.common.Refreshable
 import app.winters.octo.ui.common.RemoveBackground
 import app.winters.octo.ui.common.SelectableSongs
 import app.winters.octo.ui.common.SongRow
-import app.winters.octo.ui.common.SortButton
 import app.winters.octo.ui.common.TopOnNewOrder
 import app.winters.octo.ui.nav.AlbumRoute
 import app.winters.octo.ui.nav.ArtistRoute
@@ -176,36 +170,21 @@ fun FavouritesScreen(
                 "Favorites",
                 onBack,
                 count = segment?.let { favouriteCount(it, songs?.items?.size, albums?.items?.size, artists?.items?.size) },
-                // The order first, then the three parts as segments, or as a
-                // dropdown on a screen too narrow for their words beside the
-                // Songs part's buttons, so the parts look the same whichever
-                // is shown.
-                control = {
+                // The order, the three parts as segments, and on Liked songs
+                // Play, Shuffle and More with Keep downloaded. On a narrow
+                // phone the sort moves into More first.
+                lead = listOfNotNull(
                     when (segment) {
-                        null -> Unit
-                        FavouriteSegment.Songs -> songs?.let { SortButton(SortList.Liked, it.order, vm::setSongOrder) }
-                        else -> (albums ?: artists)?.let { SortButton(SortList.Favourites, it.order, vm::setOrder) }
-                    }
+                        null -> null
+                        FavouriteSegment.Songs -> songs?.let { sortItem(SortList.Liked, it.order, vm::setSongOrder) }
+                        else -> (albums ?: artists)?.let { sortItem(SortList.Favourites, it.order, vm::setOrder) }
+                    },
+                ),
+                segments = segment?.let { part ->
+                    LineSegments(FavouriteSegment.entries.map { it.label }, part.ordinal, "Show") { chosen = FavouriteSegment.entries[it] }
                 },
-                filters = if (segment == null) null else {
-                    {
-                        val labels = FavouriteSegment.entries.map { it.label }
-                        HeaderSegments(
-                            labels,
-                            segment.ordinal,
-                            { chosen = FavouriteSegment.entries[it] },
-                            asSegments = segmentsFit(favouriteSegmentsRoom(screenWidthDp()), labels.size, rememberWidestWords(labels)),
-                            title = "Show",
-                        )
-                    }
-                },
-                // Liked songs play from here; their Keep downloaded is in More.
-                actions = if (segment != FavouriteSegment.Songs || liked.isEmpty() && keep == null) null else {
-                    {
-                        if (liked.isNotEmpty()) PlayShuffleButtons({ vm.playSongs(0) }, vm::shuffleSongs)
-                        HeaderMore(listOfNotNull(keep))
-                    }
-                },
+                tail = if (segment == FavouriteSegment.Songs && liked.isNotEmpty()) playShuffleItems({ vm.playSongs(0) }, vm::shuffleSongs) else emptyList(),
+                more = if (segment == FavouriteSegment.Songs) listOfNotNull(keep) else emptyList(),
             )
             when (segment) {
                 null -> Loading()

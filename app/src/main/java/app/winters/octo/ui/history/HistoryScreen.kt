@@ -1,24 +1,20 @@
 package app.winters.octo.ui.history
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.LineSegments
+import app.winters.octo.ui.common.LineItem
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,11 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -54,19 +45,10 @@ import app.winters.octo.listening.rangeStart
 import app.winters.octo.listening.recentHistory
 import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.ui.common.HeaderDropdown
-import app.winters.octo.ui.common.DROPDOWN_CHROME_DP
-import app.winters.octo.ui.common.HeaderSegments
 import app.winters.octo.ui.common.PageHeader
-import app.winters.octo.ui.common.rememberWidestWords
-import app.winters.octo.ui.common.screenWidthDp
-import app.winters.octo.ui.common.segmentsFit
 import app.winters.octo.ui.common.showDropdown
-import app.winters.octo.ui.common.Choice
-import app.winters.octo.ui.common.ChoiceRequest
 import app.winters.octo.ui.common.LocalChoiceSheet
-import app.winters.octo.ui.common.choiceAnchor
 import app.winters.octo.ui.common.SectionTitle
-import app.winters.octo.ui.common.Segmented
 import app.winters.octo.ui.common.SongRow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -120,14 +102,11 @@ class HistoryViewModel @Inject constructor(
 // The two ways to look at what was played.
 val HistoryViews = listOf("Recently played", "Most played")
 
-// The room the two segments have on a screen `screen` dp wide, beside the
-// time range button (`range` dp at its widest) and its 8dp, inside the
-// line's 12dp and 16dp edges.
-fun historySegmentsRoom(screen: Int, range: Int): Int = screen - 12 - 16 - 8 - range
+// The stretches of time Most played can cover.
+private val ranges = HistoryRange.entries.map { it.label }
 
 // What was played: the latest plays day by day, or the songs played most.
-// The control line picks which as two segments (a dropdown on a screen too
-// narrow for their words beside the time range), and for the songs played
+// The control line picks which as two segments, and for the songs played
 // most, over what stretch of time.
 @Composable
 fun HistoryScreen(startMostPlayed: Boolean, onBack: () -> Unit, vm: HistoryViewModel = hiltViewModel()) {
@@ -138,27 +117,23 @@ fun HistoryScreen(startMostPlayed: Boolean, onBack: () -> Unit, vm: HistoryViewM
             PageHeader(
                 "History",
                 onBack,
-                filters = {
-                    val ranges = HistoryRange.entries.map { it.label }
-                    val rangeButton = rememberWidestWords(ranges, OctoType.label) + DROPDOWN_CHROME_DP
-                    val segments = segmentsFit(historySegmentsRoom(screenWidthDp(), rangeButton), HistoryViews.size, rememberWidestWords(HistoryViews))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        HeaderSegments(
-                            HistoryViews,
-                            if (most) 1 else 0,
-                            { most = it == 1 },
-                            asSegments = segments,
-                            title = "Show",
-                            modifier = if (segments) Modifier.weight(1f) else Modifier,
-                        )
-                        if (most) {
-                            val range = vm.range
-                            HeaderDropdown(range.label, onClick = {
-                                showDropdown(sheet, "Most played in", ranges, range.ordinal) { vm.range = HistoryRange.entries[it] }
-                            }, description = "Most played, ${range.label}", clickLabel = "Change the time range")
-                        }
-                    }
-                },
+                segments = LineSegments(HistoryViews, if (most) 1 else 0, "Show") { most = it == 1 },
+                // For the songs played most, over what stretch of time; on a
+                // narrow phone it moves into More.
+                tail = if (!most) emptyList() else listOf(
+                    LineItem(
+                        "range",
+                        overflow = 0,
+                        more = MoreItem("Most played in: ${vm.range.label}", OctoIcons.History) {
+                            showDropdown(sheet, "Most played in", ranges, vm.range.ordinal) { vm.range = HistoryRange.entries[it] }
+                        },
+                    ) { _ ->
+                        val range = vm.range
+                        HeaderDropdown(range.label, onClick = {
+                            showDropdown(sheet, "Most played in", ranges, range.ordinal) { vm.range = HistoryRange.entries[it] }
+                        }, description = "Most played, ${range.label}", clickLabel = "Change the time range")
+                    },
+                ),
             )
             if (most) MostPlayed(vm) else RecentlyPlayed(vm)
         }
