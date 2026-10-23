@@ -13,10 +13,10 @@ struct OctoAdminScreen: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle("Octo admin")
+                PageHeader("Octo admin")
                 if let model { content(model) }
             }
-            .padding(.top, 8 + detailTopGap)
+            .padding(.top, pageTopGap)
         }
         .refreshable { await model?.refresh() }
         .barClearance()

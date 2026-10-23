@@ -38,7 +38,7 @@ extension View {
                 }
             }
             .background { PageBackdrop(page: route.ambientPage, route: nil) }
-            .detailPage()
+            .detailPage(ownBack: true)
         }
     }
 }

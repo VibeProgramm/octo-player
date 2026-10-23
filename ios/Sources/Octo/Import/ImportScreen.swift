@@ -17,12 +17,12 @@ struct ImportScreen: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle(ImportText.importTitle)
+                PageHeader(ImportText.importTitle)
                 if let model {
                     content(model)
                 }
             }
-            .padding(.top, 8 + detailTopGap)
+            .padding(.top, pageTopGap)
         }
         .scrollDismissesKeyboard(.interactively)
         .barClearance()

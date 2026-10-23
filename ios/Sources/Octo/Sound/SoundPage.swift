@@ -49,17 +49,17 @@ private struct SoundPageContent: View {
         ScrollViewReader { scroller in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ScreenTitle("Sound")
+                    PageHeader("Sound", count: store.output.label)
                     VStack(spacing: 16) {
-                        outputLine
                         equalizerCard(settings)
                         loudnessCard(settings).id("loudness")
                         balanceCard(settings).id("balance")
                         correctionCard(settings).id("correction")
                         crossfeedCard(settings).id("crossfeed")
+                        outputLine
                     }
                 }
-                .padding(.top, 8 + detailTopGap)
+                .padding(.top, pageTopGap)
             }
             .barClearance()
             .onChange(of: store.pageRequest, initial: true) { _, request in
@@ -91,10 +91,10 @@ private struct SoundPageContent: View {
 
     // MARK: Output
 
-    /// Which output these settings are for, and whether each keeps its own.
+    /// Whether each output keeps its own sound, at the bottom; the output these settings are for
+    /// is on the title's line.
     private var outputLine: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Sound for \(store.output.label)").font(.octoBody).foregroundStyle(OctoColor.textPrimary)
             SoundSwitchLine(label: "Each output keeps its own sound",
                             detail: "The speaker, headphones and each Bluetooth device remember their own settings.",
                             isOn: Binding(get: { store.perOutput }, set: { model.setPerOutput($0) }))
