@@ -41,8 +41,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import app.winters.octo.ui.common.SongTitle
 import app.winters.octo.catalog.UserDao
-import app.winters.octo.design.AccentButton
-import app.winters.octo.design.GlazeButton
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoType
 import app.winters.octo.offline.DownloadRow
@@ -59,7 +57,14 @@ import app.winters.octo.ui.common.Artwork
 import app.winters.octo.ui.common.Feedback
 import app.winters.octo.ui.common.RemoveBackground
 import app.winters.octo.ui.common.SortButton
-import app.winters.octo.ui.common.TitleWithSort
+import app.winters.octo.ui.common.HeaderMore
+import app.winters.octo.ui.common.LocalHaze
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.PageHeader
+import app.winters.octo.ui.common.PopupQuestion
+import app.winters.octo.ui.common.rememberOpenedBeside
+import app.winters.octo.design.GlassPopup
+import app.winters.octo.design.OctoIcons
 import app.winters.octo.ui.common.TopOnNewOrder
 import app.winters.octo.ui.common.songs
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -133,7 +138,8 @@ private val RowShape = RoundedCornerShape(12.dp)
 
 // Every download: the ones on their way with how far they are, then the
 // ones on the phone. Swipe one left, or long press it, to remove it. One a
-// rule keeps goes when its rule is switched off.
+// rule keeps goes when its rule is switched off. How many and how much room
+// they take sit on the title line; Remove all is in More and asks first.
 @Composable
 fun DownloadsScreen(onBack: () -> Unit, vm: OfflineDownloadsViewModel = hiltViewModel()) {
     val rows by vm.rows.collectAsStateWithLifecycle()
@@ -145,19 +151,20 @@ fun DownloadsScreen(onBack: () -> Unit, vm: OfflineDownloadsViewModel = hiltView
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
             val sorted = rows
-            TitleWithSort("Downloads", onBack) {
-                if (sorted != null && sorted.items.isNotEmpty()) SortButton(SortList.Downloads, sorted.order, vm::setOrder)
-            }
+            val any = sorted != null && sorted.items.isNotEmpty()
+            PageHeader(
+                "Downloads",
+                onBack,
+                count = sorted?.items?.let(::downloadsCount),
+                control = if (!any) null else ({ SortButton(SortList.Downloads, sorted.order, vm::setOrder) }),
+                actions = if (!any) null else ({
+                    HeaderMore(listOf(MoreItem(REMOVE_ALL, OctoIcons.Delete, destructive = true, opensPage = true) { confirming = true }))
+                }),
+            )
             if (sorted != null) {
                 val list = sorted.items
                 TopOnNewOrder(sorted.order, state)
                 LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(top = 4.dp, bottom = 140.dp)) {
-                    item(key = "summary") {
-                        Summary(list, confirming, onRemoveAll = { confirming = true }, onConfirm = {
-                            confirming = false
-                            vm.removeAll()
-                        }, onCancel = { confirming = false })
-                    }
                     if (list.isEmpty()) {
                         item(key = "empty") {
                             Text(
@@ -191,36 +198,36 @@ fun DownloadsScreen(onBack: () -> Unit, vm: OfflineDownloadsViewModel = hiltView
                 }
             }
         }
+        GlassPopup(
+            visible = confirming,
+            anchor = rememberOpenedBeside(confirming),
+            onDismiss = { confirming = false },
+            backdrop = LocalHaze.current,
+            title = REMOVE_ALL,
+        ) {
+            PopupQuestion(
+                "Remove every download?",
+                REMOVE_ALL_DETAIL,
+                REMOVE_ALL,
+                onConfirm = {
+                    confirming = false
+                    vm.removeAll()
+                },
+                onCancel = { confirming = false },
+            )
+        }
     }
 }
 
-// How many downloads and how much room they take, and "Remove all", which
-// asks once more before it goes.
-@Composable
-private fun Summary(rows: List<DownloadRow>, confirming: Boolean, onRemoveAll: () -> Unit, onConfirm: () -> Unit, onCancel: () -> Unit) {
-    if (rows.isEmpty()) return
+const val REMOVE_ALL = "Remove all"
+const val REMOVE_ALL_DETAIL = "Every download leaves this phone. Liked songs and playlists stop being kept downloaded too."
+
+// How many songs are on the phone and how much room they take, for the
+// title line: "120 songs · 1.2 GB". Nothing while there are none.
+fun downloadsCount(rows: List<DownloadRow>): String? {
+    if (rows.isEmpty()) return null
     val done = rows.filter { it.state == DownloadStatus.Done }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 12.dp)) {
-        Text(
-            "${songs(done.size)} · ${sizeLabel(done.sumOf { it.sizeBytes })}",
-            style = OctoType.caption,
-            color = OctoColors.TextMuted,
-        )
-        if (confirming) {
-            Text(
-                "Remove every download from this phone? Liked songs and playlists stop being kept downloaded too.",
-                style = OctoType.bodySmall,
-                color = OctoColors.TextSecondary,
-                modifier = Modifier.padding(top = 10.dp),
-            )
-            Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                AccentButton("Remove all", onClick = onConfirm)
-                GlazeButton("Cancel", onClick = onCancel)
-            }
-        } else {
-            GlazeButton("Remove all", onClick = onRemoveAll, modifier = Modifier.padding(top = 12.dp))
-        }
-    }
+    return "${songs(done.size)} · ${sizeLabel(done.sumOf { it.sizeBytes })}"
 }
 
 @Composable
