@@ -84,3 +84,12 @@ fun songs(count: Int) = if (count == 1) "1 song" else "$count songs"
 fun albums(count: Int) = if (count == 1) "1 album" else "$count albums"
 
 fun artists(count: Int) = if (count == 1) "1 artist" else "$count artists"
+
+// A fact with each number held to the word beside it ("56 min", "15 songs",
+// "Rated 4.3"), so a line of facts only breaks between facts.
+fun keepTogether(fact: String): String = fact.replace(NextToNumber, "\u00A0")
+
+private val NextToNumber = Regex("(?<=\\d) | (?=\\d)")
+
+// Facts joined into one quiet line that breaks only between facts.
+fun factsLine(facts: List<String>, separator: String = " • "): String = facts.joinToString(separator) { keepTogether(it) }

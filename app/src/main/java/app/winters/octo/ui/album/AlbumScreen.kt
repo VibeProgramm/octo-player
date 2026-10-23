@@ -1,5 +1,6 @@
 package app.winters.octo.ui.album
 
+import app.winters.octo.ui.common.factsLine
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -301,14 +302,14 @@ fun AlbumScreen(
                             loop = loop,
                             title = a.title,
                             artist = a.artist,
-                            details = albumFacts(
+                            details = factsLine(albumFacts(
                                 a.year,
                                 songs(if (mixed) tracks.size else a.songCount),
                                 (if (mixed) (tracks.sumOf { it.durationMs } / 1000).toInt() else (a.durationMs / 1000).toInt()).asLength(),
                                 genre,
                                 averageRating(library),
                                 note,
-                            ).joinToString(" • "),
+                            )),
                             onArtist = { onOpen(ArtistRoute(a.artistId)) },
                             onPlay = { vm.play(0) },
                             onShuffle = vm::shuffle,

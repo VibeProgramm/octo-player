@@ -1,5 +1,6 @@
 package app.winters.octo.ui.online
 
+import app.winters.octo.ui.common.factsLine
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -73,7 +74,7 @@ fun OnlineArtistScreen(
             ArtistGrid {
                 item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
                     // The picture stays clean; the line under the name says it.
-                    ArtistHeader(found.artist.artwork, found.artist.name, "${albums(found.albums.size)} • $NotInLibraryText")
+                    ArtistHeader(found.artist.artwork, found.artist.name, factsLine(listOf(albums(found.albums.size), NotInLibraryText)))
                 }
                 items(found.albums, key = { it.id }) { album ->
                     AlbumCard(album, onClick = { onOpen(OnlineAlbumRoute(album.id)) }, width = null)

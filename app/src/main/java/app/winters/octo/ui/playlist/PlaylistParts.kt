@@ -1,5 +1,6 @@
 package app.winters.octo.ui.playlist
 
+import app.winters.octo.ui.common.factsLine
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -159,7 +160,7 @@ fun ListHeader(
             Spacer(Modifier.height(20.dp))
             Text(title, style = OctoType.title, color = OctoColors.TextPrimary, textAlign = TextAlign.Center)
             Text(
-                listHeaderFacts(songCount, durationMs, facts).joinToString(" · "),
+                factsLine(listHeaderFacts(songCount, durationMs, facts), " · "),
                 style = OctoType.bodySmall,
                 color = OctoColors.TextMuted,
                 textAlign = TextAlign.Center,

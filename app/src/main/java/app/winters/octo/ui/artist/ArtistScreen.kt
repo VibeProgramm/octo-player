@@ -1,5 +1,6 @@
 package app.winters.octo.ui.artist
 
+import app.winters.octo.ui.common.factsLine
 import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -264,7 +265,7 @@ fun ArtistScreen(
                     ArtistHeader(
                         a.artwork,
                         a.name,
-                        "${albums(a.albumCount)} • ${songs(a.songCount)}",
+                        factsLine(listOf(albums(a.albumCount), songs(a.songCount))),
                         control = { FavouriteHeart(FavouriteKind.Artist, id) },
                         actions = if (ownSongs.isEmpty()) null else ({
                             if (radio) HeaderButton(OctoIcons.Radio, "Radio", vm::startRadio)

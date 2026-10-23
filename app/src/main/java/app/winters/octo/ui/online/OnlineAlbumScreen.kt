@@ -1,5 +1,6 @@
 package app.winters.octo.ui.online
 
+import app.winters.octo.ui.common.factsLine
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -180,7 +181,7 @@ fun OnlineAlbumScreen(
                         loop = loop,
                         title = album.title,
                         artist = album.artist,
-                        details = listOfNotNull(album.year?.toString(), songs(album.songCount), length, note).joinToString(" • "),
+                        details = factsLine(listOfNotNull(album.year?.toString(), songs(album.songCount), length, note)),
                         onArtist = album.artistId?.takeIf { it.isNotEmpty() }?.let { artistId -> { onOpen(OnlineArtistRoute(artistId)) } },
                         onPlay = { vm.play(0) },
                         onShuffle = vm::shuffle,
