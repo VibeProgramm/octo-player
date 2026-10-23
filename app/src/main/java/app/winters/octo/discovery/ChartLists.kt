@@ -147,7 +147,13 @@ class ChartLists internal constructor(
         if (session()?.id != session.id) return ChartAnswer.Failed()
         val entries = list.entry.filter { it.song != null }
         val songs = rankTracks(entries, resolve(entries.map { it.song!! }))
-        return ChartAnswer.Got(ChartList(chart, list.name, list.source, list.country, songs).also { lists[key] = now to it })
+        val got = ChartList(chart, list.name, list.source, list.country, songs)
+        // The listener's own chart that came for a country no longer their
+        // own (it changed while this was on its way) is not kept, so the
+        // next ask goes to the server.
+        val own = if (country == null) choices[choicesKey(session, null)]?.second?.country else null
+        if (own == null || got.country == null || got.country.equals(own, ignoreCase = true)) lists[key] = now to got
+        return ChartAnswer.Got(got)
     }
 
     // Saves the listener's own chart country (CHART_COUNTRY_AUTO follows the

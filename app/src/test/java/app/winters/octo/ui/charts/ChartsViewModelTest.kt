@@ -26,6 +26,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 import javax.inject.Provider
 
@@ -48,6 +50,14 @@ class ChartsViewModelTest {
     @Volatile private var refuse = false
     @Volatile private var refuseCode = 0
     @Volatile private var refuseReads = false
+
+    // While set, the listener's own chart is answered only once it opens,
+    // with what the server said when the read came in.
+    @Volatile private var holdOwnChart: CountDownLatch? = null
+
+    // While set, the listener's own charts are answered only once it opens,
+    // with what the server says then.
+    @Volatile private var holdOwnChoices: CountDownLatch? = null
 
     private val countryCharts = mapOf(
         "us" to listOf("34" to "Top songs", "18" to "Hip-Hop/Rap", "14" to "Pop"),
@@ -89,10 +99,17 @@ class ChartsViewModelTest {
                 val country = request.url.queryParameter("country")
                 return when (request.url.pathSegments.last()) {
                     "getOpenSubsonicExtensions" -> ok(""""openSubsonicExtensions":[{"name":"octoTopSongs","versions":$versions}]""")
-                    "getCharts" -> if (refuseReads && country != null) failed(0) else ok(charts(country ?: ownCountry()))
-                    "getTopChart" -> if (refuseReads && country != null) failed(0) else ok(
-                        """"topSongs":{"artist":null,"source":"apple","chart":"${request.url.queryParameter("chart")}","country":"${country ?: ownCountry()}","entry":[]}""",
-                    )
+                    "getCharts" -> if (refuseReads && country != null) failed(0) else {
+                        if (country == null) holdOwnChoices?.await(5, TimeUnit.SECONDS)
+                        ok(charts(country ?: ownCountry()))
+                    }
+                    "getTopChart" -> if (refuseReads && country != null) failed(0) else {
+                        val answer = ok(
+                            """"topSongs":{"artist":null,"source":"apple","chart":"${request.url.queryParameter("chart")}","country":"${country ?: ownCountry()}","entry":[]}""",
+                        )
+                        if (country == null) holdOwnChart?.await(5, TimeUnit.SECONDS)
+                        answer
+                    }
                     "setChartCountry" -> if (refuse) failed() else {
                         setting = country!!
                         pinned = pinned - ownCountry()
@@ -174,6 +191,43 @@ class ChartsViewModelTest {
         vm.pickCountry("kr")
         until { vm.list?.country == "kr" }
         assertEquals("34", vm.selected)
+    }
+
+    // The listener's own choices landing while their chart is on its way
+    // leave it to land: it is not asked for twice.
+    @Test
+    fun theOwnChartOnItsWayIsNotAskedAgainWhenTheChoicesLand() = runBlocking {
+        val hold = CountDownLatch(1)
+        holdOwnChart = hold
+        val vm = page(lists())
+        until { vm.own != null && calls("getTopChart").isNotEmpty() }
+        hold.countDown()
+        until { vm.list != null }
+        assertEquals("us", vm.list?.country)
+        assertEquals(1, calls("getTopChart").size)
+    }
+
+    // A chart read for the old country, when the listener's own changed
+    // while it was on its way, is asked for once more and shows the new one.
+    @Test
+    fun anOwnChartForTheOldCountryIsAskedAgain() = runBlocking {
+        val hold = CountDownLatch(1)
+        val choicesHeld = CountDownLatch(1)
+        holdOwnChart = hold
+        holdOwnChoices = choicesHeld
+        val vm = page(lists())
+        until { calls("getTopChart").isNotEmpty() && calls("getCharts").isNotEmpty() }
+        // Changed on another device: the fresh choices say Japan, while the
+        // chart already asked for answers for the United States.
+        setting = "jp"
+        holdOwnChoices = null
+        choicesHeld.countDown()
+        until { vm.own != null }
+        holdOwnChart = null
+        hold.countDown()
+        until { vm.list != null }
+        assertEquals("jp", vm.list?.country)
+        assertEquals(2, calls("getTopChart").size)
     }
 
     @Test

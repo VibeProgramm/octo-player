@@ -104,7 +104,8 @@ class ChartsViewModel @Inject constructor(
     // The listener's own charts as the server says them. The chart in view
     // is asked for again when it changed with them, or when it was read for
     // a country that is no longer the listener's own; a country looked at
-    // that became their own is shown as their own.
+    // that became their own is shown as their own. A chart still on its way
+    // is left to land: it checks the country itself (see load).
     private fun showOwn(got: ChartChoices, countries: Boolean) {
         if (countries) {
             own = got
@@ -117,8 +118,7 @@ class ChartsViewModel @Inject constructor(
             val before = selected
             choices = got.chart
             keepSelected()
-            // A chart still on its way may be the old country's: asked again too.
-            val stale = list?.country?.let { shown -> got.country != null && !shown.equals(got.country, ignoreCase = true) } ?: (list == null)
+            val stale = ownChartStale(list?.country, got.country)
             if (selected != before || stale) load()
         }
     }
@@ -214,7 +214,10 @@ class ChartsViewModel @Inject constructor(
         if (choices.isNotEmpty() && choices.none { it.id == selected }) selected = CHART_OVERALL
     }
 
-    private fun load() {
+    // Reads the chart in view. The listener's own chart that lands for a
+    // country no longer their own (they changed it while it was on its way)
+    // is asked for once more.
+    private fun load(again: Boolean = false) {
         loading?.cancel()
         list = null
         val chart = selected
@@ -223,7 +226,12 @@ class ChartsViewModel @Inject constructor(
             val answer = charts.answer(chart, country)
             if (chart != selected || country != browsing) return@launch
             if (answer is ChartAnswer.Failed && answer.refusal != null) refusal = answer.refusal
-            list = (answer as? ChartAnswer.Got)?.list ?: ChartList(chart, null, "", country, emptyList())
+            val got = (answer as? ChartAnswer.Got)?.list
+            if (country == null && !again && ownChartStale(got?.country, own?.country)) {
+                load(again = true)
+                return@launch
+            }
+            list = got ?: ChartList(chart, null, "", country, emptyList())
         }
     }
 
@@ -238,6 +246,12 @@ class ChartsViewModel @Inject constructor(
         playback.get().playTracks(songs.map { it.track.id }, shuffle = true)
     }
 }
+
+// Whether the listener's own chart, read for `shown`, is for a country that
+// is no longer their own (`own`). Nothing read yet, or either not known, is
+// not stale.
+internal fun ownChartStale(shown: String?, own: String?): Boolean =
+    shown != null && own != null && !shown.equals(own, ignoreCase = true)
 
 // A country picked in the menu whose choice is asked: its code, and whether
 // it was picked as the server's own country.
