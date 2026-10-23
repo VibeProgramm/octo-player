@@ -45,9 +45,9 @@ import java.io.File
 import javax.swing.SwingUtilities
 
 // Pictures of the charts against a pretend Octo server: Home's Charts row,
-// the Charts page on Popular right now, Best New Songs and a genre, Japan's
-// charts looked at, the country menu, whole, scrolled and searched, and the
-// choice a picked country asks. Only when asked:
+// the Charts page on Popular right now, Best New Songs and a genre, the
+// chart button's menu, Japan's charts looked at, the country menu, whole,
+// scrolled and searched, and the choice a picked country asks. Only when asked:
 // OCTO_SHOTS=1 ./gradlew :desktop:test --tests '*ChartsShotsTest*'.
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class)
 class ChartsShotsTest {
@@ -192,6 +192,14 @@ class ChartsShotsTest {
             shot("charts-new-songs")
             SwingUtilities.invokeAndWait { charts.selected = "18" }
             shot("charts-genre")
+            // The chart button's menu, the chart shown marked.
+            val chart = capsule("Hip-Hop/Rap")
+            SwingUtilities.invokeAndWait {
+                scene.sendPointerEvent(PointerEventType.Press, chart.center, buttons = PointerButtons(isPrimaryPressed = true))
+                scene.sendPointerEvent(PointerEventType.Release, chart.center)
+            }
+            shot("charts-chart-menu", 1_500)
+            SwingUtilities.invokeAndWait { app.popups.close() }
             SwingUtilities.invokeAndWait { charts.selected = "34" }
             shot("charts-own-country", 1_500)
             // The country capsule, clicked as a person would: the menu opens under it.
