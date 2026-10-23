@@ -78,7 +78,7 @@ public enum SettingsIndex {
                                            ["tempo", "pitch", "faster", "slower", "rate", "semitones"])
     public static let skipSilence = SettingEntry("skip_silence", .playback, "Skip silence", "Quiet stretches inside songs are skipped",
                                                  ["quiet", "gaps", "silent"])
-    public static let songSwipe = SettingEntry("swipe_action", .playback, "Swipe right on a song", "Play it next or add it to the end of the queue",
+    public static let songSwipe = SettingEntry("swipe_action", .playback, "Swipe right", "Play it next or add it to the end of the queue",
                                                ["swipe", "gesture", "play next", "add to queue", "queue", "row", "song"], section: "Queue")
     public static let autoplay = SettingEntry("autoplay", .playback, "Autoplay", "Similar songs keep playing when the queue ends",
                                               ["similar", "continue", "endless", "radio", "queue"], section: "Queue")

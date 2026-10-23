@@ -35,7 +35,7 @@ private struct RowSwipeModifier: ViewModifier {
             content
         } else {
             content
-                .background(offset == 0 ? Color.clear : OctoColor.background, in: RoundedRectangle(cornerRadius: OctoRadius.row))
+                .background(offset < 0 ? OctoColor.background : Color.clear, in: RoundedRectangle(cornerRadius: OctoRadius.row))
                 .offset(x: offset)
                 .background { wash }
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
@@ -49,15 +49,24 @@ private struct RowSwipeModifier: ViewModifier {
     @ViewBuilder
     private var wash: some View {
         if offset > 0 {
+            // Only over the strip the row has moved off, its far edge fading so the words never
+            // end in a hard cut where the row still covers them.
             HStack(spacing: 10) {
                 IconView(queueAction == .addToQueue ? .addToQueue : .playNext, size: 20)
-                Text(queueAction.label).font(.octoBodySmall)
-                Spacer()
+                Text(queueAction.label).font(.octoBodySmall).lineLimit(1).fixedSize()
             }
             .foregroundStyle(.white)
-            .padding(.horizontal, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(OctoColor.accent.opacity(0.22), in: RoundedRectangle(cornerRadius: OctoRadius.row))
+            .padding(.leading, 24)
+            .frame(width: offset, alignment: .leading)
+            .frame(maxHeight: .infinity)
+            .background(OctoColor.accent.opacity(0.22))
+            .mask(LinearGradient(stops: [
+                .init(color: .black, location: 0),
+                .init(color: .black, location: max(0, 1 - 24 / max(offset, 1))),
+                .init(color: .clear, location: 1),
+            ], startPoint: .leading, endPoint: .trailing))
+            .clipShape(RoundedRectangle(cornerRadius: OctoRadius.row))
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else if offset < 0 {
             HStack {
                 Spacer()

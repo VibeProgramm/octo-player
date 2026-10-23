@@ -23,7 +23,7 @@ enum SettingsIcon {
     static let radio = "dot.radiowaves.left.and.right"
     static let headphones = "headphones"
     static let cast = "airplay.audio"
-    static let queue = "text.line.last.and.arrowtriangle.forward"
+    static let queue = "list.bullet"
     static let layout = "rectangle.3.group"
     static let home = "house"
     static let playlists = "music.note.list"
