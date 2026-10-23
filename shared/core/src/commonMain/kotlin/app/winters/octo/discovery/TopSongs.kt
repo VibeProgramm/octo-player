@@ -109,45 +109,78 @@ fun chartCountryOrder(
     return first + rest
 }
 
-// One line of a country picker: the country it picks (null for following
-// the server's chart country), its words, a line about it, whether it is
-// the one chosen, and whether it is among the lines at the top, above the
-// rest of the countries.
+// What picking a line of the chart country picker does: go back to the
+// listener's own charts, ask what to do with the server's country, or ask
+// what to do with another country.
+enum class CountryPick { Yours, Server, Country }
+
+// One line of a country picker: the country it picks (null when there is
+// none to name), its words, a line about it, whether it is the one chosen,
+// whether it is among the lines at the top, above the rest of the
+// countries, and what picking it does.
 data class CountryRow(
     val code: String?,
     val label: String,
     val detail: String?,
     val chosen: Boolean,
     val top: Boolean,
+    val pick: CountryPick = CountryPick.Country,
 )
 
 // The chart country picker's lines, from what getCharts said of the
-// listener's own country: first "Same as the server (United States)",
-// which saves following the server's country, then the countries in
-// chartCountryOrder's order. `viewing` is the country in view when it is
-// not the listener's own. "Yours" marks a country the listener chose, so
-// it is left off while they follow the server's.
+// listener's own charts: first "Yours (United States)", their own chart
+// country, then "Same as the server (Canada)" while they chose a country of
+// their own, then every country by name, a pinned one saying so. `viewing`
+// is the country in view when it is not the listener's own.
 fun chartCountryRows(own: ChartChoices, viewing: String?, name: (String) -> String): List<CountryRow> {
     val follows = own.setting == null || own.setting.equals(CHART_COUNTRY_AUTO, ignoreCase = true)
-    val mine = own.setting?.lowercase()?.takeUnless { follows }
-    val order = chartCountryOrder(own.countries, mine, own.pinned, name, viewing)
-    val top = (listOfNotNull(mine) + own.pinned + listOfNotNull(viewing)).toSet()
-    val server = own.serverCountry?.let { "Same as the server (${name(it)})" } ?: "Same as the server"
-    return listOf(CountryRow(null, server, null, chosen = viewing == null && follows, top = true)) +
-        order.map { code ->
-            CountryRow(
-                code = code,
-                label = name(code),
-                detail = when {
-                    code == mine -> "Yours"
-                    code in own.pinned -> "Pinned"
-                    else -> null
-                },
-                chosen = if (viewing == null) code == mine else code == viewing,
-                top = code in top,
-            )
+    val yours = own.country?.let { "Yours (${name(it)})" } ?: "Yours"
+    val top = buildList {
+        add(CountryRow(own.country, yours, null, chosen = viewing == null, top = true, pick = CountryPick.Yours))
+        val server = own.serverCountry
+        if (!follows && server != null) {
+            add(CountryRow(server, "Same as the server (${name(server)})", null, chosen = false, top = true, pick = CountryPick.Server))
         }
+    }
+    val pinned = own.pinned.map { it.lowercase() }.toSet()
+    val rest = chartCountryOrder(own.countries, null, emptyList(), name).map { code ->
+        CountryRow(code, name(code), "Pinned".takeIf { code.lowercase() in pinned }, chosen = code == viewing, top = false)
+    }
+    return top + rest
 }
+
+// What the listener can do with a country picked in the chart country
+// picker: only look at it on this page, make it their chart country, or
+// have its charts as playlists too (or no longer).
+enum class CountryAction { Look, UseForMine, AddPlaylists, RemovePlaylists, FollowServer }
+
+// One answer in the choice that opens when a country is picked: what it
+// does, its words, a line about it, and whether it can be picked now.
+data class CountryChoice(val action: CountryAction, val label: String, val detail: String, val enabled: Boolean = true)
+
+// The choice for a country picked in the chart country picker, `name`
+// being its name. `server` is the server's own country picked as "Same as
+// the server", which offers only a look or following the server again.
+// A full set of pinned countries cannot take one more.
+fun countryChoices(own: ChartChoices, code: String, name: String, server: Boolean = false): List<CountryChoice> {
+    val look = CountryChoice(CountryAction.Look, "Just look here", "Nothing is saved")
+    val everywhere = "Your chart playlists and Home switch to $name, in every app"
+    if (server) return listOf(look, CountryChoice(CountryAction.FollowServer, "Use the server's country for my charts", everywhere))
+    val most = own.maxPinned.takeIf { it > 0 } ?: DEFAULT_MAX_PINNED
+    val pinned = own.pinned.any { it.equals(code, ignoreCase = true) }
+    val playlists = when {
+        pinned -> CountryChoice(CountryAction.RemovePlaylists, "Remove ${possessive(name)} playlists", "Popular right now · $name and the rest go away; yours stay")
+        own.pinned.size >= most -> CountryChoice(CountryAction.AddPlaylists, "$most countries already have playlists", "Remove one to add $name", enabled = false)
+        else -> CountryChoice(CountryAction.AddPlaylists, "Also add ${possessive(name)} playlists", "Keeps yours and adds Popular right now · $name and the rest")
+    }
+    return listOf(look, CountryChoice(CountryAction.UseForMine, "Use $name for my charts", everywhere), playlists)
+}
+
+// How many countries a listener may pin when the server does not say.
+private const val DEFAULT_MAX_PINNED = 3
+
+// A name that owns something: "Japan's", "Bahamas'".
+private fun possessive(name: String): String = if (name.endsWith("s")) "$name'" else "$name's"
 
 // Whether what was typed picks this country: inside its name, case and
 // accents ignored ("cote" finds Côte d'Ivoire), or exactly its two-letter

@@ -103,35 +103,71 @@ class TopSongsTest {
     )
 
     @Test
-    fun followingTheServerIsTheFirstLineAndChosenWhileFollowed() {
+    fun yoursIsTheFirstLineAndChosenWhileViewed() {
         val rows = chartCountryRows(own("auto"), viewing = null, name = name)
 
-        assertEquals("Same as the server (United States)", rows.first().label)
-        assertNull(rows.first().code)
+        assertEquals("Yours (United States)", rows.first().label)
+        assertEquals(CountryPick.Yours, rows.first().pick)
         assertTrue(rows.first().chosen)
-        // No country says "Yours" while the listener follows the server.
-        assertTrue(rows.none { it.detail == "Yours" })
+        // Following the server already: no line to follow it again.
+        assertTrue(rows.none { it.pick == CountryPick.Server })
+        assertEquals(listOf("br", "de", "jp", "kr", "us"), rows.filterNot { it.top }.map { it.code })
         assertEquals(1, rows.count { it.chosen })
     }
 
     @Test
-    fun aChosenCountrySaysYoursAndPinnedOnesSayPinned() {
+    fun aChosenCountryOffersTheServersAndPinnedOnesSaySo() {
         val rows = chartCountryRows(own("br", pinned = listOf("kr")), viewing = null, name = name)
 
-        assertEquals(listOf(null, "br", "kr"), rows.filter { it.top }.map { it.code })
-        assertEquals("Yours", rows[1].detail)
-        assertTrue(rows[1].chosen)
-        assertEquals("Pinned", rows[2].detail)
+        assertEquals(listOf("Yours (Brazil)", "Same as the server (United States)"), rows.filter { it.top }.map { it.label })
+        assertEquals(CountryPick.Server, rows[1].pick)
+        assertEquals("us", rows[1].code)
+        assertEquals("Pinned", rows.single { it.code == "kr" && !it.top }.detail)
+        assertNull(rows.single { it.code == "jp" }.detail)
+    }
+
+    @Test
+    fun theCountryInViewIsChosen() {
+        val rows = chartCountryRows(own("br", pinned = listOf("kr")), viewing = "jp", name = name)
+
+        assertEquals(listOf("jp"), rows.filter { it.chosen }.map { it.code })
         assertFalse(rows.first().chosen)
     }
 
     @Test
-    fun theCountryInViewIsChosenAndJoinsTheTop() {
-        val rows = chartCountryRows(own("br", pinned = listOf("kr")), viewing = "jp", name = name)
+    fun aCountryOffersALookItsChartsAndItsPlaylists() {
+        val choices = countryChoices(own("auto"), "jp", "Japan")
 
-        assertEquals(listOf(null, "br", "kr", "jp"), rows.filter { it.top }.map { it.code })
-        assertEquals(listOf("jp"), rows.filter { it.chosen }.map { it.code })
-        assertEquals(listOf("de", "us"), rows.filterNot { it.top }.map { it.code })
+        assertEquals(listOf(CountryAction.Look, CountryAction.UseForMine, CountryAction.AddPlaylists), choices.map { it.action })
+        assertEquals(listOf("Just look here", "Use Japan for my charts", "Also add Japan's playlists"), choices.map { it.label })
+        assertEquals("Nothing is saved", choices[0].detail)
+        assertTrue(choices.all { it.enabled })
+    }
+
+    @Test
+    fun aPinnedCountryOffersToRemoveItsPlaylists() {
+        val choices = countryChoices(own("auto", pinned = listOf("jp")), "jp", "Japan")
+
+        assertEquals(CountryAction.RemovePlaylists, choices[2].action)
+        assertEquals("Remove Japan's playlists", choices[2].label)
+    }
+
+    @Test
+    fun aFullSetOfPinsCannotTakeAnother() {
+        val choices = countryChoices(own("auto", pinned = listOf("br", "kr", "de")), "jp", "Japan")
+
+        assertEquals("3 countries already have playlists", choices[2].label)
+        assertFalse(choices[2].enabled)
+        // One already pinned can still be removed.
+        assertTrue(countryChoices(own("auto", pinned = listOf("br", "kr", "jp")), "jp", "Japan")[2].enabled)
+    }
+
+    @Test
+    fun theServersCountryOffersALookOrFollowingItAgain() {
+        val choices = countryChoices(own("br"), "us", "United States", server = true)
+
+        assertEquals(listOf(CountryAction.Look, CountryAction.FollowServer), choices.map { it.action })
+        assertEquals("Use the server's country for my charts", choices[1].label)
     }
 
     @Test
