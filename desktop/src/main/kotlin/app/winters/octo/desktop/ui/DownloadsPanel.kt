@@ -20,6 +20,8 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,6 +33,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -79,6 +83,7 @@ import app.winters.octo.design.GlazeCapsule
 import app.winters.octo.design.Glyph
 import app.winters.octo.design.IconAction
 import app.winters.octo.design.IconSize
+import app.winters.octo.design.topFade
 import app.winters.octo.design.OctoDuration
 import app.winters.octo.design.motionScale
 import app.winters.octo.design.octoTween
@@ -169,6 +174,51 @@ fun DownloadsPanel(app: AppState, modifier: Modifier = Modifier) {
     }
 }
 
+// The drawer's line at the top of the side panel: the way back from a log
+// or Find songs, the view's name, and the view's actions.
+@Composable
+fun DownloadsHeading(app: AppState, modifier: Modifier = Modifier) {
+    val model = app.downloads
+    val view = model?.view?.takeIf { model.supported != false } ?: DrawerView.List
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.Xs)) {
+        when (view) {
+            DrawerView.List -> Unit
+            is DrawerView.Log -> BackTo("Back to downloads") { model?.showList() }
+            is DrawerView.Find -> BackTo(if (view.from != null) "Back to the log" else "Back to downloads") { view.from?.let { model?.showLog(it) } ?: model?.showList() }
+        }
+        val title = when (view) {
+            DrawerView.List -> "Downloads"
+            is DrawerView.Log -> "Download log"
+            is DrawerView.Find -> FIND_SONGS
+        }
+        CutTxt(title, DesktopType.section, OctoColors.TextPrimary, Modifier.weight(1f).padding(vertical = Space.S))
+        if (model == null) return@Row
+        val rows by model.rows.collectAsState()
+        when (view) {
+            DrawerView.List -> if (rows.any { it.finished }) TextAction("Clear finished", { model.clear() })
+            is DrawerView.Log -> {
+                val log by model.log.collectAsState()
+                val row = rows.firstOrNull { it.logKey == view.key } ?: log?.let { rowOf(it) }
+                if (row?.finished == true) TextAction("Clear", { model.clear(row.key); model.showList() })
+                row?.findId?.let { id ->
+                    IconAction(OctoIcons.Search, FIND_SONGS, { model.find(id, row.title, view.key) }, size = ControlHeight.M, iconSize = IconSize.Toolbar, tint = OctoColors.TextSecondary)
+                }
+            }
+            is DrawerView.Find -> {
+                val found by model.found.collectAsState()
+                val problem by model.findProblem.collectAsState()
+                TextAction("Search again", model::searchAgain, enabled = !(found?.searching != false && problem == null), icon = OctoIcons.Search)
+            }
+        }
+    }
+}
+
+// The way back on the drawer's line, its arrow pulled in to the line's edge.
+@Composable
+private fun BackTo(words: String, go: () -> Unit) {
+    IconAction(OctoIcons.Back, words, go, Modifier.offset(x = -Space.S), size = ControlHeight.M, iconSize = IconSize.Toolbar, tint = OctoColors.TextSecondary)
+}
+
 // ---------------------------------------------------------------------------
 // The list
 // ---------------------------------------------------------------------------
@@ -178,10 +228,7 @@ private fun DownloadList(model: DownloadsModel, modifier: Modifier) {
     val rows by model.rows.collectAsState()
     val loaded by model.loaded.collectAsState()
     Column(modifier) {
-        Row(Modifier.fillMaxWidth().padding(start = Space.L, end = Space.S, top = Space.S), verticalAlignment = Alignment.CenterVertically) {
-            Txt(drawerSummary(rows), DesktopType.meta, OctoColors.TextMuted, Modifier.weight(1f))
-            if (rows.any { it.finished }) TextAction("Clear finished", { model.clear() })
-        }
+        Txt(drawerSummary(rows), DesktopType.meta, OctoColors.TextMuted, Modifier.fillMaxWidth().padding(start = Space.L, end = Space.S, top = Space.S))
         if (rows.isEmpty()) {
             Txt(if (loaded) DOWNLOADS_EMPTY else "Asking the server", DesktopType.body, OctoColors.TextMuted, Modifier.padding(Space.L), maxLines = 4)
             return
@@ -283,18 +330,12 @@ private fun DownloadLog(app: AppState, model: DownloadsModel, key: String, modif
         if (follow == true && events.isNotEmpty()) list.animateScrollToItem(events.lastIndex)
     }
     Column(modifier) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = Space.L), verticalAlignment = Alignment.CenterVertically) {
-            IconAction(OctoIcons.Back, "Back to downloads", model::showList, size = ControlHeight.M, iconSize = IconSize.Toolbar, tint = OctoColors.TextSecondary)
-            Spacer(Modifier.weight(1f))
-            row?.findId?.let { id -> TextAction(FIND_SONGS, { model.find(id, row.title, key) }, icon = OctoIcons.Search) }
-            if (row?.finished == true) TextAction("Clear", { model.clear(row.key); model.showList() })
-        }
         // The song and where it is stay put; only the steps scroll.
         if (row != null) LogHead(row, events, Modifier.padding(horizontal = Space.L))
         problem?.let { Txt(it, DesktopType.meta, OctoColors.SignalOrange, Modifier.padding(horizontal = Space.L, vertical = Space.S), maxLines = 2) }
         Separator(Modifier.padding(top = Space.L))
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            LazyColumn(Modifier.fillMaxSize().scrollbar(list), state = list, contentPadding = PaddingValues(start = Space.L, end = Space.L, top = Space.L, bottom = Space.Xl)) {
+            LazyColumn(Modifier.fillMaxSize().topFade(Space.Xl).scrollbar(list), state = list, contentPadding = PaddingValues(start = Space.L, end = Space.L, top = Space.L, bottom = Space.Xl)) {
                 if (log == null && problem == null) item(key = "wait") { ProgressRing(null, size = IconSize.Transport) }
                 itemsIndexed(events, key = { index, _ -> index }) { index, line ->
                     LogLine(line, last = index == events.lastIndex, live = running && index == events.lastIndex)
@@ -498,18 +539,6 @@ private fun FindSongs(app: AppState, model: DownloadsModel, view: DrawerView.Fin
         }
     }
     LazyColumn(modifier.scrollbar(list), list, contentPadding = PaddingValues(start = Space.L, end = Space.L, top = Space.S, bottom = Space.Xl)) {
-        item(key = "bar") {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconAction(
-                    OctoIcons.Back,
-                    if (view.from != null) "Back to the log" else "Back to downloads",
-                    { view.from?.let(model::showLog) ?: model.showList() },
-                    size = ControlHeight.M, iconSize = IconSize.Toolbar, tint = OctoColors.TextSecondary,
-                )
-                Txt(FIND_SONGS, DesktopType.emphasis, OctoColors.TextPrimary, Modifier.weight(1f).padding(start = Space.Xs))
-                TextAction("Search again", model::searchAgain, enabled = !searching, icon = OctoIcons.Search)
-            }
-        }
         item(key = "head") { FindHead(view, found, model.asksFirst) }
         found?.source?.let { sources -> item(key = "sources") { Sources(sources) } }
         problem?.let { item(key = "problem") { Txt(it, DesktopType.meta, OctoColors.SignalOrange, Modifier.padding(vertical = Space.S), maxLines = 3) } }
@@ -567,27 +596,48 @@ private fun FindHead(view: DrawerView.Find, found: FoundSongs?, asksFirst: Boole
     }
 }
 
-// Each source and how its look is going.
+// Each source and how its look is going, as pills on a line that wraps:
+// its mark, its name, and a quiet word on how it went (why it could not
+// search, when it could not).
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Sources(sources: List<FindSourceState>) {
-    Column(Modifier.fillMaxWidth().padding(top = Space.M), verticalArrangement = Arrangement.spacedBy(Space.Xs)) {
+    FlowRow(
+        Modifier.fillMaxWidth().padding(top = Space.M),
+        horizontalArrangement = Arrangement.spacedBy(Space.S),
+        verticalArrangement = Arrangement.spacedBy(Space.S),
+    ) {
         sources.forEach { source ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+            val words = when (source.state) {
+                FIND_SEARCHING -> "Searching"
+                else -> source.text ?: if (source.state == "failed") "Could not search" else "Done"
+            }
+            Row(
+                Modifier
+                    .height(ControlHeight.S)
+                    .clip(CircleShape)
+                    .background(Chip)
+                    .semantics(mergeDescendants = true) { contentDescription = "${source.name}: $words" }
+                    .padding(horizontal = Space.L),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Space.S),
+            ) {
                 when (source.state) {
                     FIND_SEARCHING -> ProgressRing(null, size = IconSize.Inline)
                     FIND_OFF -> Glyph(OctoIcons.Close, size = IconSize.Inline, tint = OctoColors.TextMuted)
                     "failed" -> Glyph(OctoIcons.Info, size = IconSize.Inline, tint = OctoColors.SignalOrange)
                     else -> Glyph(OctoIcons.Check, size = IconSize.Inline, tint = OctoColors.TextSecondary)
                 }
-                val words = when (source.state) {
-                    FIND_SEARCHING -> "Searching"
-                    else -> source.text ?: if (source.state == "failed") "Could not search" else "Done"
-                }
-                Txt("${source.name}: $words", DesktopType.meta, if (source.state == FIND_OFF) OctoColors.TextMuted else OctoColors.TextSecondary, maxLines = 2)
+                Txt(source.name, DesktopType.meta, if (source.state == FIND_OFF) OctoColors.TextMuted else OctoColors.TextSecondary)
+                CutTxt(words, DesktopType.meta, OctoColors.TextMuted, Modifier.widthIn(max = SourceWordsMax))
             }
         }
     }
 }
+
+// The widest a source's word on its pill grows; a longer reason shortens,
+// whole in its tooltip.
+private val SourceWordsMax = 180.dp
 
 // One copy: its kind on a badge, its title, the folder or album it sits
 // in, its facts, and whether Octo would take it. On Find songs it can be
