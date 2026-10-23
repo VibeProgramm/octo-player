@@ -241,8 +241,6 @@ struct ChartsView: View {
     @Environment(Discovery.self) private var discovery
     @Environment(Player.self) private var player
     @Environment(Router.self) private var router
-    @Environment(\.dismiss) private var dismiss
-    @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 32
     @State private var choices: [ChartChoice] = []
     @State private var selected = Charts.overall
     /// The chosen chart's songs, or nil while they are on their way.
@@ -269,7 +267,7 @@ struct ChartsView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                titleLine
+                PageHeader("Charts")
                 if !none {
                     controlLine
                 }
@@ -299,7 +297,7 @@ struct ChartsView: View {
                 }
             }
             // The back button is on the title's line, so no room is left above it for one.
-            .padding(.top, 8)
+            .padding(.top, pageTopGap)
         }
         .barClearance()
         .sheet(isPresented: $picking) {
@@ -329,60 +327,28 @@ struct ChartsView: View {
 
     // MARK: The header
 
-    /// Line one: the back button and the big title, alone, the button on the middle of the
-    /// title's capitals. The edge swipe still goes back.
-    private var titleLine: some View {
-        HStack(alignment: .chartsTitleLine, spacing: 0) {
-            GlazedIconButton(.back, label: "Back", size: 40) { dismiss() }
-                .alignmentGuide(.chartsTitleLine) { d in d[VerticalAlignment.center] }
-                .padding(.leading, 16)
-            ScreenTitle("Charts")
-                .padding(.leading, -8)
-                .alignmentGuide(.chartsTitleLine) { d in d[.firstTextBaseline] - titleCapHeight / 2 }
-        }
-    }
-
     /// Line two, everything else on one line: the country button, the chips, which scroll
     /// sideways, and Play and Shuffle held at the right.
     private var controlLine: some View {
-        let playable = !(list?.songs.isEmpty ?? true)
-        return HStack(spacing: 8) {
+        ControlLine {
             if canPickCountry {
                 Button { picking = true } label: { ChoiceChip(text: shownCountryName, systemImage: OctoIcon.globe.symbol) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Chart country: \(shownCountryName)")
             }
-            if choices.isEmpty {
-                Spacer(minLength: 0)
-            } else {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
-                        ForEach(choices) { choice in
-                            OnOffChip(text: choice.label, on: choice.id == selected) { pick(choice.id) }
-                        }
-                    }
-                }
-                .scrollIndicators(.hidden)
-                .fixedSize(horizontal: false, vertical: true)
+        } chips: {
+            ForEach(choices) { choice in
+                OnOffChip(text: choice.label, on: choice.id == selected) { pick(choice.id) }
             }
-            HStack(spacing: 0) {
-                GlassIconButton(icon: .play, label: "Play", lit: true) { if let list { play(list, 0) } }
-                    .disabled(!playable)
-                    .opacity(playable ? 1 : OctoInkColor.disabled)
-                GlassIconButton(icon: .shuffle, label: "Shuffle") { if let list { player.shuffle(list.songs.map(\.track)) } }
-                    .disabled(!playable)
-                    .opacity(playable ? 1 : OctoInkColor.disabled)
+        } actions: {
+            RoundPlayShuffle(enabled: !(list?.songs.isEmpty ?? true)) {
+                if let list { play(list, 0) }
+            } shuffle: {
+                if let list { player.shuffle(list.songs.map(\.track)) }
             }
         }
-        .padding(.leading, 20)
-        // The round buttons' targets reach 7 past their glass, so the glass ends 20 in.
-        .padding(.trailing, 13)
         .padding(.top, 4)
-        .padding(.bottom, 12)
     }
-
-    /// The title's cap height, for the back button beside it to sit on the middle of its capitals.
-    private var titleCapHeight: CGFloat { UIFont.systemFont(ofSize: titleSize, weight: .black).capHeight }
 
     // MARK: The country
 
@@ -565,13 +531,4 @@ private struct CountryAsk {
     let choices: [ChartCountryChoice]
 
     var note: String? { choices.first { !$0.enabled }?.detail }
-}
-
-extension VerticalAlignment {
-    private enum ChartsTitleLine: AlignmentID {
-        static func defaultValue(in dimensions: ViewDimensions) -> CGFloat { dimensions[VerticalAlignment.center] }
-    }
-
-    /// The middle of the Charts title's capitals, for the buttons beside it.
-    fileprivate static let chartsTitleLine = VerticalAlignment(ChartsTitleLine.self)
 }

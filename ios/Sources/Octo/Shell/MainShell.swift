@@ -515,8 +515,8 @@ extension View {
                 }
             }
             .background { PageBackdrop(page: route.ambientPage, route: route) }
-            // Charts puts its back button on its title's line.
-            .detailPage(ownBack: route == .charts)
+            // Pages without artwork at the top put the back button on their title's line.
+            .detailPage(ownBack: route.ownsBack)
         }
         .toolbar(.hidden, for: .navigationBar)
     }
@@ -576,6 +576,19 @@ private struct TabRoot: View, Equatable {
         case .search: SearchView()
         case .library: LibraryView()
         case .settings: SettingsView()
+        }
+    }
+}
+
+extension Route {
+    /// Whether the page puts the back button on its title's line. Pages under artwork (an album,
+    /// an artist, a playlist, a live list) keep it floating over the artwork.
+    var ownsBack: Bool {
+        switch self {
+        case .album, .artist, .playlist, .onlineAlbum, .onlineArtist, .liveList: false
+        case .library(let page): page.ownsBack
+        case .artists, .albums, .playlists, .favorites, .charts, .liveListEditor, .liveListFrom, .sound, .homeSections,
+             .liveRadioNear: true
         }
     }
 }
