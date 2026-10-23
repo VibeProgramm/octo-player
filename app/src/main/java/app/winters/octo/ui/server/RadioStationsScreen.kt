@@ -56,6 +56,7 @@ import app.winters.octo.liveradio.radioId
 import app.winters.octo.server.ServerControls
 import app.winters.octo.subsonic.RadioStationDetails
 import app.winters.octo.subsonic.SubsonicException
+import app.winters.octo.ui.common.HeaderButton
 import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.LoadState
 import app.winters.octo.ui.common.LocalHaze
@@ -223,13 +224,15 @@ fun RadioStationsScreen(onBack: () -> Unit, onOpen: (NavKey) -> Unit, vm: RadioS
     val readOnly by vm.readOnly.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
-            item(key = "title") { PageHeader(SettingsIndex.RadioStations.title, onBack) }
-            item(key = "near") { FindNearRow(onClick = { onOpen(LiveRadioNearRoute) }, modifier = Modifier.padding(bottom = 8.dp)) }
-            if (admin) {
-                item(key = "add") {
-                    GlazeButton("Add station", onClick = vm::add, modifier = Modifier.padding(start = 20.dp, bottom = 8.dp))
-                }
+            // An admin adds a station from the plus on the control line.
+            item(key = "title") {
+                PageHeader(
+                    SettingsIndex.RadioStations.title,
+                    onBack,
+                    actions = if (!admin) null else ({ HeaderButton(OctoIcons.AddToLibrary, "Add station", vm::add) }),
+                )
             }
+            item(key = "near") { FindNearRow(onClick = { onOpen(LiveRadioNearRoute) }, modifier = Modifier.padding(bottom = 8.dp)) }
             when (val state = vm.stations) {
                 LoadState.Loading -> item(key = "loading") { Spinner(Modifier.padding(top = 24.dp)) }
                 is LoadState.Failed -> item(key = "failed") {

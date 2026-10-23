@@ -177,10 +177,13 @@ private fun NoticesRow() {
     var allowed by remember { mutableStateOf(FamilyNotifier.canPost(context)) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
     if (allowed || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Hear when a request is decided", style = OctoType.body, color = OctoColors.TextPrimary)
-        Text("Octo can tell you when a request is approved, declined or added, and a manager when requests wait.", style = OctoType.caption, color = OctoColors.TextMuted)
-        GlazeButton("Turn on notices", { ask.launch(Manifest.permission.POST_NOTIFICATIONS) }, size = ButtonSize.Small)
+    // One banner: what notices bring, and the button that turns them on.
+    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text("Hear when a request is decided", style = OctoType.bodySmall, color = OctoColors.TextPrimary)
+            Text("Octo can tell you when a request is approved, declined or added, and a manager when requests wait.", style = OctoType.caption, color = OctoColors.TextMuted)
+        }
+        GlazeButton("Turn on", { ask.launch(Manifest.permission.POST_NOTIFICATIONS) }, size = ButtonSize.Small)
     }
 }
 
