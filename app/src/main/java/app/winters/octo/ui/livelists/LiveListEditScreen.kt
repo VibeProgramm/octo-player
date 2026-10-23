@@ -26,8 +26,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import app.winters.octo.catalog.TrackEntity
 import app.winters.octo.design.AccentButton
+import app.winters.octo.design.ButtonSize
 import app.winters.octo.design.GlassInput
-import app.winters.octo.design.GlazeButton
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoType
 import app.winters.octo.livelists.LiveList
@@ -204,7 +204,14 @@ fun LiveListEditScreen(
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
-            item(key = "title") { PageHeader(if (new) "New live list" else "Edit live list", onBack) }
+            // Back leaves without saving; the save is on the control line.
+            item(key = "title") {
+                PageHeader(
+                    if (new) "New live list" else "Edit live list",
+                    onBack,
+                    actions = { AccentButton(if (new) "Make live list" else "Save", onClick = { vm.save(onSaved) }, size = ButtonSize.Small) },
+                )
+            }
             item(key = "name") {
                 GlassInput(draft.name, vm::rename, placeholder = liveListName(query), modifier = Modifier.padding(horizontal = 20.dp))
             }
@@ -252,12 +259,6 @@ fun LiveListEditScreen(
                             vm.change(vm.draft.value.query.copy(limit = LiveListLimits[i]))
                         })
                     }
-                }
-            }
-            item(key = "save") {
-                Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AccentButton(if (new) "Make live list" else "Save", onClick = { vm.save(onSaved) })
-                    GlazeButton("Cancel", onClick = onBack)
                 }
             }
             if (starters) {
