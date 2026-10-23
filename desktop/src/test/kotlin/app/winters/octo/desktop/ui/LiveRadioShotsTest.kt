@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import app.winters.octo.design.LocalTyping
 import app.winters.octo.design.TypingState
 import app.winters.octo.desktop.AppState
@@ -12,6 +13,7 @@ import app.winters.octo.desktop.liveradio.LiveFind
 import app.winters.octo.desktop.nav.Page
 import app.winters.octo.desktop.pages.StationDraft
 import app.winters.octo.desktop.pages.showSection
+import app.winters.octo.desktop.pages.showWhere
 import app.winters.octo.desktop.pages.stationSheet
 import app.winters.octo.desktop.player.SilentPlayer
 import app.winters.octo.desktop.secrets.SessionOnlySecrets
@@ -150,6 +152,10 @@ class LiveRadioShotsTest {
             val until = System.currentTimeMillis() + 5_000
             while (app.liveRadio.find !is LiveFind.Found && System.currentTimeMillis() < until) Thread.sleep(50)
             shot("live-page-found")
+            // The place button's menu: where to look, and the country it is in.
+            SwingUtilities.invokeAndWait { showWhere(app, IntRect(268, 128, 470, 160)) }
+            shot("live-page-place")
+            SwingUtilities.invokeAndWait { app.popups.close() }
             SwingUtilities.invokeAndWait {
                 val station = (app.liveRadio.find as LiveFind.Found).stations[0]
                 app.popups.showAt(IntOffset(760, 420)) { close -> LiveStationMenu(app, station, kept = false, close) }
