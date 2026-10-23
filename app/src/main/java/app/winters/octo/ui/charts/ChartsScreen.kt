@@ -1,46 +1,29 @@
 package app.winters.octo.ui.charts
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
-import app.winters.octo.design.OctoInk
 import app.winters.octo.design.OctoType
 import app.winters.octo.discovery.ChartList
 import app.winters.octo.discovery.CountryPick
@@ -52,28 +35,30 @@ import app.winters.octo.ui.common.COUNTRY_SEARCH_HINT
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
 import app.winters.octo.ui.common.ChoiceSheet
-import app.winters.octo.ui.common.HeaderButton
 import app.winters.octo.ui.common.LocalChoiceSheet
 import app.winters.octo.ui.common.LocalHeaderCompact
 import app.winters.octo.ui.common.NO_COUNTRY_MATCHES
+import app.winters.octo.ui.common.DROPDOWN_CHROME_DP
+import app.winters.octo.ui.common.DROPDOWN_ICON_DP
+import app.winters.octo.ui.common.HeaderDropdown
 import app.winters.octo.ui.common.PageHeader
+import app.winters.octo.ui.common.PlayShuffleButtons
+import app.winters.octo.ui.common.showDropdown
 import app.winters.octo.ui.common.SongLead
 import app.winters.octo.ui.common.SongRow
-import app.winters.octo.ui.common.choiceAnchor
-import app.winters.octo.ui.common.filterFades
 import app.winters.octo.ui.common.countryChoiceMatches
 import app.winters.octo.ui.common.rowAlbum
 import app.winters.octo.ui.common.screenPadding
-import app.winters.octo.ui.library.FilterChip
 import java.util.Locale
 
 // The charts and new songs an Octo server reads from Apple Music, one at a
-// time, picked with the chips: a country's most played songs, Best New
-// Songs, Trending Songs and a chart per genre. A song the library has
-// plays from it; any other has the add button at the end of its row. The
-// header holds it all on two lines: back and the title, then the country
-// button, the chips, and Play and Shuffle. On a server that saves it, a
-// country picked in the country button's list asks what to do with it.
+// time, picked from the chart button's list: a country's most played
+// songs, Best New Songs, Trending Songs and a chart per genre. A song the
+// library has plays from it; any other has the add button at the end of
+// its row. The header holds it all on two lines: back and the title, then
+// the country button, the chart button, and Play and Shuffle. On a server
+// that saves it, a country picked in the country button's list asks what
+// to do with it.
 @Composable
 fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
     val sheet = LocalChoiceSheet.current
@@ -90,30 +75,23 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
             item(key = "header") {
+                val chart = vm.choices.firstOrNull { it.id == vm.selected } ?: vm.choices.firstOrNull()
+                val form = rememberCountryForm(country, chart?.label)
                 PageHeader(
                     "Charts",
                     onBack,
-                    control = if (country == null) null else {
-                        { CountryButton(country, enabled = !vm.saving, onClick = { pickCountry(sheet, vm) }, modifier = Modifier.choiceAnchor(sheet)) }
-                    },
-                    filters = if (vm.choices.isEmpty()) null else {
+                    control = if (country == null && chart == null) null else {
                         {
-                            val chips = rememberLazyListState()
-                            LazyRow(
-                                state = chips,
-                                modifier = Modifier.filterFades(chips),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                items(vm.choices, key = { it.id }) { choice ->
-                                    FilterChip(choice.label, choice.id == vm.selected) { vm.pick(choice.id) }
+                            Row(horizontalArrangement = Arrangement.spacedBy(ControlGap), verticalAlignment = Alignment.CenterVertically) {
+                                if (country != null) CountryButton(country, form, enabled = !vm.saving, onClick = { pickCountry(sheet, vm) })
+                                if (chart != null) {
+                                    HeaderDropdown(chart.label, onClick = { pickChart(sheet, vm) }, clickLabel = "Choose a chart")
                                 }
                             }
                         }
                     },
                     actions = {
-                        HeaderButton(OctoIcons.Play, "Play", { vm.play(0) }, enabled = songs.isNotEmpty())
-                        HeaderButton(OctoIcons.Shuffle, "Shuffle", vm::shuffle, enabled = songs.isNotEmpty())
+                        PlayShuffleButtons({ vm.play(0) }, vm::shuffle, enabled = songs.isNotEmpty())
                     },
                 )
             }
@@ -145,40 +123,56 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
     }
 }
 
-// The country in view, as a quiet capsule that opens every country: the
-// chips' resting fill, softer words, and a small chevron saying it opens.
-// In a header too short for its name it shows its two-letter code ("US"),
-// the name kept for a screen reader. It is dimmed and out of reach while a
-// save is on its way.
+// The room between the country and chart buttons.
+private val ControlGap = 8.dp
+
+// How the country button fits beside the chart button on this screen: its
+// name, its code, or the globe alone, measured with the header's own words.
 @Composable
-private fun CountryButton(code: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val name = countryName(code)
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val ink = if (pressed) OctoColors.TextPrimary else OctoColors.TextSecondary
-    val compact = LocalHeaderCompact.current
-    Row(
-        modifier
-            .height(32.dp)
-            .alpha(if (enabled) 1f else OctoInk.DisabledAlpha)
-            .clip(CircleShape)
-            .background(OctoColors.TextPrimary.copy(alpha = if (pressed) 0.12f else 0.08f))
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClickLabel = "Choose a country", onClick = onClick)
-            .padding(start = 10.dp, end = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(painterResource(OctoIcons.Globe), contentDescription = null, tint = ink, modifier = Modifier.size(16.dp))
-        Text(
-            if (compact) code.uppercase() else name,
-            style = OctoType.label,
-            color = ink,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false).then(if (compact) Modifier.semantics { contentDescription = name } else Modifier),
+private fun rememberCountryForm(country: String?, chart: String?): CountryForm {
+    if (country == null) return CountryForm.Name
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val screen = LocalConfiguration.current.screenWidthDp
+    return remember(country, chart, screen, density) {
+        fun words(text: String) = with(density) { measurer.measure(text, OctoType.label).size.width.toDp().value.toInt() }
+        val chrome = DROPDOWN_CHROME_DP + DROPDOWN_ICON_DP
+        countryForm(
+            room = controlRoom(screen),
+            chart = chart?.let { words(it) + DROPDOWN_CHROME_DP } ?: 0,
+            name = words(countryName(country)) + chrome,
+            code = words(country.uppercase()) + chrome,
+            gap = ControlGap.value.toInt(),
         )
-        Icon(painterResource(OctoIcons.Chevron), contentDescription = null, tint = OctoColors.TextMuted, modifier = Modifier.size(12.dp).rotate(90f))
     }
+}
+
+// The country in view, as a quiet capsule that opens every country: the
+// globe, the country, and a small chevron saying it opens. In `form` it is
+// the country's name, its two-letter code ("US"), or the globe alone, the
+// name always kept for a screen reader. It is dimmed and out of reach while
+// a save is on its way.
+@Composable
+private fun CountryButton(code: String, form: CountryForm, enabled: Boolean, onClick: () -> Unit) {
+    val name = countryName(code)
+    // The header's own short form wins when it is shorter still.
+    val shown = if (LocalHeaderCompact.current && form == CountryForm.Name) CountryForm.Code else form
+    HeaderDropdown(
+        if (shown == CountryForm.Code) code.uppercase() else name,
+        onClick = onClick,
+        icon = OctoIcons.Globe,
+        showLabel = shown != CountryForm.Globe,
+        description = name,
+        enabled = enabled,
+        clickLabel = "Choose a country",
+    )
+}
+
+// Every chart the country has, Top songs, Best New Songs and Trending Songs
+// first, then its genres, the one in view checked. Picking one shows it.
+private fun pickChart(sheet: ChoiceSheet, vm: ChartsViewModel) {
+    val menu = chartMenu(vm.choices)
+    showDropdown(sheet, vm.list?.let(::caption) ?: "Chart", menu.map { it.label }, menu.indexOfFirst { it.id == vm.selected }) { vm.pick(menu[it].id) }
 }
 
 // Every country, under the chart's source line: the listener's own first,
