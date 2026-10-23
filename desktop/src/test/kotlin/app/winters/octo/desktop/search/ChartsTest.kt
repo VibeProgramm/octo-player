@@ -1,6 +1,7 @@
 package app.winters.octo.desktop.search
 
 import app.winters.octo.desktop.FakeServer
+import app.winters.octo.discovery.CountryAction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -203,9 +204,7 @@ class ChartsTest {
         charts.loadChoices()
         charts.load("34")
         until { charts.own != null && charts.lists["|34"] != null }
-        charts.pickCountry("jp")
-
-        charts.useAsMine()
+        charts.choose("jp", CountryAction.UseForMine)
         until { charts.own?.setting == "jp" && charts.lists["|34"]?.country == "jp" }
 
         assertNull(charts.country)
@@ -224,7 +223,7 @@ class ChartsTest {
         charts.loadChoices()
         until { charts.own != null }
 
-        charts.followServer()
+        charts.choose("us", CountryAction.FollowServer)
         until { charts.own?.setting == "auto" }
 
         assertEquals("auto", asked("setChartCountry").single().url.queryParameter("country"))
@@ -233,28 +232,28 @@ class ChartsTest {
     }
 
     @Test
-    fun aPinIsJustThatCountry() = runBlocking {
+    fun addingACountrysPlaylistsPinsJustThatCountryAndLooksAtIt() = runBlocking {
         serveV3()
         pinned = listOf("kr")
         val scope = CoroutineScope(Dispatchers.Default + Job())
         val charts = charts(v3, scope)
         charts.loadChoices()
         until { charts.own != null }
+        var saved = false
 
-        charts.pickCountry("jp")
-        charts.togglePin()
-        until { charts.pinned == listOf("kr", "jp") }
+        charts.choose("jp", CountryAction.AddPlaylists) { saved = true }
+        until { charts.pinned == listOf("kr", "jp") && saved }
 
         val pin = asked("pinChartCountry").single().url
         assertEquals("jp", pin.queryParameter("country"))
         assertEquals("true", pin.queryParameter("pinned"))
-        assertTrue(charts.isPinned)
+        assertTrue(asked("setChartCountry").isEmpty())
         assertEquals("jp", charts.country)
         scope.cancel()
     }
 
     @Test
-    fun aFullSetOfPinsTakesNoMoreButLetsOneGo() = runBlocking {
+    fun removingACountrysPlaylistsUnpinsIt() = runBlocking {
         serveV3()
         pinned = listOf("br", "kr", "de")
         val scope = CoroutineScope(Dispatchers.Default + Job())
@@ -262,18 +261,30 @@ class ChartsTest {
         charts.loadChoices()
         until { charts.own != null }
 
-        charts.pickCountry("jp")
-        assertFalse(charts.canPin)
-        charts.togglePin()
+        charts.choose("kr", CountryAction.RemovePlaylists)
+        until { charts.pinned == listOf("br", "de") }
+
+        assertEquals("false", asked("pinChartCountry").single().url.queryParameter("pinned"))
+        scope.cancel()
+    }
+
+    @Test
+    fun justLookingSavesNothingAndLeavingThePageGoesBackToYours() = runBlocking {
+        serveV3()
+        val scope = CoroutineScope(Dispatchers.Default + Job())
+        val charts = charts(v3, scope)
+        charts.loadChoices()
+        until { charts.own != null }
+
+        charts.choose("jp", CountryAction.Look)
+        assertEquals("jp", charts.country)
         delay(200)
+        assertTrue(asked("setChartCountry").isEmpty())
         assertTrue(asked("pinChartCountry").isEmpty())
 
-        charts.pickCountry("kr")
-        assertTrue(charts.isPinned)
-        assertTrue(charts.canPin)
-        charts.togglePin()
-        until { charts.pinned == listOf("br", "de") }
-        assertEquals("false", asked("pinChartCountry").single().url.queryParameter("pinned"))
+        // The page lets go of the country it only looked at.
+        charts.showOwn()
+        assertNull(charts.country)
         scope.cancel()
     }
 
@@ -287,7 +298,7 @@ class ChartsTest {
         until { charts.own != null }
         charts.pickCountry("jp")
 
-        charts.useAsMine()
+        charts.choose("jp", CountryAction.UseForMine)
         until { charts.problem != null }
 
         // The server's own words when it refused for a reason the listener can act on.
@@ -305,9 +316,7 @@ class ChartsTest {
         val charts = charts(v3, scope)
         charts.loadChoices()
         until { charts.own != null }
-        charts.pickCountry("jp")
-
-        charts.togglePin()
+        charts.choose("jp", CountryAction.AddPlaylists)
         until { charts.problem != null }
 
         assertEquals("Couldn't save. Try again.", charts.problem)

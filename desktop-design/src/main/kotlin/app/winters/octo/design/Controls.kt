@@ -169,6 +169,37 @@ fun GlazeCapsule(
     }
 }
 
+// A round glass button with a white icon, like Play and Shuffle at the end
+// of a page's control line. A lit one catches a little more light, as any
+// does under the pointer; one not `enabled` is dimmed.
+@Composable
+fun GlazeRound(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    lit: Boolean = false,
+    size: Dp = 36.dp,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val look = rememberButtonLook(interaction)
+    Glaze(
+        modifier
+            .size(size)
+            .buttonMotion(look, CircleShape)
+            .alpha(if (enabled) 1f else OctoInk.DisabledAlpha)
+            .hoverable(interaction)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .tabStop(LocalTabStops.current)
+            .clickable(interactionSource = interaction, indication = FocusRing(CircleShape), enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description },
+        light = if (lit || look.hovered || look.pressed) GlazeLight.Lifted else GlazeLight.Rest,
+    ) {
+        Glyph(icon, size = 18.dp)
+    }
+}
+
 // A quiet action in words: accent text that lifts under the pointer, with
 // no border and no fill.
 @Composable

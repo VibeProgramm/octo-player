@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.winters.octo.design.GlassField
 import app.winters.octo.design.MenuRow
+import app.winters.octo.design.MenuTitle
 import app.winters.octo.design.MenuSeparator
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
@@ -27,18 +28,21 @@ import app.winters.octo.discovery.countryMatches
 // How wide a country menu is, so it keeps its size as the search narrows it.
 val CountryMenuWidth = 392.dp
 
-// A menu of countries: a field that narrows them by name or code, which
-// stays put while the countries under it scroll, then the lines at the top
-// (the chosen one, ticked, and any others the picker puts first, with
-// their line about them), a hairline, and the rest. Open it with
-// `scrollsItself`.
+// A menu of countries: an optional `title` line, a field that narrows them
+// by name or code, which stays put while the countries under it scroll,
+// then the lines at the top (any the picker puts first, with their line
+// about them), a hairline, and the rest, the chosen one marked. Picking a
+// line closes the menu before `pick` runs, so it may open another in its
+// place. Open it with `scrollsItself`.
 @Composable
 fun ColumnScope.CountryMenu(
     rows: List<CountryRow>,
-    pick: (String?) -> Unit,
+    pick: (CountryRow) -> Unit,
     close: () -> Unit,
     typed: MutableState<String> = remember { mutableStateOf("") },
+    title: String? = null,
 ) {
+    title?.let { MenuTitle(it) }
     GlassField(
         typed.value,
         { typed.value = it },
@@ -62,12 +66,12 @@ fun ColumnScope.CountryMenu(
 }
 
 @Composable
-private fun CountryLine(row: CountryRow, pick: (String?) -> Unit, close: () -> Unit) {
+private fun CountryLine(row: CountryRow, pick: (CountryRow) -> Unit, close: () -> Unit) {
     MenuRow(
         row.label,
         {
-            pick(row.code)
             close()
+            pick(row)
         },
         detail = row.detail,
         selected = row.chosen,

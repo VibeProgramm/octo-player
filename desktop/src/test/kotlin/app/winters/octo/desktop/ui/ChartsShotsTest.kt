@@ -18,6 +18,7 @@ import app.winters.octo.design.TypingState
 import app.winters.octo.desktop.AppState
 import app.winters.octo.desktop.FakeServer
 import app.winters.octo.desktop.nav.Page
+import app.winters.octo.desktop.pages.askCountry
 import app.winters.octo.desktop.pages.countryName
 import app.winters.octo.desktop.pages.showCountryMenu
 import app.winters.octo.desktop.player.SilentPlayer
@@ -45,8 +46,8 @@ import javax.swing.SwingUtilities
 
 // Pictures of the charts against a pretend Octo server: Home's Charts row,
 // the Charts page on Popular right now, Best New Songs and a genre, Japan's
-// charts looked at with their two buttons, and the country menu, whole and
-// searched. Only when asked:
+// charts looked at, the country menu, whole, scrolled and searched, and the
+// choice a picked country asks. Only when asked:
 // OCTO_SHOTS=1 ./gradlew :desktop:test --tests '*ChartsShotsTest*'.
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class)
 class ChartsShotsTest {
@@ -214,6 +215,10 @@ class ChartsShotsTest {
             val japan = capsule("Japan").roundToIntRect()
             SwingUtilities.invokeAndWait { showCountryMenu(app, charts, japan) }
             shot("charts-country-menu-japan", 1_500)
+            SwingUtilities.invokeAndWait { app.popups.close() }
+            // A country picked asks what to do with it; South Korea is pinned already.
+            SwingUtilities.invokeAndWait { askCountry(app, charts, japan, "kr") }
+            shot("charts-country-choice", 1_500)
             SwingUtilities.invokeAndWait { app.popups.close() }
             SwingUtilities.invokeAndWait { showCountryMenu(app, charts, japan, mutableStateOf("ko")) }
             shot("charts-country-menu-search", 1_500)

@@ -176,7 +176,7 @@ private fun WhereControls(app: AppState, saved: String, savedCountry: String) {
         GlassField(where, { where = it }, Modifier.widthIn(max = FrameSize.SearchWidth).weight(1f, fill = false), placeholder = WHERE_HINT, icon = OctoIcons.Globe, onSubmit = find)
         GlazeCapsule(null, countryName(country), {
             app.popups.showAt(pointer.point, scrollsItself = true) { close ->
-                CountryMenu(countryRows(country, Countries, ::countryName), { picked -> picked?.let { country = it } }, close)
+                CountryMenu(countryRows(country, Countries, ::countryName), { row -> row.code?.let { country = it } }, close)
             }
         })
         GlazeCapsule(OctoIcons.Search, "Find", find, lit = true, enabled = where.isNotBlank())

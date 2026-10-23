@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
@@ -160,6 +161,28 @@ fun PageTitle(text: String, modifier: Modifier = Modifier, detail: String? = nul
     }
     Box(modifier.padding(bottom = Space.Xl)) {
         if (actions == null) heading() else TitleAndActions(text, DesktopType.pageTitle, heading = heading, actions = actions)
+    }
+}
+
+// A page's control line, under its title and above its content: the
+// page's own control first (a country or sort button), then its filters
+// (chips that scroll sideways, given the room left), then its actions
+// (Play, Shuffle, More) at the end of the line, all on one line.
+@Composable
+fun ControlLine(
+    modifier: Modifier = Modifier,
+    control: (@Composable () -> Unit)? = null,
+    filters: (@Composable () -> Unit)? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+) {
+    Row(
+        modifier.fillMaxWidth().padding(bottom = Space.L),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Space.M),
+    ) {
+        control?.invoke()
+        Box(Modifier.weight(1f)) { filters?.invoke() }
+        if (actions != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S), content = actions)
     }
 }
 

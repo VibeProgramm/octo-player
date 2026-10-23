@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.winters.octo.desktop.server.Connection
 import app.winters.octo.discovery.CHART_SAVE_FAILED
+import app.winters.octo.discovery.CountryAction
 import app.winters.octo.discovery.chartRefusal
 import app.winters.octo.discovery.chartSongs
 import app.winters.octo.subsonic.CHART_COUNTRY_AUTO
@@ -99,10 +100,6 @@ class Charts(private val connection: Connection, private val scope: CoroutineSco
 
     val maxPinned: Int get() = own?.maxPinned ?: 0
 
-    // Whether the country looked at is pinned, and whether it may be: one
-    // already pinned can always be unpinned.
-    val isPinned: Boolean get() = country != null && country in pinned
-    val canPin: Boolean get() = isPinned || pinned.size < maxPinned
 
     // A chart's place in `lists`: its country ("" for the listener's own)
     // and its id.
@@ -229,30 +226,35 @@ class Charts(private val connection: Connection, private val scope: CoroutineSco
         keepSelected()
     }
 
-    // Makes the country looked at the listener's own.
-    fun useAsMine() {
-        val code = country ?: return
-        // Only back to their own when the country looked at is still the one saved.
-        save({ it.setChartCountry(code) }) { if (country == code) country = null }
-    }
-
-    // Follows the server's country again: saved when the listener had
-    // chosen one, else only back to their own.
-    fun followServer() {
-        val mine = own ?: return
-        if (mine.setting.equals(CHART_COUNTRY_AUTO, ignoreCase = true)) {
-            showOwn()
-            return
+    // Does what was chosen for a picked country (`code`): only look at it
+    // here, make it the listener's chart country (or follow the server's
+    // again), or add or remove its playlists and look at it. `saved` runs
+    // once a save has happened; a save that did not leaves `problem`.
+    fun choose(code: String, action: CountryAction, saved: () -> Unit = {}) {
+        when (action) {
+            CountryAction.Look -> pickCountry(code)
+            CountryAction.UseForMine -> save({ it.setChartCountry(code) }) {
+                country = null
+                saved()
+            }
+            CountryAction.FollowServer -> save({ it.setChartCountry(CHART_COUNTRY_AUTO) }) {
+                country = null
+                saved()
+            }
+            CountryAction.AddPlaylists -> save({ it.pinChartCountry(code, true) }) {
+                pickCountry(code)
+                saved()
+            }
+            CountryAction.RemovePlaylists -> save({ it.pinChartCountry(code, false) }) {
+                pickCountry(code)
+                saved()
+            }
         }
-        save({ it.setChartCountry(CHART_COUNTRY_AUTO) }) { country = null }
     }
 
-    // Pins the country looked at, or unpins it.
-    fun togglePin() {
-        val code = country ?: return
-        val pin = !isPinned
-        if (pin && !canPin) return
-        save({ it.pinChartCountry(code, pin) }) {}
+    // A reason shown, put away.
+    fun problemSeen() {
+        problem = null
     }
 
     // A save changes the listener's own lists, so every chart and list of

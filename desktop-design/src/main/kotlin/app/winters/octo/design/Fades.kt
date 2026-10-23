@@ -1,6 +1,7 @@
 package app.winters.octo.design
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -47,6 +48,27 @@ private fun Modifier.edgeFades(height: Dp, top: (Float) -> Float, bottom: (Float
                 Brush.verticalGradient(listOf(Color.Black, Color.Black.copy(alpha = 1f - below)), startY = size.height - edge, endY = size.height),
                 topLeft = Offset(0f, size.height - edge),
                 size = Size(size.width, edge),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    }
+
+// Soft fades at the two ends of a row that scrolls sideways, each only
+// while there is more of the row that way, so a chip running under the
+// next control melts away instead of being cut.
+fun Modifier.rowFades(state: LazyListState, width: Dp = 16.dp): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val edge = width.toPx()
+        if (state.canScrollBackward) {
+            drawRect(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = 0f, endX = edge), size = Size(edge, size.height), blendMode = BlendMode.DstIn)
+        }
+        if (state.canScrollForward) {
+            drawRect(
+                Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = size.width - edge, endX = size.width),
+                topLeft = Offset(size.width - edge, 0f),
+                size = Size(edge, size.height),
                 blendMode = BlendMode.DstIn,
             )
         }

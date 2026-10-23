@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -39,10 +40,12 @@ fun GlazeChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Mo
     }
 }
 
-// A row of chips that scrolls sideways when they do not fit.
+// A row of chips that scrolls sideways when they do not fit, its ends
+// fading while there are more chips that way.
 @Composable
 fun <T> ChipRow(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
-    LazyRow(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    val state = rememberLazyListState()
+    LazyRow(modifier.rowFades(state), state = state, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(options) { option -> GlazeChip(label(option), option == selected, { onSelect(option) }) }
     }
 }
