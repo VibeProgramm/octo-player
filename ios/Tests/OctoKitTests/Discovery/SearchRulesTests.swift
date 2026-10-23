@@ -396,3 +396,86 @@ private func libraryArtist(_ id: String, _ name: String) -> LibraryArtist {
         #expect(albumHighlight(album, []) == nil)
     }
 }
+
+@Suite struct ChartCountryRulesTests {
+    private let english = Locale(identifier: "en_US")
+
+    @Test func countriesNeedTheThirdVersion() {
+        #expect(!chartCountriesOffered(["octoTopSongs:1", "octoTopSongs:2"]))
+        #expect(chartCountriesOffered(["octoTopSongs:1", "octoTopSongs:2", "octoTopSongs:3"]))
+        #expect(!chartCountriesOffered([]))
+        // The Charts page itself still needs only the second.
+        #expect(chartsOffered(["octoTopSongs:2", "octoTopSongs:3"]))
+    }
+
+    @Test func theOwnCountryComesFirstThenThePinnedOnesThenTheRestByName() {
+        let names = ["us": "United States", "jp": "Japan", "br": "Brazil", "de": "Germany", "kr": "South Korea"]
+        let order = chartCountryOrder(["us", "jp", "br", "de", "kr"], own: "us", pinned: ["kr", "jp"]) { names[$0] ?? $0 }
+        #expect(order == ["us", "kr", "jp", "br", "de"])
+    }
+
+    @Test func noCountryIsListedTwice() {
+        let order = chartCountryOrder(["us", "jp"], own: "jp", pinned: ["jp", "us", "US"]) { $0 }
+        #expect(order == ["jp", "us"])
+    }
+
+    @Test func aPinAppleNoLongerListsStaysSoItCanBeUnpinned() {
+        let order = chartCountryOrder(["us"], own: nil, pinned: ["xx"]) { $0 }
+        #expect(order == ["xx", "us"])
+    }
+
+    @Test func typingMatchesANameWithoutItsAccents() {
+        #expect(countryMatches(name: "Côte d\u{2019}Ivoire", code: "ci", typed: "cote"))
+        #expect(countryMatches(name: "Japan", code: "jp", typed: "APA"))
+        #expect(!countryMatches(name: "Japan", code: "jp", typed: "brazil"))
+    }
+
+    @Test func aCodeMatchesOnlyExactly() {
+        #expect(countryMatches(name: "Japan", code: "jp", typed: "JP"))
+        #expect(countryMatches(name: "Japan", code: "jp", typed: " jp "))
+        // "j" is inside no name here and is not the whole code.
+        #expect(!countryMatches(name: "Germany", code: "jp", typed: "j"))
+    }
+
+    @Test func nothingTypedMatchesEveryCountry() {
+        #expect(countryMatches(name: "Japan", code: "jp", typed: ""))
+        #expect(countryMatches(name: "Japan", code: "jp", typed: "   "))
+    }
+
+    @Test func aCountryIsNamedInThePhonesLanguage() {
+        #expect(countryName("jp", locale: english) == "Japan")
+        #expect(countryName("GB", locale: english) == "United Kingdom")
+        #expect(countryName("q1", locale: english) == "Q1")
+    }
+
+    @Test func eachCountryKeepsItsOwnChartsAndTheListenersOwnHaveNone() {
+        #expect(chartChoicesKey(server: "a", country: nil) == "a|")
+        #expect(chartChoicesKey(server: "a", country: "jp") == "a|jp")
+        // Home's row and Search read the listener's own: no country in the key.
+        #expect(chartListKey(server: "a", country: nil, chart: Charts.overall) == "a||34")
+        #expect(chartListKey(server: "a", country: "jp", chart: Charts.overall) == "a|jp|34")
+        #expect(chartListKey(server: "a", country: "jp", chart: "34") != chartListKey(server: "a", country: "br", chart: "34"))
+    }
+
+    @Test func aSaveDropsOnlyThatServersCharts() {
+        #expect(isChartKey(chartListKey(server: "a", country: "jp", chart: "34"), server: "a"))
+        #expect(isChartKey(chartChoicesKey(server: "a", country: nil), server: "a"))
+        #expect(!isChartKey(chartListKey(server: "ab", country: nil, chart: "34"), server: "a"))
+    }
+
+    @Test func theListenersOwnChartsAreToldApartFromOtherCountries() {
+        #expect(isOwnChartKey(chartListKey(server: "a", country: nil, chart: "new"), server: "a"))
+        #expect(!isOwnChartKey(chartListKey(server: "a", country: "jp", chart: "new"), server: "a"))
+        #expect(!isOwnChartKey(chartChoicesKey(server: "a", country: nil), server: "a"))
+    }
+
+    @Test func aServerThatSavesTheCountryIsAskedFreshEachTimeThePageOpens() {
+        #expect(chartChoicesOnOpen(countries: true, kept: true) == ChartChoicesAsk(ask: true, fresh: true))
+        #expect(chartChoicesOnOpen(countries: true, kept: false) == ChartChoicesAsk(ask: true, fresh: true))
+    }
+
+    @Test func anOlderServerIsAskedOnlyWhenNothingIsKept() {
+        #expect(chartChoicesOnOpen(countries: false, kept: true) == ChartChoicesAsk(ask: false, fresh: false))
+        #expect(chartChoicesOnOpen(countries: false, kept: false) == ChartChoicesAsk(ask: true, fresh: false))
+    }
+}
