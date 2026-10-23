@@ -67,8 +67,8 @@ import app.winters.octo.liveradio.PlaceSource
 import app.winters.octo.liveradio.placeSourceLine
 import app.winters.octo.liveradio.radiusChoices
 import app.winters.octo.liveradio.radiusLabel
-import app.winters.octo.ui.common.HeaderChipBreak
-import app.winters.octo.ui.common.HeaderChips
+import app.winters.octo.ui.common.HeaderDropdown
+import app.winters.octo.ui.common.showDropdown
 import app.winters.octo.ui.common.LocalHeaderCompact
 import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Choice
@@ -136,8 +136,8 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
     val miles = vm.miles
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
-            // The title, then one line: where the stations are found
-            // around (a tap changes it), their order, and how far around.
+            // The title, then one line of dropdowns: where the stations are
+            // found around (a tap changes it), their order, and how far around.
             item(key = "title") {
                 PageHeader(
                     LIVE_NEAR_TITLE,
@@ -148,14 +148,15 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
                     filters = if (search == null || place == null) null else {
                         {
                             val choices = radiusChoices(miles)
-                            HeaderChips {
-                                items(LiveSort.entries, key = { it.name }) { sort ->
-                                    RadiusChip(SortWords[sort.ordinal], chosen = sort == search.sort) { vm.setSort(sort) }
-                                }
-                                item(key = "break") { HeaderChipBreak() }
-                                itemsIndexed(choices, key = { _, radius -> "radius:$radius" }) { index, radius ->
-                                    RadiusChip(radiusLabel(miles, radius), chosen = index == search.radiusIndex.coerceIn(0, choices.lastIndex)) { vm.setRadius(index) }
-                                }
+                            val radius = search.radiusIndex.coerceIn(0, choices.lastIndex)
+                            val labels = choices.map { radiusLabel(miles, it) }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                HeaderDropdown(SortWords[search.sort.ordinal], onClick = {
+                                    showDropdown(sheet, "Order", SortWords, search.sort.ordinal) { vm.setSort(LiveSort.entries[it]) }
+                                }, clickLabel = "Choose the order")
+                                HeaderDropdown(labels[radius], onClick = {
+                                    showDropdown(sheet, "How far", labels, radius) { vm.setRadius(it) }
+                                }, clickLabel = "Choose how far")
                             }
                         }
                     },
@@ -212,29 +213,19 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
     }
 }
 
-// Where the stations are found around, as a quiet capsule that changes
-// it: the place's name and a small chevron saying it opens. In a header too
-// short for the name it shows the globe alone, the name kept for a screen
-// reader. It is lit while the place is being changed.
+// Where the stations are found around, as a dropdown that changes it. In a
+// header too short for the place's name it shows the globe alone, the name
+// kept for a screen reader.
 @Composable
 private fun PlaceButton(place: LivePlace, onClick: () -> Unit) {
-    val compact = LocalHeaderCompact.current
-    val near = "Near ${place.label}"
-    Row(
-        Modifier
-            .height(32.dp)
-            .clip(CircleShape)
-            .background(OctoColors.TextPrimary.copy(alpha = 0.08f))
-            .clickable(role = Role.Button, onClickLabel = "Change the place", onClick = onClick)
-            .semantics(mergeDescendants = true) { contentDescription = near }
-            .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(painterResource(OctoIcons.Globe), contentDescription = null, tint = OctoColors.TextSecondary, modifier = Modifier.size(16.dp))
-        if (!compact) Text(place.label, style = OctoType.label, color = OctoColors.TextSecondary, maxLines = 1)
-        Icon(painterResource(OctoIcons.Chevron), contentDescription = null, tint = OctoColors.TextMuted, modifier = Modifier.size(12.dp).rotate(90f))
-    }
+    HeaderDropdown(
+        place.label,
+        onClick = onClick,
+        icon = OctoIcons.Globe,
+        showLabel = !LocalHeaderCompact.current,
+        description = "Near ${place.label}",
+        clickLabel = "Change the place",
+    )
 }
 
 // Choosing a place: the phone's rough position, or a ZIP, postal code or

@@ -60,7 +60,10 @@ import app.winters.octo.ui.common.ArtistRow
 import app.winters.octo.ui.common.Feedback
 import app.winters.octo.ui.common.LocalSongSelection
 import app.winters.octo.ui.common.Pickable
-import app.winters.octo.ui.common.HeaderChips
+import app.winters.octo.ui.common.HeaderDropdown
+import app.winters.octo.ui.common.LocalChoiceSheet
+import app.winters.octo.ui.common.showDropdown
+import androidx.compose.foundation.layout.Row
 import app.winters.octo.ui.common.HeaderMore
 import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.PlayShuffleButtons
@@ -72,7 +75,6 @@ import app.winters.octo.ui.common.SortButton
 import app.winters.octo.ui.common.TopOnNewOrder
 import app.winters.octo.ui.nav.AlbumRoute
 import app.winters.octo.ui.nav.ArtistRoute
-import app.winters.octo.ui.library.FilterChip
 import app.winters.octo.ui.playlist.keepLikedItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -174,18 +176,18 @@ fun FavouritesScreen(
                 "Favorites",
                 onBack,
                 count = segment?.let { favouriteCount(it, songs?.items?.size, albums?.items?.size, artists?.items?.size) },
-                control = {
-                    when (segment) {
-                        null -> Unit
-                        FavouriteSegment.Songs -> songs?.let { SortButton(SortList.Liked, it.order, vm::setSongOrder) }
-                        else -> (albums ?: artists)?.let { SortButton(SortList.Favourites, it.order, vm::setOrder) }
-                    }
-                },
-                filters = if (segment == null) null else {
+                // The part shown, then its order: the three parts do not fit
+                // beside the buttons as chips, so they are a dropdown.
+                control = if (segment == null) null else {
                     {
-                        HeaderChips {
-                            items(FavouriteSegment.entries, key = { it.name }) { part ->
-                                FilterChip(part.label, part == segment) { chosen = part }
+                        val sheet = LocalChoiceSheet.current
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            HeaderDropdown(segment.label, onClick = {
+                                showDropdown(sheet, "Show", FavouriteSegment.entries.map { it.label }, segment.ordinal) { chosen = FavouriteSegment.entries[it] }
+                            }, clickLabel = "Choose what to show")
+                            when (segment) {
+                                FavouriteSegment.Songs -> songs?.let { SortButton(SortList.Liked, it.order, vm::setSongOrder) }
+                                else -> (albums ?: artists)?.let { SortButton(SortList.Favourites, it.order, vm::setOrder) }
                             }
                         }
                     }

@@ -1,7 +1,6 @@
 package app.winters.octo.ui.common
 
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,10 +9,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -245,26 +241,6 @@ fun HeaderButton(
 fun PlayShuffleButtons(onPlay: () -> Unit, onShuffle: () -> Unit, enabled: Boolean = true, loading: Boolean = false) {
     HeaderButton(OctoIcons.Play, "Play", onPlay, enabled = enabled, loading = loading)
     HeaderButton(OctoIcons.Shuffle, "Shuffle", onShuffle, enabled = enabled && !loading)
-}
-
-// A faint upright hairline between two groups of chips on a control line,
-// like a list's order and how far it reaches.
-@Composable
-fun HeaderChipBreak() {
-    Box(Modifier.padding(horizontal = 4.dp).size(width = 1.dp, height = 20.dp).background(OctoColors.TextPrimary.copy(alpha = 0.14f)))
-}
-
-// A control line's chips, in a row that scrolls sideways with soft ends.
-@Composable
-fun HeaderChips(modifier: Modifier = Modifier, content: LazyListScope.() -> Unit) {
-    val state = rememberLazyListState()
-    LazyRow(
-        state = state,
-        modifier = modifier.filterFades(state),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content,
-    )
 }
 
 // Soft 16dp fades at the ends of a control line's filters that scroll

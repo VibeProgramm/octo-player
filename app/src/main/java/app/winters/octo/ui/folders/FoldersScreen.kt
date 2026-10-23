@@ -59,7 +59,9 @@ import app.winters.octo.ui.common.TopOnNewOrder
 import app.winters.octo.ui.common.screenPadding
 import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.PlayShuffleButtons
-import app.winters.octo.ui.common.filterFades
+import app.winters.octo.ui.common.HeaderDropdown
+import app.winters.octo.ui.common.LocalChoiceSheet
+import app.winters.octo.ui.common.showDropdown
 import app.winters.octo.ui.common.songs
 
 // Music as it is filed: folders on the phone and on the server. With both,
@@ -238,32 +240,20 @@ private fun LazyListScope.songRows(list: List<TrackEntity>, order: SortOrder, vm
     }
 }
 
-// The folders on the way to this one, as plain words on the control line;
-// the title already names this one. Any of them goes back there. It scrolls
-// sideways when long, starting at the end.
+// The folder this one is in, as a dropdown on the control line listing
+// every folder on the way here, the nearest last; the title already names
+// this one. Picking one goes back there.
 @Composable
 private fun Breadcrumb(names: List<String>, onCrumb: (Int) -> Unit) {
-    val state = rememberLazyListState()
-    LaunchedEffect(names.size) { state.scrollToItem(names.lastIndex) }
-    LazyRow(state = state, modifier = Modifier.filterFades(state), verticalAlignment = Alignment.CenterVertically) {
-        itemsIndexed(names.dropLast(1)) { index, name ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    name,
-                    style = OctoType.label,
-                    color = OctoColors.TextSecondary,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .clickable(role = Role.Button, onClickLabel = "Go back to $name") { onCrumb(index) }
-                        .padding(horizontal = 6.dp, vertical = 12.dp),
-                )
-                Text("/", style = OctoType.label, color = OctoColors.TextMuted)
-            }
-        }
-        // Room at the end, so the last folder can scroll clear of the fade.
-        item { Spacer(Modifier.width(16.dp)) }
-    }
+    val sheet = LocalChoiceSheet.current
+    val above = names.dropLast(1)
+    HeaderDropdown(
+        above.last(),
+        onClick = { showDropdown(sheet, "Go back to", above, -1, onCrumb) },
+        icon = OctoIcons.Folder,
+        description = "In ${above.last()}",
+        clickLabel = "Go back to a folder on the way",
+    )
 }
 
 // A folder line: icon, name, what it holds, and a chevron.

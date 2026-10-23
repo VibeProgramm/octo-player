@@ -97,7 +97,9 @@ import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.Segmented
 import app.winters.octo.ui.common.SongLead
-import app.winters.octo.ui.common.HeaderChips
+import app.winters.octo.ui.common.HeaderDropdown
+import app.winters.octo.ui.common.LocalChoiceSheet
+import app.winters.octo.ui.common.showDropdown
 import app.winters.octo.ui.common.SongRow
 import app.winters.octo.ui.common.rowAlbum
 import app.winters.octo.ui.common.songs
@@ -141,8 +143,9 @@ fun SearchScreen(onOpen: (NavKey) -> Unit, vm: SearchViewModel = hiltViewModel()
     }
 
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
-        // The field stands in for the page title; under it, one line of
-        // chips: the kinds, then Library songs only.
+        // The field stands in for the page title; under it, one line: the
+        // kind of result, as a dropdown since the kinds do not fit as chips,
+        // then Library songs only.
         GlassInput(
             value = vm.text,
             onValueChange = { vm.text = it },
@@ -152,9 +155,16 @@ fun SearchScreen(onOpen: (NavKey) -> Unit, vm: SearchViewModel = hiltViewModel()
             modifier = Modifier.padding(horizontal = 20.dp),
             trailing = if (vm.text.isEmpty()) null else ({ ClearButton { vm.text = "" } }),
         )
-        HeaderChips(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp)) {
-            items(SearchFilter.entries, key = { it.name }) { kind -> FilterChip(kind.label, kind == filter) { pick(kind) } }
-            if (signedIn) item(key = "library-only") { FilterChip(LIBRARY_ONLY_SETTING, libraryOnly) { setLibraryOnly(!libraryOnly) } }
+        val sheet = LocalChoiceSheet.current
+        Row(
+            Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HeaderDropdown(filter.label, onClick = {
+                showDropdown(sheet, "Show", SearchFilter.entries.map { it.label }, filter.ordinal) { pick(SearchFilter.entries[it]) }
+            }, clickLabel = "Choose what to show")
+            if (signedIn) FilterChip(LIBRARY_ONLY_SETTING, libraryOnly) { setLibraryOnly(!libraryOnly) }
         }
         val found = results
         // What the server found, of the kinds the filter shows, less any
