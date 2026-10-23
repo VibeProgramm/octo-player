@@ -233,13 +233,15 @@ struct OnlineArtistView: View {
 /// The charts and new songs an Octo server reads from Apple Music, one at a time, picked with the
 /// chips: the chart country's most played songs, Best New Songs, Trending Songs and a chart per
 /// genre. A song the library has plays from it; any other has the add button at the end of its
-/// row. One line holds the title, the country button and Play and Shuffle; the chips sit under it.
-/// On a server that has every country's charts, picking a country asks what to do with it: only
-/// look at it here, use it for the listener's charts, or add its chart playlists beside theirs.
+/// row. The back button and the title have a line of their own; the country button, the chips and
+/// Play and Shuffle share the one under it. On a server that has every country's charts, picking a
+/// country asks what to do with it: only look at it here, use it for the listener's charts, or add
+/// its chart playlists beside theirs.
 struct ChartsView: View {
     @Environment(Discovery.self) private var discovery
     @Environment(Player.self) private var player
     @Environment(Router.self) private var router
+    @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 32
     @State private var choices: [ChartChoice] = []
     @State private var selected = Charts.overall
@@ -267,20 +269,9 @@ struct ChartsView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                header
-                if !choices.isEmpty {
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 8) {
-                            ForEach(choices) { choice in
-                                OnOffChip(text: choice.label, on: choice.id == selected) { pick(choice.id) }
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                    }
-                    .scrollIndicators(.hidden)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 4)
-                    .padding(.bottom, 12)
+                titleLine
+                if !none {
+                    controlLine
                 }
                 if none {
                     quiet("This server doesn't have charts.")
@@ -307,7 +298,8 @@ struct ChartsView: View {
                         .padding(.top, 24)
                 }
             }
-            .padding(.top, detailTopGap)
+            // The back button is on the title's line, so no room is left above it for one.
+            .padding(.top, 8)
         }
         .barClearance()
         .sheet(isPresented: $picking) {
@@ -337,40 +329,59 @@ struct ChartsView: View {
 
     // MARK: The header
 
-    /// The title, then at the right the country button, Play and Shuffle, all on the middle of the
-    /// title's capitals. The title keeps its whole width; a long country name gives way in the
-    /// button.
-    private var header: some View {
-        let playable = !(list?.songs.isEmpty ?? true)
-        return HStack(alignment: .chartsTitleLine, spacing: 0) {
-            ScreenTitle("Charts")
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.trailing, -12)
-                .alignmentGuide(.chartsTitleLine) { d in d[.firstTextBaseline] - titleCapHeight / 2 }
-            Spacer(minLength: 0)
-            if !none {
-                HStack(spacing: 0) {
-                    if canPickCountry {
-                        Button { picking = true } label: { ChoiceChip(text: shownCountryName, systemImage: OctoIcon.globe.symbol) }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Chart country: \(shownCountryName)")
-                            .padding(.trailing, 4)
-                    }
-                    GlassIconButton(icon: .play, label: "Play", lit: true) { if let list { play(list, 0) } }
-                        .disabled(!playable)
-                        .opacity(playable ? 1 : OctoInkColor.disabled)
-                    GlassIconButton(icon: .shuffle, label: "Shuffle") { if let list { player.shuffle(list.songs.map(\.track)) } }
-                        .disabled(!playable)
-                        .opacity(playable ? 1 : OctoInkColor.disabled)
-                }
+    /// Line one: the back button and the big title, alone, the button on the middle of the
+    /// title's capitals. The edge swipe still goes back.
+    private var titleLine: some View {
+        HStack(alignment: .chartsTitleLine, spacing: 0) {
+            GlazedIconButton(.back, label: "Back", size: 40) { dismiss() }
                 .alignmentGuide(.chartsTitleLine) { d in d[VerticalAlignment.center] }
-                // The round buttons' targets reach 7 past their glass, so the glass ends 20 in.
-                .padding(.trailing, 13)
-            }
+                .padding(.leading, 16)
+            ScreenTitle("Charts")
+                .padding(.leading, -8)
+                .alignmentGuide(.chartsTitleLine) { d in d[.firstTextBaseline] - titleCapHeight / 2 }
         }
     }
 
-    /// The title's cap height, for the buttons beside it to sit on the middle of its capitals.
+    /// Line two, everything else on one line: the country button, the chips, which scroll
+    /// sideways, and Play and Shuffle held at the right.
+    private var controlLine: some View {
+        let playable = !(list?.songs.isEmpty ?? true)
+        return HStack(spacing: 8) {
+            if canPickCountry {
+                Button { picking = true } label: { ChoiceChip(text: shownCountryName, systemImage: OctoIcon.globe.symbol) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Chart country: \(shownCountryName)")
+            }
+            if choices.isEmpty {
+                Spacer(minLength: 0)
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(choices) { choice in
+                            OnOffChip(text: choice.label, on: choice.id == selected) { pick(choice.id) }
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 0) {
+                GlassIconButton(icon: .play, label: "Play", lit: true) { if let list { play(list, 0) } }
+                    .disabled(!playable)
+                    .opacity(playable ? 1 : OctoInkColor.disabled)
+                GlassIconButton(icon: .shuffle, label: "Shuffle") { if let list { player.shuffle(list.songs.map(\.track)) } }
+                    .disabled(!playable)
+                    .opacity(playable ? 1 : OctoInkColor.disabled)
+            }
+        }
+        .padding(.leading, 20)
+        // The round buttons' targets reach 7 past their glass, so the glass ends 20 in.
+        .padding(.trailing, 13)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
+    }
+
+    /// The title's cap height, for the back button beside it to sit on the middle of its capitals.
     private var titleCapHeight: CGFloat { UIFont.systemFont(ofSize: titleSize, weight: .black).capHeight }
 
     // MARK: The country

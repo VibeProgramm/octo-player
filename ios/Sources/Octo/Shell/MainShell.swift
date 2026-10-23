@@ -515,7 +515,8 @@ extension View {
                 }
             }
             .background { PageBackdrop(page: route.ambientPage, route: route) }
-            .detailPage()
+            // Charts puts its back button on its title's line.
+            .detailPage(ownBack: route == .charts)
         }
         .toolbar(.hidden, for: .navigationBar)
     }
