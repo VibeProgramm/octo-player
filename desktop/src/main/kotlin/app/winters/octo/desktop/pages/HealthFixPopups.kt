@@ -250,8 +250,12 @@ fun lookUpSongs(app: AppState, songs: List<Song>, settle: HealthCheck?) {
                 at++
             }
         }
-        MenuTitle(if (songs.size == 1) LOOK_UP_TAGS else "Look up ${countText(songs.size, "song", "songs")}")
-        if (songs.size == 1) PopupPadding { Txt("${songs[0].title}, ${songs[0].artist.orEmpty()}".trimEnd(',', ' '), DesktopType.emphasis, maxLines = 3) }
+        // One song is named on the title's line.
+        if (songs.size == 1) {
+            MenuTitle(LOOK_UP_TAGS, "${songs[0].title}, ${songs[0].artist.orEmpty()}".trimEnd(',', ' '))
+        } else {
+            MenuTitle("Look up ${countText(songs.size, "song", "songs")}")
+        }
         if (!done) {
             PopupPadding {
                 Line(if (songs.size == 1) "Looking it up." else "Looking up ${at + 1} of ${songs.size}.", muted = true)
@@ -301,14 +305,15 @@ fun showTrash(app: AppState) {
         var problem by remember { mutableStateOf<String?>(null) }
         LaunchedEffect(Unit) { app.health.readTrash { problem = it } }
         val trash = app.health.trash
-        MenuTitle(RECENTLY_REMOVED)
+        val shown = trash?.songs?.isNotEmpty() == true && problem == null
+        // What to do here is said on the title's line once there are songs.
+        if (shown) MenuTitle(RECENTLY_REMOVED, "Pick a song to put it back where it was.") else MenuTitle(RECENTLY_REMOVED)
         when {
             problem != null -> PopupPadding { Line(problem!!, muted = true) }
             trash == null -> PopupPadding { Line("Reading the server's trash.", muted = true) }
             trash.songs.isEmpty() -> PopupPadding { Line("Nothing is in the server's trash.", muted = true) }
             else -> {
                 val now = System.currentTimeMillis()
-                PopupPadding { Line("Pick a song to put it back where it was.", muted = true) }
                 trash.songs.take(PREVIEW_LINES).forEach { song ->
                     val gone = song.goneAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
                     MenuRow("${song.title}, ${song.artist}", {
