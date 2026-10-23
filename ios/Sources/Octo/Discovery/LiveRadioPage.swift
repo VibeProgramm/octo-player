@@ -262,7 +262,7 @@ func addStationToServer(_ station: LiveStation, controls: ServerControls, router
 }
 
 /// A choice shown as a glass chip: its icon, what is chosen, and a chevron saying it opens a list.
-private struct ChoiceChip: View {
+struct ChoiceChip: View {
     let text: String
     let systemImage: String
 
@@ -289,6 +289,7 @@ struct PlaceChooser: View {
     @State private var finder = PlaceFinderHolder()
     @State private var text = ""
     @State private var country = phoneCountry()
+    @State private var pickingCountry = false
     @State private var locating = false
     @State private var looking = false
     @State private var problem: String?
@@ -316,13 +317,9 @@ struct PlaceChooser: View {
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
             HStack(spacing: 12) {
-                Picker("Country", selection: $country) {
-                    ForEach(placeCountries(), id: \.code) { entry in Text(entry.name).tag(entry.code) }
-                }
-                .pickerStyle(.menu)
-                .tint(.white)
-                .labelsHidden()
-                .accessibilityLabel("Country")
+                Button { pickingCountry = true } label: { ChoiceChip(text: countryName(country), systemImage: OctoIcon.globe.symbol) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Country: \(countryName(country))")
                 Spacer(minLength: 0)
                 GlazeButton("Find", size: .medium, enabled: !text.trimmingCharacters(in: .whitespaces).isEmpty, loading: looking) { find() }
             }
@@ -338,6 +335,10 @@ struct PlaceChooser: View {
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(ChooserBackground(inSheet: inSheet))
+        .sheet(isPresented: $pickingCountry) {
+            let rows = placeCountries().map { CountryRow(id: $0.code, code: $0.code, name: $0.name) }
+            CountryPickerSheet(sections: [CountrySection(title: nil, rows: rows)], chosen: country) { country = $0 }
+        }
     }
 
     /// How places are looked up for the server in use.
