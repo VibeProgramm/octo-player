@@ -253,51 +253,48 @@ struct SongsPage: View {
             .frame(minHeight: 44)
             .glassEffect(Glass.octo, in: .capsule)
             .padding(.horizontal, 20)
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    if query.filters {
-                        QuietButton("Clear all") { query = query.cleared() }
-                        QuietButton("Save as live list") { saveAsLiveList() }
+            // The filters as one menu button, never a row that scrolls sideways: each quick
+            // filter checked while on, a rating, a genre and a decade each in a menu of its own.
+            HStack(spacing: 8) {
+                Menu {
+                    Section {
+                        ForEach(FilterPresets.simple, id: \.self) { rule in
+                            MenuPick(rule.label(), checked: query.rules.contains(rule)) { toggle(rule) }
+                        }
                     }
-                    ForEach(FilterPresets.simple, id: \.self) { rule in
-                        FilterChip(text: rule.label(), on: query.rules.contains(rule)) { toggle(rule) }
-                    }
-                    askingChip(.rating, off: "Rating", title: "Rating",
-                               answers: (1...5).reversed().map { (FilterPresets.ratingWords($0), FilterPresets.ratingAtLeast($0)) })
+                    pickMenu("Rating", (1...5).reversed().map { (FilterPresets.ratingWords($0), FilterPresets.ratingAtLeast($0)) })
                     if !genreChoices.isEmpty || query.rules.contains(where: { $0.field == .genre }) {
-                        askingChip(.genre, off: "Genre", title: "Genre", answers: genreChoices.map { ($0, FilterPresets.genre($0)) })
+                        pickMenu("Genre", genreChoices.map { ($0, FilterPresets.genre($0)) })
                     }
                     if !decadeChoices.isEmpty || query.rules.contains(where: { $0.field == .year }) {
-                        askingChip(.year, off: "Year", title: "Year",
-                                   answers: decadeChoices.reversed().map { ("The \($0)s", FilterPresets.decade($0)) })
+                        pickMenu("Year", decadeChoices.reversed().map { ("The \($0)s", FilterPresets.decade($0)) })
                     }
+                    if query.filters {
+                        Section {
+                            Button("Save as live list", systemImage: "wand.and.stars") { saveAsLiveList() }
+                            Button("Clear all", systemImage: OctoIcon.close.symbol, role: .destructive) { query = query.cleared() }
+                        }
+                    }
+                } label: {
+                    ChoiceChip(text: filtersLabel(query.rules.count), systemImage: OctoIcon.filter.symbol)
                 }
-                .padding(.horizontal, 20)
+                .menuOrder(.fixed)
+                .accessibilityLabel(filtersLabel(query.rules.count))
+                Spacer(minLength: 0)
             }
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 20)
         }
         .padding(.top, 2)
         .padding(.bottom, 10)
     }
 
-    /// A chip that asks which first, from a menu that opens on it. On, it reads as its filter and
-    /// a tap takes the filter off without asking.
-    @ViewBuilder
-    private func askingChip(_ field: QueryField, off: String, title: String, answers: [(String, QueryRule)]) -> some View {
-        if let on = query.rules.first(where: { $0.field == field }) {
-            FilterChip(text: on.label(), on: true) { query = query.without(on) }
-        } else {
-            Menu {
-                Section(title) {
-                    ForEach(answers.indices, id: \.self) { index in
-                        Button(answers[index].0) { query = query.setting(answers[index].1) }
-                    }
-                }
-            } label: {
-                chipLabel(off, on: false)
+    /// A rating, a genre or a decade: a menu of its own inside the filters, the one on checked; a
+    /// pick takes the place of any filter on its field, and picking the one on takes it off.
+    private func pickMenu(_ title: String, _ answers: [(String, QueryRule)]) -> some View {
+        Menu(title) {
+            ForEach(answers.indices, id: \.self) { index in
+                MenuPick(answers[index].0, checked: query.rules.contains(answers[index].1)) { toggle(answers[index].1) }
             }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(.isToggle)
         }
     }
 }
@@ -447,8 +444,19 @@ struct HistoryPage: View {
         LibraryList {
             VStack(spacing: 0) {
                 PageHeader("History", count: shownTracks.map { songsCount($0.count) })
-                ControlLine(fills: true) {
-                    GlassSegments(options: [(false, "Recently played"), (true, "Most played")], selection: $mostPlayed)
+                // Which list, as a menu button: the two names do not fit beside the range and
+                // Play and Shuffle on the smallest phone.
+                ControlLine(fills: false) {
+                    Menu {
+                        Picker("Show", selection: $mostPlayed) {
+                            Text("Recently played").tag(false)
+                            Text("Most played").tag(true)
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        ChoiceChip(text: mostPlayed ? "Most played" : "Recently played")
+                    }
+                    .accessibilityLabel(mostPlayed ? "Most played" : "Recently played")
                 } actions: {
                     if mostPlayed { rangeMenu }
                     RoundPlayShuffle(enabled: !(shownTracks ?? []).isEmpty) {

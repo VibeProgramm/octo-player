@@ -22,14 +22,21 @@ struct SearchView: View {
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 0) {
-            // The field in the title's place, then one line of chips: the kinds, then Library
+            // The field in the title's place, then one line: the kinds as a menu, then Library
             // songs only.
             field
                 .padding(.top, 8)
             ControlLine(fills: false) {
-                ForEach(SearchFilter.allCases, id: \.self) { kind in
-                    OnOffChip(text: kind.label, on: model.filter == kind) { model.filter = kind }
+                // The five kinds do not fit on one line on the smallest phone, so they are a menu.
+                Menu {
+                    Picker("Show", selection: $model.filter) {
+                        ForEach(SearchFilter.allCases, id: \.self) { kind in Text(kind.label).tag(kind) }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    ChoiceChip(text: model.filter.label)
                 }
+                .accessibilityLabel("Show \(model.filter.label)")
                 if model.signedIn {
                     OnOffChip(text: LibraryOnlyWords.setting, on: libraryOnly) { AppSettings.shared.setLibraryOnly(!libraryOnly) }
                 }

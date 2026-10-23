@@ -251,11 +251,11 @@ func addStationToServer(_ station: LiveStation, controls: ServerControls, router
 /// A choice shown as a glass chip: its icon, what is chosen, and a chevron saying it opens a list.
 struct ChoiceChip: View {
     let text: String
-    let systemImage: String
+    var systemImage: String?
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: systemImage).font(.system(size: 13, weight: .semibold))
+            if let systemImage { Image(systemName: systemImage).font(.system(size: 13, weight: .semibold)) }
             Text(text).font(.octoBodySmall).lineLimit(1)
             Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(OctoColor.textSecondary)
         }

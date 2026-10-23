@@ -221,6 +221,15 @@ public func keptSummary(serverOnly: Int, done: Int) -> String {
     return "\(done) of \(serverOnly) downloaded"
 }
 
+/// The words on the Songs page's filters button: "Filters" with none on, else how many are.
+public func filtersLabel(_ on: Int) -> String {
+    switch on {
+    case ..<1: "Filters"
+    case 1: "1 filter"
+    default: "\(on) filters"
+    }
+}
+
 // MARK: Playlists
 
 /// A playlist page's one details line: its songs and length, how far its downloads are while it

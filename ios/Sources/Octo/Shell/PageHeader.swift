@@ -79,14 +79,15 @@ extension VerticalAlignment {
     static let pageTitleLine = VerticalAlignment(PageTitleLine.self)
 }
 
-/// Line two of a page: everything under the title on one line. The page's own control first
-/// (Sort, a country), then its chips or segments, which scroll sideways when they run long, then
-/// its actions held at the right (Play, Shuffle, More).
+/// Line two of a page: everything under the title on one line, never scrolling sideways. The
+/// page's own control first (Sort, a country), then its menu buttons or a few chips that fit on
+/// the smallest phone, then its actions held at the right (Play, Shuffle, More). Choices that
+/// would not fit are a menu button instead.
 struct ControlLine<Lead: View, Chips: View, Actions: View>: View {
     let lead: Lead
     let chips: Chips
     let actions: Actions
-    /// Chips that size themselves to the room left, like segments, rather than scroll.
+    /// Chips that take the room left, like segments, rather than their own width.
     var fills = false
 
     init(fills: Bool = false, @ViewBuilder lead: () -> Lead, @ViewBuilder chips: () -> Chips, @ViewBuilder actions: () -> Actions) {
@@ -102,13 +103,10 @@ struct ControlLine<Lead: View, Chips: View, Actions: View>: View {
             if fills {
                 chips.frame(maxWidth: .infinity)
             } else {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 8) { chips }
-                }
-                .scrollIndicators(.hidden)
-                .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) { chips }
+                Spacer(minLength: 0)
             }
-            HStack(spacing: 0) { actions }
+            HStack(spacing: 0) { actions }.fixedSize()
         }
         .padding(.leading, 20)
         // Round buttons' targets reach 7 past their glass, so the glass ends 20 in.

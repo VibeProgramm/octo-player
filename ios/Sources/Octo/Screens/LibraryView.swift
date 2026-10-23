@@ -376,14 +376,23 @@ struct FavoritesView: View {
         VStack(spacing: 0) {
             PageHeader("Favorites", count: countWords)
             if let segment {
-                ControlLine(fills: true) {
+                ControlLine {
                     switch segment {
                     case .songs: SortButton(list: .liked)
                     case .albums, .artists: SortButton(list: .favorites)
                     }
                 } chips: {
-                    GlassSegments(options: FavoriteSegment.allCases.map { ($0, $0.rawValue) },
-                                  selection: Binding(get: { segment }, set: { self.segment = $0 }))
+                    // Which part, as a menu button: three segments do not fit beside Sort and the
+                    // buttons on the smallest phone.
+                    Menu {
+                        Picker("Show", selection: Binding(get: { segment }, set: { self.segment = $0 })) {
+                            ForEach(FavoriteSegment.allCases, id: \.self) { part in Text(part.rawValue).tag(part) }
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        ChoiceChip(text: segment.rawValue)
+                    }
+                    .accessibilityLabel("Showing \(segment.rawValue)")
                 } actions: {
                     if segment == .songs, let songs, !songs.isEmpty {
                         RoundPlayShuffle {

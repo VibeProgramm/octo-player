@@ -131,6 +131,12 @@ public func chartChoicesKey(server: String, country: String?) -> String { "\(ser
 /// The key one chart's songs are kept under: per kept server, country and chart.
 public func chartListKey(server: String, country: String?, chart: String) -> String { "\(server)|\(country ?? "")|\(chart)" }
 
+/// The words on the Charts page's chart menu button: the chart shown, or the first chart when
+/// the one asked for is not among them; nil with no charts, when the button is left out.
+public func chosenChartLabel(_ choices: [ChartChoice], selected: String) -> String? {
+    (choices.first { $0.id == selected } ?? choices.first)?.label
+}
+
 /// Whether a kept key belongs to this kept server's charts.
 public func isChartKey(_ key: String, server: String) -> Bool { key.hasPrefix("\(server)|") }
 

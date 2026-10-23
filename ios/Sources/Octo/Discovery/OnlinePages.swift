@@ -327,8 +327,9 @@ struct ChartsView: View {
 
     // MARK: The header
 
-    /// Line two, everything else on one line: the country button, the chips, which scroll
-    /// sideways, and Play and Shuffle held at the right.
+    /// Line two, everything else on one line: the country button, the chart menu (Top songs,
+    /// Best New Songs, Trending Songs, then the country's genres, the one shown checked), and
+    /// Play and Shuffle held at the right.
     private var controlLine: some View {
         ControlLine {
             if canPickCountry {
@@ -337,8 +338,17 @@ struct ChartsView: View {
                     .accessibilityLabel("Chart country: \(shownCountryName)")
             }
         } chips: {
-            ForEach(choices) { choice in
-                OnOffChip(text: choice.label, on: choice.id == selected) { pick(choice.id) }
+            if let shown = chosenChartLabel(choices, selected: selected) {
+                Menu {
+                    Picker("Chart", selection: Binding(get: { selected }, set: { pick($0) })) {
+                        ForEach(choices) { choice in Text(choice.label).tag(choice.id) }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    ChoiceChip(text: shown)
+                }
+                .menuOrder(.fixed)
+                .accessibilityLabel("Chart: \(shown)")
             }
         } actions: {
             RoundPlayShuffle(enabled: !(list?.songs.isEmpty ?? true)) {

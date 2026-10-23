@@ -129,13 +129,13 @@ struct FoldersPage: View {
         return hasPhone && hasServer ? names : Array(names.dropFirst())
     }
 
-    /// Line one: the back button, the folder's name and what it holds; line two: the path back to
-    /// the start, then Play and Shuffle for everything under the folder.
+    /// Line one: the back button, the folder's name and what it holds; line two: the places above
+    /// it as a menu, then Play and Shuffle for everything under the folder.
     private var folderHeader: some View {
         let shown = shownNames
         return VStack(alignment: .leading, spacing: 0) {
             PageHeader(shown.last ?? "Folders", count: levelCount).bigTitle()
-            ControlLine(fills: true) {
+            ControlLine(fills: false) {
                 if shown.count > 1 { crumbs(shown) }
             } actions: {
                 switch path.last {
@@ -173,27 +173,18 @@ struct FoldersPage: View {
     }
 
     /// The path from the start, each earlier place a way back to it, kept scrolled to its end.
+    /// The places the folder is in, as a menu button named for the one just above it: each
+    /// earlier place, nearest last, goes back to it. A path never scrolls sideways.
     private func crumbs(_ shown: [String]) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal) {
-                HStack(spacing: 0) {
-                    ForEach(Array(shown.enumerated()), id: \.offset) { index, name in
-                        if index > 0 { Text(" / ").font(.octoCaption).foregroundStyle(OctoColor.textSecondary) }
-                        if index == shown.count - 1 {
-                            Text(name).font(.octoCaption).foregroundStyle(.white).id("end")
-                        } else {
-                            Button(name) { goTo(depth: index, of: shown.count) }
-                                .font(.octoCaption)
-                                .foregroundStyle(OctoColor.textSecondary)
-                                .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .frame(minHeight: 48)
+        Menu {
+            ForEach(Array(shown.dropLast().enumerated()), id: \.offset) { index, name in
+                Button(name) { goTo(depth: index, of: shown.count) }
             }
-            .scrollIndicators(.hidden)
-            .onAppear { proxy.scrollTo("end", anchor: .trailing) }
+        } label: {
+            ChoiceChip(text: shown[shown.count - 2], systemImage: OctoIcon.folder.symbol)
         }
+        .accessibilityLabel("In \(shown[shown.count - 2])")
+        .accessibilityHint("Go back to a folder above")
     }
 
     /// Back to a place on the path line.

@@ -2,6 +2,29 @@ import Foundation
 import Testing
 @testable import OctoKit
 
+@Suite struct MenuButtonWordsTests {
+    @Test func theFiltersButtonSaysHowManyAreOn() {
+        #expect(filtersLabel(0) == "Filters")
+        #expect(filtersLabel(1) == "1 filter")
+        #expect(filtersLabel(3) == "3 filters")
+    }
+
+    @Test func theChartButtonNamesTheChartShown() {
+        let choices = [ChartChoice(id: "34", label: "Top songs"), ChartChoice(id: "new", label: "Best New Songs"),
+                       ChartChoice(id: "18", label: "Hip-Hop/Rap")]
+        #expect(chosenChartLabel(choices, selected: "new") == "Best New Songs")
+        #expect(chosenChartLabel(choices, selected: "18") == "Hip-Hop/Rap")
+    }
+
+    @Test func aChartTheCountryLacksFallsBackToTheFirst() {
+        #expect(chosenChartLabel([ChartChoice(id: "34", label: "Top songs")], selected: "21") == "Top songs")
+    }
+
+    @Test func noChartsNoButton() {
+        #expect(chosenChartLabel([], selected: "34") == nil)
+    }
+}
+
 @Suite struct PlaylistDetailsTests {
     @Test func songsAndLengthComeFirst() {
         #expect(playlistDetails(songs: 12, length: "45:10", kept: nil, phoneOnly: 0, onServer: false) == "12 songs · 45:10")

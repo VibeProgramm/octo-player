@@ -608,10 +608,11 @@ private struct FindHead: View {
 private struct FindSources: View {
     let sources: [FindSourceState]
 
-    /// One line of pills, a source each: its mark and its name, its state said aloud.
+    /// Pills, a source each: its mark and its name, and why when it failed, wrapping onto a
+    /// second line rather than scrolling sideways.
     var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 6) {
+        Group {
+            FlowRow(spacing: 6) {
                 ForEach(sources, id: \.self) { source in
                     HStack(spacing: 6) {
                         switch source.state {
@@ -644,7 +645,6 @@ private struct FindSources: View {
                 }
             }
         }
-        .scrollIndicators(.hidden)
         .padding(.top, 12)
     }
 
