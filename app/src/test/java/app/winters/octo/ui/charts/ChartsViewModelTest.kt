@@ -2,6 +2,7 @@ package app.winters.octo.ui.charts
 
 import app.winters.octo.data.Session
 import app.winters.octo.discovery.ChartLists
+import app.winters.octo.discovery.CountryAction
 import app.winters.octo.subsonic.Credentials
 import app.winters.octo.subsonic.SubsonicClient
 import kotlinx.coroutines.Dispatchers
@@ -191,109 +192,135 @@ class ChartsViewModelTest {
     }
 
     @Test
-    fun usingACountryAsMineSavesItAndStopsLooking() = runBlocking {
+    fun justLookingSavesNothing() = runBlocking {
         val vm = page(lists())
         until { vm.own != null && vm.list != null }
-        vm.pickCountry("jp")
+
+        vm.choose(CountryAsked("jp"), CountryAction.Look)
         until { vm.list?.country == "jp" }
 
-        vm.useAsMine()
-        until { vm.browsing == null && vm.own?.setting == "jp" && vm.list != null }
-
-        assertEquals("jp", calls("setChartCountry").single().url.queryParameter("country"))
-        assertEquals("jp", vm.country)
-        // The listener's own lists are asked again, for their new country.
-        assertNull(calls("getTopChart").last().url.queryParameter("country"))
-        assertEquals("jp", vm.list?.country)
+        assertEquals("jp", vm.browsing)
+        assertTrue(calls("setChartCountry").isEmpty())
+        assertTrue(calls("pinChartCountry").isEmpty())
     }
 
     @Test
-    fun followingTheServerAgainSavesAuto() = runBlocking {
+    fun aCountryLookedAtIsForgottenWithThePage() = runBlocking {
+        val lists = lists()
+        val vm = page(lists)
+        until { vm.own != null && vm.list != null }
+        vm.choose(CountryAsked("jp"), CountryAction.Look)
+        until { vm.list?.country == "jp" }
+
+        // The page opened again starts on the listener's own country.
+        val again = page(lists)
+        until { again.own != null && again.list != null }
+        assertNull(again.browsing)
+        assertEquals("us", again.country)
+    }
+
+    @Test
+    fun usingACountryForMyChartsSavesItAndShowsItAsYours() = runBlocking {
+        val vm = page(lists())
+        until { vm.own != null && vm.list != null }
+
+        vm.choose(CountryAsked("jp"), CountryAction.UseForMine)
+        until { vm.browsing == null && vm.own?.setting == "jp" && vm.list?.country == "jp" }
+
+        assertEquals("jp", calls("setChartCountry").single().url.queryParameter("country"))
+        assertTrue(calls("pinChartCountry").isEmpty())
+        assertEquals("jp", vm.country)
+        // The listener's own chart is asked again, for their new country.
+        assertNull(calls("getTopChart").last().url.queryParameter("country"))
+    }
+
+    @Test
+    fun theServersCountryAgainSavesAuto() = runBlocking {
         setting = "br"
         val vm = page(lists())
         until { vm.own?.setting == "br" }
 
-        vm.followServer()
+        vm.choose(CountryAsked("us", server = true), CountryAction.FollowServer)
         until { vm.own?.setting == "auto" }
 
         assertEquals("auto", calls("setChartCountry").single().url.queryParameter("country"))
         assertEquals("us", vm.country)
+        assertNull(vm.browsing)
     }
 
     @Test
-    fun pinsStopAtTheMostAndOnePinnedCanBeUnpinned() = runBlocking {
+    fun addingACountrysPlaylistsPinsItAndLooksAtIt() = runBlocking {
+        val vm = page(lists())
+        until { vm.own != null && vm.list != null }
+
+        vm.choose(CountryAsked("jp"), CountryAction.AddPlaylists)
+        until { vm.pinned == listOf("jp") && vm.list?.country == "jp" }
+
+        val pin = calls("pinChartCountry").single().url
+        assertEquals("jp", pin.queryParameter("country"))
+        assertEquals("true", pin.queryParameter("pinned"))
+        assertTrue(calls("setChartCountry").isEmpty())
+        assertEquals("jp", vm.browsing)
+    }
+
+    @Test
+    fun removingACountrysPlaylistsUnpinsIt() = runBlocking {
         pinned = listOf("br", "kr", "de")
         val vm = page(lists())
         until { vm.own != null && vm.list != null }
 
-        vm.pickCountry("jp")
-        until { vm.list?.country == "jp" }
-        assertFalse(vm.canPin)
-        vm.togglePin()
-        delay(200)
-        assertTrue(calls("pinChartCountry").isEmpty())
-
-        vm.pickCountry("kr")
-        until { vm.list?.country == "kr" }
-        assertTrue(vm.isPinned)
-        assertTrue(vm.canPin)
-        vm.togglePin()
+        vm.choose(CountryAsked("kr"), CountryAction.RemovePlaylists)
         until { vm.pinned == listOf("br", "de") }
 
         val unpin = calls("pinChartCountry").single().url
         assertEquals("kr", unpin.queryParameter("country"))
         assertEquals("false", unpin.queryParameter("pinned"))
-        assertFalse(vm.isPinned)
-        assertEquals("kr", vm.browsing)
     }
 
     @Test
-    fun pinningSendsJustThatCountry() = runBlocking {
+    fun aSaveThatDidNotHappenSaysSoForThatCountry() = runBlocking {
         val vm = page(lists())
         until { vm.own != null && vm.list != null }
-        vm.pickCountry("jp")
-        until { vm.list?.country == "jp" }
-
-        vm.togglePin()
-        until { vm.isPinned }
-
-        val pin = calls("pinChartCountry").single().url
-        assertEquals("jp", pin.queryParameter("country"))
-        assertEquals("true", pin.queryParameter("pinned"))
-        assertEquals(listOf("jp"), vm.pinned)
-    }
-
-    @Test
-    fun aSaveThatDidNotHappenSaysSo() = runBlocking {
-        val vm = page(lists())
-        until { vm.own != null && vm.list != null }
-        vm.pickCountry("jp")
-        until { vm.list?.country == "jp" }
         refuse = true
 
-        vm.useAsMine()
+        vm.choose(CountryAsked("jp"), CountryAction.UseForMine)
         until { vm.problem != null }
 
         // The server's own words when it refused for a reason the listener can act on.
         assertEquals(TOO_MANY, vm.problem)
-        assertEquals("jp", vm.browsing)
+        assertEquals(CountryAsked("jp"), vm.problemFor)
+        assertNull(vm.browsing)
         assertEquals("auto", vm.own?.setting)
         assertFalse(vm.saving)
+
+        vm.problemSeen()
+        assertNull(vm.problem)
+        assertNull(vm.problemFor)
     }
 
     @Test
     fun anyOtherFailedSaveSaysThePlainLine() = runBlocking {
         val vm = page(lists())
         until { vm.own != null && vm.list != null }
-        vm.pickCountry("jp")
-        until { vm.list?.country == "jp" }
         refuse = true
         refuseCode = 70
 
-        vm.togglePin()
+        vm.choose(CountryAsked("jp"), CountryAction.AddPlaylists)
         until { vm.problem != null }
 
         assertEquals("Couldn't save. Try again.", vm.problem)
+    }
+
+    @Test
+    fun backToYoursLeavesTheCountryLookedAt() = runBlocking {
+        val vm = page(lists())
+        until { vm.own != null && vm.list != null }
+        vm.choose(CountryAsked("jp"), CountryAction.Look)
+        until { vm.list?.country == "jp" }
+
+        vm.backToYours()
+        until { vm.browsing == null && vm.list?.country == "us" }
+        assertTrue(calls("setChartCountry").isEmpty())
     }
 
     @Test
@@ -307,7 +334,10 @@ class ChartsViewModelTest {
         val second = page(lists)
         until { second.own?.setting == "br" && second.list?.country == "br" }
 
-        assertEquals(2, calls("getTopChart").count { it.url.queryParameter("country") == null })
+        // The chart kept for the old country was not the answer: it was asked again
+        // (a read already on its way when the new country came may be asked twice).
+        assertTrue(calls("getTopChart").count { it.url.queryParameter("country") == null } >= 2)
+        assertEquals("br", second.list?.country)
     }
 
     @Test
@@ -336,10 +366,10 @@ class ChartsViewModelTest {
         vm.pickCountry("jp")
         until { vm.list?.country == "jp" }
 
-        // Another device made Japan the listener's own; a pin here answers with that.
+        // Another device made Japan the listener's own; adding its playlists here answers with that.
         setting = "jp"
-        vm.togglePin()
-        until { vm.browsing == null }
+        vm.choose(CountryAsked("jp"), CountryAction.AddPlaylists)
+        until { vm.browsing == null && vm.own?.setting == "jp" }
         assertEquals("jp", vm.country)
     }
 

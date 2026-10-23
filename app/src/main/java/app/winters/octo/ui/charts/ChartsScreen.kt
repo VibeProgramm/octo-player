@@ -6,7 +6,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -24,88 +24,99 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.layout.FirstBaseline
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import app.winters.octo.design.GlazeButton
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoInk
 import app.winters.octo.design.OctoType
 import app.winters.octo.discovery.ChartList
+import app.winters.octo.discovery.CountryPick
 import app.winters.octo.discovery.chartCountryRows
+import app.winters.octo.discovery.countryChoices
 import app.winters.octo.discovery.playsText
 import app.winters.octo.discovery.rankedBy
-import app.winters.octo.player.capMiddle
-import app.winters.octo.player.rememberCapHeightPx
-import app.winters.octo.ui.common.BackButton
 import app.winters.octo.ui.common.COUNTRY_SEARCH_HINT
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
 import app.winters.octo.ui.common.ChoiceSheet
-import app.winters.octo.ui.common.DetailTopGap
+import app.winters.octo.ui.common.HeaderButton
 import app.winters.octo.ui.common.LocalChoiceSheet
+import app.winters.octo.ui.common.LocalHeaderCompact
 import app.winters.octo.ui.common.NO_COUNTRY_MATCHES
-import app.winters.octo.ui.common.QuietButton
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.SongLead
 import app.winters.octo.ui.common.SongRow
 import app.winters.octo.ui.common.choiceAnchor
+import app.winters.octo.ui.common.filterFades
 import app.winters.octo.ui.common.countryChoiceMatches
 import app.winters.octo.ui.common.rowAlbum
 import app.winters.octo.ui.common.screenPadding
 import app.winters.octo.ui.library.FilterChip
 import java.util.Locale
-import kotlin.math.max
-import kotlin.math.roundToInt
 
 // The charts and new songs an Octo server reads from Apple Music, one at a
 // time, picked with the chips: a country's most played songs, Best New
 // Songs, Trending Songs and a chart per genre. A song the library has
-// plays from it; any other has the add button at the end of its row. On a
-// server that saves it, the country beside the title opens every country:
-// one looked at can be made the listener's own or pinned.
+// plays from it; any other has the add button at the end of its row. The
+// header holds it all on two lines: back and the title, then the country
+// button, the chips, and Play and Shuffle. On a server that saves it, a
+// country picked in the country button's list asks what to do with it.
 @Composable
 fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
     val sheet = LocalChoiceSheet.current
-    // The line about the chart keeps the last chart's words for the same
-    // country while the next chart comes, so nothing under it moves.
-    var shownCaption by remember(vm.country) { mutableStateOf<String?>(null) }
-    LaunchedEffect(vm.list) { vm.list?.let(::caption)?.let { shownCaption = it } }
+    // A save that did not happen asks its question again, the reason first.
+    LaunchedEffect(vm.problem, vm.problemFor) {
+        val asked = vm.problemFor ?: return@LaunchedEffect
+        val problem = vm.problem ?: return@LaunchedEffect
+        askCountry(sheet, vm, asked, sheet.anchor, problem)
+        vm.problemSeen()
+    }
+    val list = vm.list
+    val songs = list?.songs.orEmpty()
+    val country = vm.country?.takeIf { vm.canPickCountry }
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-            item(key = "title") {
-                val country = vm.country?.takeIf { vm.canPickCountry }
-                ChartsTitle(country?.let(::countryName), sheet, enabled = !vm.saving, onPick = { pickCountry(sheet, vm) }) { CountryActions(vm) }
-            }
-            if (vm.choices.isNotEmpty()) {
-                item(key = "chips") {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                    ) {
-                        items(vm.choices, key = { it.id }) { choice ->
-                            FilterChip(choice.label, choice.id == vm.selected) { vm.pick(choice.id) }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+            item(key = "header") {
+                PageHeader(
+                    "Charts",
+                    onBack,
+                    control = if (country == null) null else {
+                        { CountryButton(country, enabled = !vm.saving, onClick = { pickCountry(sheet, vm) }, modifier = Modifier.choiceAnchor(sheet)) }
+                    },
+                    filters = if (vm.choices.isEmpty()) null else {
+                        {
+                            val chips = rememberLazyListState()
+                            LazyRow(
+                                state = chips,
+                                modifier = Modifier.filterFades(chips),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                items(vm.choices, key = { it.id }) { choice ->
+                                    FilterChip(choice.label, choice.id == vm.selected) { vm.pick(choice.id) }
+                                }
+                            }
                         }
-                    }
-                }
+                    },
+                    actions = {
+                        HeaderButton(OctoIcons.Play, "Play", { vm.play(0) }, enabled = songs.isNotEmpty())
+                        HeaderButton(OctoIcons.Shuffle, "Shuffle", vm::shuffle, enabled = songs.isNotEmpty())
+                    },
+                )
             }
-            val list = vm.list
-            if (!vm.none) item(key = "about") { Quiet(list?.let(::caption) ?: shownCaption.orEmpty()) }
             when {
                 vm.none -> item(key = "none") { Quiet("This server doesn't have charts.") }
                 vm.refusal != null -> item(key = "refused") { Quiet(vm.refusal.orEmpty()) }
@@ -114,160 +125,107 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
                         CircularProgressIndicator(color = OctoColors.TextSecondary)
                     }
                 }
-                list.songs.isEmpty() -> item(key = "empty") { Quiet("Nothing in this chart right now. Try another.") }
-                else -> {
-                    item(key = "play") {
-                        GlazeButton("Play all", onClick = { vm.play(0) }, modifier = Modifier.padding(start = 20.dp, bottom = 8.dp))
-                    }
-                    itemsIndexed(list.songs, key = { _, ranked -> "chart:${list.country.orEmpty()}:${list.chart}:${ranked.track.id}" }) { index, ranked ->
-                        SongRow(
-                            ranked.track,
-                            SongLead.Ranked(ranked.rank),
-                            subtitle = { shown ->
-                                listOfNotNull(
-                                    shown.artist.ifEmpty { null },
-                                    rowAlbum(shown).ifEmpty { null },
-                                    ranked.plays?.let(::playsText),
-                                ).joinToString(" • ")
-                            },
-                            offerAdd = true,
-                        ) { vm.play(index) }
-                    }
+                songs.isEmpty() -> item(key = "empty") { Quiet("Nothing in this chart right now. Try another.") }
+                else -> itemsIndexed(songs, key = { _, ranked -> "chart:${list.country.orEmpty()}:${list.chart}:${ranked.track.id}" }) { index, ranked ->
+                    SongRow(
+                        ranked.track,
+                        SongLead.Ranked(ranked.rank),
+                        subtitle = { shown ->
+                            listOfNotNull(
+                                shown.artist.ifEmpty { null },
+                                rowAlbum(shown).ifEmpty { null },
+                                ranked.plays?.let(::playsText),
+                            ).joinToString(" • ")
+                        },
+                        offerAdd = true,
+                    ) { vm.play(index) }
                 }
             }
-        }
-        BackButton(onBack)
-    }
-}
-
-// The page's title and, when other countries can be looked at, the country
-// in view beside it: a quiet capsule whose middle sits on the middle of the
-// title's capitals, then the quiet words that act on a country looked at.
-// The words take their room whether or not they show, so nothing under
-// the title moves between the listener's own country and another: beside
-// the capsule when all of it fits on the title's line, else on a line of
-// their own under it. A capsule that does not fit beside the title goes
-// under it too, and the title always keeps its whole width.
-@Composable
-private fun ChartsTitle(country: String?, sheet: ChoiceSheet, enabled: Boolean, onPick: () -> Unit, actions: @Composable () -> Unit) {
-    val capHeight = rememberCapHeightPx(OctoType.display)
-    Layout(
-        content = {
-            Text("Charts", style = OctoType.display, color = OctoColors.TextPrimary)
-            if (country != null) {
-                CountryCapsule(country, enabled, onPick, Modifier.choiceAnchor(sheet))
-                Row(verticalAlignment = Alignment.CenterVertically) { actions() }
-            }
-        },
-        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 16.dp),
-    ) { measurables, constraints ->
-        val loose = constraints.copy(minWidth = 0, minHeight = 0)
-        val title = measurables[0].measure(loose)
-        val width = constraints.maxWidth
-        if (measurables.size < 3) return@Layout layout(width, title.height) { title.place(0, 0) }
-        val capsule = measurables[1].measure(loose)
-        val words = measurables[2].measure(loose)
-        val gap = 12.dp.roundToPx()
-        val middle = capMiddle(title[FirstBaseline].toFloat(), capHeight)
-        val besideTitle = title.width + gap + capsule.width <= width
-        val allBeside = besideTitle && title.width + gap + capsule.width + words.width <= width
-        // The first line: the title, and what fits beside it on its capitals.
-        val onFirst = if (besideTitle) capsule.height else 0
-        val firstTop = (middle - onFirst / 2f).roundToInt()
-        val lift = max(0, -firstTop)
-        var bottom = max(title.height + lift, firstTop + lift + onFirst)
-        val capsuleAt: IntOffset
-        val wordsAt: IntOffset
-        if (besideTitle) {
-            capsuleAt = IntOffset(title.width + gap, firstTop + lift)
-            wordsAt = if (allBeside) {
-                IntOffset(capsuleAt.x + capsule.width, capsuleAt.y + (capsule.height - words.height) / 2)
-            } else {
-                IntOffset(0, bottom + gap / 2).also { bottom = it.y + words.height }
-            }
-        } else {
-            capsuleAt = IntOffset(0, bottom + gap / 2)
-            bottom = capsuleAt.y + capsule.height
-            wordsAt = IntOffset(0, bottom + gap / 2)
-            bottom = wordsAt.y + words.height
-        }
-        layout(width, bottom) {
-            title.place(0, lift)
-            capsule.place(capsuleAt)
-            words.place(wordsAt)
         }
     }
 }
 
 // The country in view, as a quiet capsule that opens every country: the
 // chips' resting fill, softer words, and a small chevron saying it opens.
-// It is dimmed and out of reach while a save is on its way.
+// In a header too short for its name it shows its two-letter code ("US"),
+// the name kept for a screen reader. It is dimmed and out of reach while a
+// save is on its way.
 @Composable
-private fun CountryCapsule(name: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun CountryButton(code: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val name = countryName(code)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val ink = if (pressed) OctoColors.TextPrimary else OctoColors.TextSecondary
+    val compact = LocalHeaderCompact.current
     Row(
         modifier
-            .height(30.dp)
+            .height(32.dp)
             .alpha(if (enabled) 1f else OctoInk.DisabledAlpha)
             .clip(CircleShape)
             .background(OctoColors.TextPrimary.copy(alpha = if (pressed) 0.12f else 0.08f))
             .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClickLabel = "Choose a country", onClick = onClick)
-            .padding(horizontal = 12.dp),
+            .padding(start = 10.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(painterResource(OctoIcons.Globe), contentDescription = null, tint = ink, modifier = Modifier.size(16.dp))
-        Text(name, style = OctoType.label, color = ink, maxLines = 1)
+        Text(
+            if (compact) code.uppercase() else name,
+            style = OctoType.label,
+            color = ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false).then(if (compact) Modifier.semantics { contentDescription = name } else Modifier),
+        )
         Icon(painterResource(OctoIcons.Chevron), contentDescription = null, tint = OctoColors.TextMuted, modifier = Modifier.size(12.dp).rotate(90f))
     }
 }
 
-// The quiet words for the country in view: make it the listener's own, or
-// pin it so its charts come as playlists too; a full set of pins says so,
-// and a save that did not happen says that. While the listener's own
-// country shows they keep their room, unseen and out of reach, and the
-// line about a full set of pins keeps its room whether or not it shows.
-@Composable
-private fun CountryActions(vm: ChartsViewModel) {
-    val shown = vm.browsing != null
-    Row(
-        (if (shown) Modifier else Modifier.alpha(0f).clearAndSetSemantics {}).padding(start = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        QuietButton("Use as my country", enabled = shown && !vm.saving, onClick = vm::useAsMine)
-        QuietButton(if (vm.isPinned) "Unpin" else "Pin", enabled = shown && !vm.saving && vm.canPin, onClick = vm::togglePin)
-        val full = shown && !vm.canPin
-        Text(
-            "${vm.maxPinned} pinned",
-            style = OctoType.caption,
-            color = OctoColors.TextMuted,
-            maxLines = 1,
-            modifier = Modifier.padding(start = 4.dp).then(if (full) Modifier else Modifier.alpha(0f).clearAndSetSemantics {}),
-        )
-    }
-    vm.problem?.let { Text(it, style = OctoType.caption, color = OctoColors.TextMuted, maxLines = 1, modifier = Modifier.padding(start = 4.dp)) }
-}
-
-// Every country, the server's own and the listener's own and pinned ones
-// first, with a field that narrows them by name or code.
+// Every country, under the chart's source line: the listener's own first,
+// the server's while they chose one of their own, then every country by
+// name, with a field that narrows them by name or code. Their own goes back
+// to their charts; any other asks what to do with it.
 private fun pickCountry(sheet: ChoiceSheet, vm: ChartsViewModel) {
     val own = vm.own ?: return
     val rows = chartCountryRows(own, vm.browsing, ::countryName)
+    val anchor = sheet.anchor
     sheet.show(
         ChoiceRequest(
-            "Country",
+            vm.list?.let(::caption) ?: "Country",
             rows.map { Choice(it.label, it.detail, key = it.code) },
             selected = rows.indexOfFirst { it.chosen },
-            onPick = { index ->
-                val code = rows[index].code
-                if (code == null) vm.followServer() else vm.pickCountry(code)
-            },
             searchHint = COUNTRY_SEARCH_HINT,
             match = ::countryChoiceMatches,
             emptyText = NO_COUNTRY_MATCHES,
-        ),
+        ) { index ->
+            val row = rows[index]
+            val code = row.code
+            when {
+                code == null || row.pick == CountryPick.Yours || (row.pick == CountryPick.Country && code == own.country) -> vm.backToYours()
+                else -> askCountry(sheet, vm, CountryAsked(code, server = row.pick == CountryPick.Server), anchor ?: sheet.anchor)
+            }
+        },
+    )
+}
+
+// What to do with a picked country, titled with its name: only look at it
+// here, make it the listener's chart country, or add (or remove) its
+// playlists. `problem`, when a save did not happen, is the first line.
+// Putting the question away does nothing.
+private fun askCountry(sheet: ChoiceSheet, vm: ChartsViewModel, asked: CountryAsked, anchor: IntRect?, problem: String? = null) {
+    val own = vm.own ?: return
+    val name = countryName(asked.code)
+    val choices = countryChoices(own, asked.code, name, server = asked.server)
+    val lead = listOfNotNull(problem?.let { Choice(it, enabled = false) })
+    sheet.show(
+        ChoiceRequest(
+            name,
+            lead + choices.map { Choice(it.label, it.detail, enabled = it.enabled) },
+            selected = -1,
+        ) { index ->
+            choices.getOrNull(index - lead.size)?.let { vm.choose(asked, it.action) }
+        },
+        anchor,
     )
 }
 

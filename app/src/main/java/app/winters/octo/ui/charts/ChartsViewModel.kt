@@ -11,6 +11,7 @@ import app.winters.octo.discovery.ChartAnswer
 import app.winters.octo.discovery.ChoicesAnswer
 import app.winters.octo.discovery.chartRefusal
 import app.winters.octo.discovery.ChartLists
+import app.winters.octo.discovery.CountryAction
 import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.subsonic.CHART_COUNTRY_AUTO
 import app.winters.octo.subsonic.CHART_OVERALL
@@ -25,9 +26,9 @@ import kotlinx.coroutines.launch
 
 // The Charts page: the charts a country has, as chips, and the chosen
 // chart's songs. The country is the listener's own until another is
-// picked; on a server that saves it, any country Apple Music has can be
-// looked at, made the listener's own, or pinned so its charts come as
-// playlists too.
+// picked; on a server that saves it, a country picked can be only looked
+// at on this page, made the listener's chart country, or have its charts
+// as playlists too. A country only looked at is forgotten with the page.
 @HiltViewModel
 class ChartsViewModel @Inject constructor(
     private val charts: ChartLists,
@@ -61,8 +62,11 @@ class ChartsViewModel @Inject constructor(
     var saving by mutableStateOf(false)
         private set
 
-    // Why the last save did not happen, until the next one.
+    // Why the last save did not happen, until the next one, and the country
+    // it was for, so its choice can be asked again with the reason.
     var problem by mutableStateOf<String?>(null)
+        private set
+    var problemFor by mutableStateOf<CountryAsked?>(null)
         private set
 
     // The server's own words when it refused the country in view (too many
@@ -83,10 +87,6 @@ class ChartsViewModel @Inject constructor(
 
     val maxPinned: Int get() = own?.maxPinned ?: 0
 
-    // Whether the country looked at is pinned, and whether it may be: one
-    // already pinned can always be unpinned.
-    val isPinned: Boolean get() = browsing != null && browsing in pinned
-    val canPin: Boolean get() = isPinned || pinned.size < maxPinned
 
     init {
         // The listener's own choices may have changed on another device, so
@@ -156,27 +156,34 @@ class ChartsViewModel @Inject constructor(
         }
     }
 
-    // Makes the country looked at the listener's own.
-    fun useAsMine() {
-        val code = browsing ?: return
-        // Back to their own only when the country looked at is still the one saved.
-        save({ charts.saveCountry(code) }) { got -> if (browsing == code) backToOwn(got) }
+    // Back to the listener's own charts.
+    fun backToYours() {
+        own?.country?.let(::pickCountry)
     }
 
-    // Follows the server's country again: saved when the listener had
-    // chosen one, else only back to their own.
-    fun followServer() {
-        val mine = own ?: return
-        if (mine.setting.equals(CHART_COUNTRY_AUTO, ignoreCase = true)) {
-            mine.country?.let(::pickCountry)
-            return
+    // Does what was chosen for a picked country: only look at it here, make
+    // it the listener's chart country (or follow the server's again), or add
+    // or remove its playlists and look at it.
+    fun choose(asked: CountryAsked, action: CountryAction) {
+        val code = asked.code
+        when (action) {
+            CountryAction.Look -> pickCountry(code)
+            CountryAction.UseForMine -> save(asked, { charts.saveCountry(code) }) { got -> backToOwn(got) }
+            CountryAction.FollowServer -> save(asked, { charts.saveCountry(CHART_COUNTRY_AUTO) }) { got -> backToOwn(got) }
+            CountryAction.AddPlaylists -> save(asked, { charts.pin(code, true) }) { pickCountry(code) }
+            CountryAction.RemovePlaylists -> save(asked, { charts.pin(code, false) }) { pickCountry(code) }
         }
-        val from = browsing
-        save({ charts.saveCountry(CHART_COUNTRY_AUTO) }) { got -> if (browsing == from) backToOwn(got) }
+    }
+
+    // A reason shown, put away.
+    fun problemSeen() {
+        problem = null
+        problemFor = null
     }
 
     private fun backToOwn(got: ChartChoices) {
         choosing?.cancel()
+        loading?.cancel()
         browsing = null
         refusal = null
         choices = got.chart
@@ -184,38 +191,20 @@ class ChartsViewModel @Inject constructor(
         load()
     }
 
-    // Pins the country looked at, or unpins it.
-    fun togglePin() {
-        val code = browsing ?: return
-        val pin = !isPinned
-        if (pin && !canPin) return
-        save({ charts.pin(code, pin) }) {
-            // Its charts now name the playlists the pin made.
-            viewModelScope.launch {
-                val got = charts.choices(code) ?: return@launch
-                if (browsing == code) choices = got.chart
-            }
-        }
-    }
-
     // A refusal shows the server's own words; anything else the plain line.
-    private fun save(call: suspend () -> Result<ChartChoices>, then: (ChartChoices) -> Unit) {
+    private fun save(asked: CountryAsked, call: suspend () -> Result<ChartChoices>, then: (ChartChoices) -> Unit) {
         if (saving) return
         saving = true
-        problem = null
+        problemSeen()
         viewModelScope.launch {
             val answer = call()
             saving = false
             val got = answer.getOrElse { e ->
                 problem = (e as? SubsonicException)?.let(::chartRefusal) ?: CHART_SAVE_FAILED
+                problemFor = asked
                 return@launch
             }
             own = got
-            // A country looked at that the answer says is now the listener's own.
-            if (browsing != null && browsing.equals(got.country, ignoreCase = true)) {
-                backToOwn(got)
-                return@launch
-            }
             then(got)
         }
     }
@@ -242,4 +231,14 @@ class ChartsViewModel @Inject constructor(
         val songs = list?.songs ?: return
         playback.get().playTracks(songs.map { it.track.id }, index.coerceAtLeast(0))
     }
+
+    // The chart's songs in a shuffled order, from the same list Play plays.
+    fun shuffle() {
+        val songs = list?.songs?.takeIf { it.isNotEmpty() } ?: return
+        playback.get().playTracks(songs.map { it.track.id }, shuffle = true)
+    }
 }
+
+// A country picked in the menu whose choice is asked: its code, and whether
+// it was picked as the server's own country.
+data class CountryAsked(val code: String, val server: Boolean = false)

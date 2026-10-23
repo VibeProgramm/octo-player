@@ -225,9 +225,10 @@ private fun Choices(request: ChoiceRequest, close: () -> Unit) {
         GlassMenuOptions(
             shown.map { request.choices[it] },
             shown.indexOf(request.selected),
+            // Closed first, so a pick may ask another question in its place.
             onPick = { index ->
-                request.onPick(shown[index])
                 close()
+                request.onPick(shown[index])
             },
             modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
             pickable = request.selected >= 0,
