@@ -100,8 +100,8 @@ func queueSwipe(for song: Song, actions: LibraryActions) -> RowSwipe {
 }
 
 /// One song in a list, from the library or found online. A tap plays (or picks it while the list
-/// is picking); a long press opens its menu; a swipe right puts it next in the queue on lists
-/// where a swipe does nothing else.
+/// is picking); a long press opens its menu; a swipe right plays it next or adds it to the queue,
+/// as Settings say, on lists where a swipe does nothing else.
 struct TrackRow: View {
     var track: LibraryTrack
     var lead: SongLead = .artwork
@@ -127,8 +127,9 @@ struct TrackRow: View {
 
     /// What a swipe does on this row.
     enum SwipeKind {
+        case none
         /// Plays the song next or adds it to the queue, as Settings say.
-        case none, queue
+        case queue
         case remove(() -> Void)
     }
 

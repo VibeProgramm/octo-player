@@ -344,7 +344,7 @@ Parts, in order: settings front page, search and shared rows; Playback; Appearan
 ### Page frame and page-wide behavior
 
 - [x] The page is a settings page frame: a back button, the large screen title "Playback", then the groups stacked one under another 24dp apart, the whole page scrolling vertically (app/src/main/java/app/winters/octo/ui/settings/rows/SettingsPageFrame.kt:27-52; app/src/main/java/app/winters/octo/ui/settings/PlaybackPage.kt:78)
-- [x] Group order, top to bottom: an untitled group (Crossfade, Longest blend, Smart transitions, Filter sweeps, Match tempo, Speed, Skip silence, Autoplay), then "Radio", then "Headphones", then "Casting" (app/src/main/java/app/winters/octo/ui/settings/PlaybackPage.kt:79-197)
+- [x] Group order, top to bottom: an untitled group (Crossfade, Longest blend, Smart transitions, Filter sweeps, Match tempo, Speed, Skip silence), then "Queue" (Swipe right on a song, Autoplay), then "Headphones", then "Casting" (app/src/main/java/app/winters/octo/ui/settings/PlaybackPage.kt)
 - [x] The page's view model exposes the stored player settings as a state that starts at the defaults (PlayerPrefs()) and stays subscribed for 5 seconds after the page stops listening; until the stored values arrive the page draws the defaults (app/src/main/java/app/winters/octo/ui/settings/PlaybackPage.kt:37-38) (iPhone: the values are read at start, so the page never shows the defaults first)
 - [x] Every control on the page writes its new value straight to the settings store in a background task; there is no local copy, and the row redraws when the store emits the new value (app/src/main/java/app/winters/octo/ui/settings/PlaybackPage.kt:40-59) (iPhone: each control writes straight to UserDefaults and the row redraws from it)
 - [x] Opened from a search result, the row whose entry id matches is lit once: after 350 ms it scrolls into view, an accent wash at 14% alpha fades in over 250 ms, holds 900 ms, and fades out over 700 ms (app/src/main/java/app/winters/octo/ui/settings/rows/SettingsRows.kt:62-70,145-177)
@@ -358,7 +358,7 @@ Parts, in order: settings front page, search and shared rows; Playback; Appearan
 - [x] The helper lines on this page are written in PlaybackPage.kt; the SettingsIndex summary of each setting is never drawn on the page (it is only used to match search words) (app/src/main/java/app/winters/octo/ui/settings/PlaybackPage.kt:80-196; app/src/main/java/app/winters/octo/ui/settings/SettingsScreen.kt:277)
 - [x] No row on this page is ever disabled or dimmed; rows are either shown or hidden (app/src/main/java/app/winters/octo/ui/settings/PlaybackPage.kt:79-197)
 
-### Group 1 (no title): blending, speed, silence and Autoplay
+### Group 1 (no title): blending, speed and silence
 
 #### Crossfade
 
@@ -433,9 +433,18 @@ Parts, in order: settings front page, search and shared rows; Playback; Appearan
 - [x] With Skip silence on, planned blends do not lock to the bar or match tempo; the preloaded next song copies the setting (shared/core/src/commonMain/kotlin/app/winters/octo/playback/AutomixPlan.kt:193; app/src/main/java/app/winters/octo/playback/Crossfader.kt:471,514)
 - [~] Skip silence applies to the phone's player only, not to cast devices (app/src/main/java/app/winters/octo/playback/OctoPlaybackService.kt:221,231) (not on iPhone: there is no casting; AirPlay carries the phone's own player, so skip silence applies there too)
 
+### Group 2 "Queue": what a swipe adds, and Autoplay
+
+#### Swipe right on a song
+
+- [x] First row of the "Queue" group (titled group, queue icon): a choice row titled "Swipe right on a song" (entry id "swipe_action", section "Queue") showing the chosen value with its detail as the helper line (app/src/main/java/app/winters/octo/ui/settings/PlaybackPage.kt; app/src/main/java/app/winters/octo/ui/settings/SettingsIndex.kt)
+- [x] Choices: "Play next" ("Right after the song that's on", default), "Add to queue" ("At the end of the queue"), "Off" ("Swiping a song does nothing") (app/src/main/java/app/winters/octo/player/SwipeAction.kt)
+- [x] Stored as String key "swipe_action" with the values "PlayNext", "AddToQueue", "Off"; anything else reads as "PlayNext"; backed up as player field "swipeAction" (app/src/main/java/app/winters/octo/player/PlayerSettings.kt)
+- [x] Effect: a swipe right on a song row plays it next or adds it to the end of the queue (before any Autoplay songs still to come), with "Playing next" or "Added to queue" and Undo; with Off the rows do not swipe; the screen reader's "Play next" and "Add to queue" actions stay and also show the message with Undo (app/src/main/java/app/winters/octo/ui/common/Items.kt)
+
 #### Autoplay
 
-- [x] Last row of the first group: a switch row titled "Autoplay" (entry id "autoplay") with the helper line "When the queue ends, similar songs keep playing." (app/src/main/java/app/winters/octo/ui/settings/PlaybackPage.kt:115-120)
+- [x] Second row of the "Queue" group: a switch row titled "Autoplay" (entry id "autoplay") with the helper line "When the queue ends, similar songs keep playing." (app/src/main/java/app/winters/octo/ui/settings/PlaybackPage.kt:115-120)
 - [x] Stored as Boolean key "autoplay", default true (on) (app/src/main/java/app/winters/octo/player/PlayerSettings.kt:64,134,206,290-292)
 - [x] Autoplay watches the setting and checks again at once when it changes; turning it off stops any pending add (app/src/main/java/app/winters/octo/playback/Autoplay.kt:69-78,87-109)
 - [x] It is due only when: Autoplay is on, the playing entry is the last in the queue, repeat is off, the entry is not an internet radio stream, Autoplay has not already tried after this entry, and the player is playing or has ended (app/src/main/java/app/winters/octo/playback/Autoplay.kt:87-103)

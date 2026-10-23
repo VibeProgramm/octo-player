@@ -46,8 +46,8 @@ extension View {
     }
 
     /// The row's swipes. In a `LibraryList` they are the system's swipe actions: from the left
-    /// edge, Play next; from the right edge, the row's removal. Elsewhere the row follows the
-    /// finger itself (`rowSwipe`).
+    /// edge, Play next or Add to queue as Settings say (none when Off); from the right edge, the
+    /// row's removal. Elsewhere the row follows the finger itself (`rowSwipe`).
     func songSwipes(_ swipe: RowSwipe, enabled: Bool) -> some View {
         modifier(SongSwipes(swipe: swipe, enabled: enabled))
     }
