@@ -82,3 +82,5 @@ fun Int.asLength(): String {
 fun songs(count: Int) = if (count == 1) "1 song" else "$count songs"
 
 fun albums(count: Int) = if (count == 1) "1 album" else "$count albums"
+
+fun artists(count: Int) = if (count == 1) "1 artist" else "$count artists"

@@ -60,19 +60,20 @@ import app.winters.octo.ui.common.ArtistRow
 import app.winters.octo.ui.common.Feedback
 import app.winters.octo.ui.common.LocalSongSelection
 import app.winters.octo.ui.common.Pickable
-import app.winters.octo.ui.common.PlayRow
+import app.winters.octo.ui.common.HeaderChips
+import app.winters.octo.ui.common.HeaderMore
+import app.winters.octo.ui.common.PageHeader
+import app.winters.octo.ui.common.PlayShuffleButtons
 import app.winters.octo.ui.common.Refreshable
 import app.winters.octo.ui.common.RemoveBackground
-import app.winters.octo.ui.common.Segmented
 import app.winters.octo.ui.common.SelectableSongs
 import app.winters.octo.ui.common.SongRow
 import app.winters.octo.ui.common.SortButton
-import app.winters.octo.ui.common.TitleWithSort
 import app.winters.octo.ui.common.TopOnNewOrder
-import app.winters.octo.ui.common.songs
 import app.winters.octo.ui.nav.AlbumRoute
 import app.winters.octo.ui.nav.ArtistRoute
-import app.winters.octo.ui.playlist.KeepLikedDownloaded
+import app.winters.octo.ui.library.FilterChip
+import app.winters.octo.ui.playlist.keepLikedItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -129,13 +130,10 @@ class FavouritesViewModel @Inject constructor(
     }
 }
 
-private val Segments = FavouriteSegment.entries.map { it.label }
-
 private val RowShape = RoundedCornerShape(12.dp)
 
-// Where a new song order scrolls back to: the first song, after the play
-// line and the keep-downloaded line.
-private const val FIRST_SONG = 2
+// Where a new song order scrolls back to: the first song.
+private const val FIRST_SONG = 0
 
 // How to heart a song, shown while there are none.
 private const val SONGS_EMPTY =
@@ -170,40 +168,52 @@ fun FavouritesScreen(
 
     Refreshable {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
-            TitleWithSort("Favorites", onBack) {
-                when (segment) {
-                    null -> Unit
-                    FavouriteSegment.Songs -> songs?.let { SortButton(SortList.Liked, it.order, vm::setSongOrder) }
-                    else -> (albums ?: artists)?.let { SortButton(SortList.Favourites, it.order, vm::setOrder) }
-                }
-            }
-            if (segment == null) {
-                Loading()
-            } else {
-                Segmented(
-                    Segments,
-                    segment.ordinal,
-                    { chosen = FavouriteSegment.entries[it] },
-                    Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp),
-                )
-                when (segment) {
-                    FavouriteSegment.Songs -> FavouriteSongs(songs, vm::playSongs, vm::shuffleSongs, vm::unlike)
-                    FavouriteSegment.Albums -> FavouriteAlbums(albums, onOpen)
-                    FavouriteSegment.Artists -> FavouriteArtists(artists, onOpen)
-                }
+            val liked = songs?.items.orEmpty()
+            val keep = keepLikedItem(liked)
+            PageHeader(
+                "Favorites",
+                onBack,
+                count = segment?.let { favouriteCount(it, songs?.items?.size, albums?.items?.size, artists?.items?.size) },
+                control = {
+                    when (segment) {
+                        null -> Unit
+                        FavouriteSegment.Songs -> songs?.let { SortButton(SortList.Liked, it.order, vm::setSongOrder) }
+                        else -> (albums ?: artists)?.let { SortButton(SortList.Favourites, it.order, vm::setOrder) }
+                    }
+                },
+                filters = if (segment == null) null else {
+                    {
+                        HeaderChips {
+                            items(FavouriteSegment.entries, key = { it.name }) { part ->
+                                FilterChip(part.label, part == segment) { chosen = part }
+                            }
+                        }
+                    }
+                },
+                // Liked songs play from here; their Keep downloaded is in More.
+                actions = if (segment != FavouriteSegment.Songs || liked.isEmpty() && keep == null) null else {
+                    {
+                        if (liked.isNotEmpty()) PlayShuffleButtons({ vm.playSongs(0) }, vm::shuffleSongs)
+                        HeaderMore(listOfNotNull(keep))
+                    }
+                },
+            )
+            when (segment) {
+                null -> Loading()
+                FavouriteSegment.Songs -> FavouriteSongs(songs, vm::playSongs, vm::unlike)
+                FavouriteSegment.Albums -> FavouriteAlbums(albums, onOpen)
+                FavouriteSegment.Artists -> FavouriteArtists(artists, onOpen)
             }
         }
     }
 }
 
-// Liked songs: play and shuffle, the keep-downloaded switch, then the songs
-// in their order. Swipe a song left to unlike it, with an Undo; long press
-// to pick several.
+// Liked songs in their order, under the header's Play and Shuffle. Swipe a
+// song left to unlike it, with an Undo; long press to pick several.
 @Composable
 private fun FavouriteSongs(
     list: Sorted<TrackEntity>?,
     onPlay: (Int) -> Unit,
-    onShuffle: () -> Unit,
     onUnlike: (String) -> Unit,
 ) {
     if (list == null) {
@@ -219,17 +229,6 @@ private fun FavouriteSongs(
     SelectableSongs(pickable) {
         val selecting = LocalSongSelection.current?.active == true
         LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(top = 4.dp, bottom = 140.dp)) {
-            item(key = "play") {
-                if (tracks.isNotEmpty()) {
-                    PlayRow(
-                        details = songs(tracks.size),
-                        onPlay = { onPlay(0) },
-                        onShuffle = onShuffle,
-                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
-                    )
-                }
-            }
-            item(key = "keep") { KeepLikedDownloaded(tracks) }
             if (rows.isEmpty()) {
                 item(key = "empty") { EmptyText(SONGS_EMPTY) }
             }

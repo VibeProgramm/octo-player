@@ -17,6 +17,8 @@ import androidx.lifecycle.viewModelScope
 import app.winters.octo.catalog.TrackEntity
 import app.winters.octo.catalog.isFind
 import app.winters.octo.design.OctoColors
+import app.winters.octo.design.OctoIcons
+import app.winters.octo.ui.common.MoreItem
 import app.winters.octo.design.OctoSwitch
 import app.winters.octo.design.OctoType
 import app.winters.octo.offline.DownloadEntity
@@ -65,6 +67,57 @@ fun KeepLikedDownloaded(tracks: List<TrackEntity>, vm: KeepDownloadedViewModel =
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     KeepDownloadedLine(prefs.keepLiked, tracks, vm, vm::setLikedKept)
 }
+
+// The words of a Keep downloaded switch: its quiet line, how many are on
+// the phone while it is on and what it does while it is off.
+const val KEEP_DOWNLOADED = "Keep downloaded"
+const val KEEP_DOWNLOADED_OFF = "Download the songs only on your server, and keep them in step"
+
+fun keepDetail(checked: Boolean, serverOnly: Int, done: Int): String = if (checked) keptSummary(serverOnly, done) else KEEP_DOWNLOADED_OFF
+
+// Keep downloaded for a playlist as a switch in its header's More menu,
+// or nothing when there is nothing to download and it is off.
+@Composable
+fun keepPlaylistItem(playlistId: String, tracks: List<TrackEntity>, vm: KeepDownloadedViewModel = hiltViewModel()): MoreItem? {
+    val prefs by vm.prefs.collectAsStateWithLifecycle()
+    return keepItem(playlistId in prefs.keptPlaylists, tracks, vm) { vm.setPlaylistKept(playlistId, it) }
+}
+
+// The same for Liked songs.
+@Composable
+fun keepLikedItem(tracks: List<TrackEntity>, vm: KeepDownloadedViewModel = hiltViewModel()): MoreItem? {
+    val prefs by vm.prefs.collectAsStateWithLifecycle()
+    return keepItem(prefs.keepLiked, tracks, vm, vm::setLikedKept)
+}
+
+@Composable
+private fun keepItem(checked: Boolean, tracks: List<TrackEntity>, vm: KeepDownloadedViewModel, onChange: (Boolean) -> Unit): MoreItem? {
+    val kept by vm.kept.collectAsStateWithLifecycle()
+    val serverOnly = tracks.filter { !it.onPhone && !isFind(it.id) }
+    if (serverOnly.isEmpty() && !checked) return null
+    val done = serverOnly.count { kept[it.id]?.state == DownloadStatus.Done }
+    return MoreItem(KEEP_DOWNLOADED, OctoIcons.Download, detail = keepDetail(checked, serverOnly.size, done), checked = checked) { onChange(!checked) }
+}
+
+// While Keep downloaded is on and songs are still coming, how far it has
+// got, for a page's details line. Nothing once they are all on the phone.
+@Composable
+fun keepPlaylistProgress(playlistId: String, tracks: List<TrackEntity>, vm: KeepDownloadedViewModel = hiltViewModel()): String? {
+    val prefs by vm.prefs.collectAsStateWithLifecycle()
+    return keepProgress(playlistId in prefs.keptPlaylists, tracks, vm)
+}
+
+@Composable
+private fun keepProgress(checked: Boolean, tracks: List<TrackEntity>, vm: KeepDownloadedViewModel): String? {
+    val kept by vm.kept.collectAsStateWithLifecycle()
+    if (!checked) return null
+    val serverOnly = tracks.filter { !it.onPhone && !isFind(it.id) }
+    val done = serverOnly.count { kept[it.id]?.state == DownloadStatus.Done }
+    return keepingNote(serverOnly.size, done)
+}
+
+// The progress note while songs are still on their way, or nothing.
+fun keepingNote(serverOnly: Int, done: Int): String? = if (serverOnly > 0 && done < serverOnly) keptSummary(serverOnly, done) else null
 
 @Composable
 private fun KeepDownloadedLine(checked: Boolean, tracks: List<TrackEntity>, vm: KeepDownloadedViewModel, onChange: (Boolean) -> Unit) {

@@ -1,6 +1,9 @@
 package app.winters.octo.ui.favourites
 
 import androidx.navigation3.runtime.NavKey
+import app.winters.octo.ui.common.albums
+import app.winters.octo.ui.common.artists
+import app.winters.octo.ui.common.songs
 import app.winters.octo.ui.nav.FavouritesRoute
 import app.winters.octo.ui.nav.LikedRoute
 
@@ -30,4 +33,12 @@ fun openingSegment(route: NavKey): FavouriteSegment? = when (route) {
     LikedRoute -> FavouriteSegment.Songs
     is FavouritesRoute -> if (route.albums) FavouriteSegment.Albums else null
     else -> null
+}
+
+// What the title line counts for the part open: its songs, albums or
+// artists. Nothing until that part is read.
+fun favouriteCount(segment: FavouriteSegment, songCount: Int?, albumCount: Int?, artistCount: Int?): String? = when (segment) {
+    FavouriteSegment.Songs -> songCount?.let { songs(it) }
+    FavouriteSegment.Albums -> albumCount?.let { albums(it) }
+    FavouriteSegment.Artists -> artistCount?.let { artists(it) }
 }

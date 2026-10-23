@@ -44,4 +44,15 @@ class HeaderFitTest {
     fun noControlHasNoShortForm() {
         assertFalse(controlCompact(line, control = 0, actions = playShuffle, hasFilters = true, gap = gap, filtersMin = 96))
     }
+
+    @Test
+    fun aCountFitsWholeAfterTheTitleOrIsLeftOff() {
+        // "Favorites" after the back button with "1,204 songs".
+        assertTrue(countFits(titleEnd = 50 + 150, count = 80, gap = gap, width = line))
+        // "Recently removed" leaves too little room: the count goes, never cut.
+        assertFalse(countFits(titleEnd = 50 + 270, count = 80, gap = gap, width = line))
+        // Exactly filling the line still fits.
+        assertTrue(countFits(titleEnd = 238, count = 80, gap = gap, width = line))
+        assertFalse(countFits(titleEnd = 50, count = 0, gap = gap, width = line))
+    }
 }

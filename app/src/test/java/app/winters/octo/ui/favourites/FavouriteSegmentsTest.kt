@@ -50,4 +50,12 @@ class FavouriteSegmentsTest {
         // No other page asks for a part.
         assertNull(openingSegment(PlaylistsRoute))
     }
+
+    @Test
+    fun theTitleCountsThePartOpen() {
+        assertEquals("120 songs", favouriteCount(FavouriteSegment.Songs, 120, 4, 2))
+        assertEquals("1 album", favouriteCount(FavouriteSegment.Albums, 120, 1, 2))
+        assertEquals("2 artists", favouriteCount(FavouriteSegment.Artists, 120, 1, 2))
+        assertNull(favouriteCount(FavouriteSegment.Albums, 120, null, 2))
+    }
 }

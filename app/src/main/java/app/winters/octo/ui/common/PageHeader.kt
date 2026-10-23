@@ -2,12 +2,18 @@ package app.winters.octo.ui.common
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -80,43 +86,73 @@ internal fun controlCompact(width: Int, control: Int, actions: Int, hasFilters: 
 // or wrapped, and nothing else shares its line.
 internal fun titlePlace(back: Int, title: Int, gap: Int): Pair<Int, Int> = (if (back > 0) back + gap else 0) to title
 
+// Whether a page's count ("120 songs") fits whole at the end of the title's
+// line, in pixels: where the title ends, the count's width, the room
+// before it and the line's width. One that does not fit is left off the
+// line rather than cut.
+internal fun countFits(titleEnd: Int, count: Int, gap: Int, width: Int): Boolean = count > 0 && titleEnd + gap + count <= width
+
 // The top of a page that is not a tab, on two lines at most. The first
 // holds the back button and the big page title alone, the button on the
 // middle of the title's capitals. The second, the control line, holds
 // everything else: the page's own control first (a country or sort
 // button), then its filters (chips that scroll sideways), then its
 // actions (Play, Shuffle, More) at the end. A page with none of those has
-// the first line only.
+// the first line only. A `count` ("120 songs") sits muted at the end of the
+// title's line when it fits there whole, and is left off when it does not.
+// A page without a way back (a tab) keeps `trailing` at the end of the
+// title's line, for a quiet page action like Edit Home.
 @Composable
 fun PageHeader(
     title: String,
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    count: String? = null,
     control: (@Composable () -> Unit)? = null,
     filters: (@Composable () -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val hasLine = control != null || filters != null || actions != null
     Column(modifier.fillMaxWidth()) {
-        TitleLine(title, onBack, Modifier.padding(start = if (onBack != null) 12.dp else 20.dp, end = 16.dp, top = 8.dp, bottom = if (hasLine) 4.dp else 12.dp))
-        if (hasLine) ControlLine(control, filters, actions, Modifier.padding(start = 12.dp, end = 16.dp, bottom = 12.dp))
+        TitleLine(
+            title,
+            onBack,
+            count,
+            trailing,
+            Modifier.padding(start = if (onBack != null) 12.dp else 20.dp, end = 16.dp, top = 8.dp, bottom = if (hasLine) 4.dp else 12.dp),
+        )
+        if (hasLine) HeaderControlLine(control, filters, actions, Modifier.padding(start = 12.dp, end = 16.dp, bottom = 12.dp))
     }
 }
 
+// The room between the title and its count.
+private val CountGap = 10.dp
+
 @Composable
-private fun TitleLine(title: String, onBack: (() -> Unit)?, modifier: Modifier) {
+private fun TitleLine(title: String, onBack: (() -> Unit)?, count: String?, trailing: (@Composable () -> Unit)?, modifier: Modifier) {
     val capHeight = rememberCapHeightPx(HeaderTitle)
     Layout(
         content = {
             if (onBack != null) HeaderButton(OctoIcons.Back, "Back", onBack)
             Text(title, style = HeaderTitle, color = OctoColors.TextPrimary, maxLines = 1, softWrap = false)
+            if (count != null) Text(count, style = OctoType.bodySmall, color = OctoColors.TextMuted, maxLines = 1, softWrap = false)
+            if (trailing != null) Box { trailing() }
         },
         modifier = modifier.fillMaxWidth(),
     ) { measurables, constraints ->
         val width = constraints.maxWidth
-        val back = if (onBack != null) measurables[0].measure(Constraints()) else null
-        val name = measurables.last().measure(Constraints())
+        var next = 0
+        val back = if (onBack != null) measurables[next++].measure(Constraints()) else null
+        val name = measurables[next++].measure(Constraints())
+        val counted = if (count != null) measurables[next++].measure(Constraints()) else null
+        val end = if (trailing != null) measurables[next].measure(Constraints()) else null
         val (x, _) = titlePlace(back?.width ?: 0, name.width, Gap.roundToPx())
+        // What follows the title goes only where it fits whole: the page
+        // action at the far end, then the count after the title.
+        val endRoom = end?.let { it.width + Gap.roundToPx() } ?: 0
+        val shownEnd = end?.takeIf { x + name.width + endRoom <= width }
+        val shownCount = counted?.takeIf { countFits(x + name.width, it.width, CountGap.roundToPx(), width - (if (shownEnd != null) endRoom else 0)) }
         // The line is as tall on every page: the title where a 48dp target
         // centered on its capitals fits.
         val half = LineHalf.roundToPx()
@@ -127,18 +163,24 @@ private fun TitleLine(title: String, onBack: (() -> Unit)?, modifier: Modifier) 
         layout(width, height) {
             back?.place(0, (middle - back.height / 2f).roundToInt())
             name.place(x, lift)
+            // The count sits on the title's baseline.
+            shownCount?.place(x + name.width + CountGap.roundToPx(), lift + name[FirstBaseline] - shownCount[FirstBaseline])
+            shownEnd?.place(width - shownEnd.width, (middle - shownEnd.height / 2f).roundToInt())
         }
     }
 }
 
 private enum class Slot { Actions, Control, CompactControl, Filters }
 
+// A header's control line on its own, for a page whose top is not a page
+// title, like an album under its cover or a sheet: the control first, then
+// the filters, then the actions at the end.
 @Composable
-private fun ControlLine(
+fun HeaderControlLine(
     control: (@Composable () -> Unit)?,
     filters: (@Composable () -> Unit)?,
     actions: (@Composable RowScope.() -> Unit)?,
-    modifier: Modifier,
+    modifier: Modifier = Modifier,
 ) {
     SubcomposeLayout(modifier.fillMaxWidth()) { constraints ->
         val width = constraints.maxWidth
@@ -173,15 +215,47 @@ private fun ControlLine(
 
 // One of the header's round glass buttons: the back button, or a page's
 // action like Play or Shuffle. One not `enabled` is dimmed and does nothing.
+// While `loading` (Play gathering a folder's songs) a small spinner turns
+// over it and it does nothing.
 @Composable
-fun HeaderButton(@DrawableRes icon: Int, description: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    GlazedIconButton(
-        backdrop = LocalHaze.current,
-        icon = ImageVector.vectorResource(icon),
-        contentDescription = description,
-        onClick = { if (enabled) onClick() },
-        modifier = modifier.alpha(if (enabled) 1f else OctoInk.DisabledAlpha),
-        size = HeaderButtonSize,
+fun HeaderButton(
+    @DrawableRes icon: Int,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        GlazedIconButton(
+            backdrop = LocalHaze.current,
+            icon = ImageVector.vectorResource(icon),
+            contentDescription = description,
+            onClick = { if (enabled && !loading) onClick() },
+            modifier = Modifier.alpha(if (enabled && !loading) 1f else OctoInk.DisabledAlpha),
+            size = HeaderButtonSize,
+        )
+        if (loading) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(HeaderButtonSize - 12.dp))
+    }
+}
+
+// Play and Shuffle as the header's two round buttons, for a page's actions.
+@Composable
+fun PlayShuffleButtons(onPlay: () -> Unit, onShuffle: () -> Unit, enabled: Boolean = true, loading: Boolean = false) {
+    HeaderButton(OctoIcons.Play, "Play", onPlay, enabled = enabled, loading = loading)
+    HeaderButton(OctoIcons.Shuffle, "Shuffle", onShuffle, enabled = enabled && !loading)
+}
+
+// A control line's chips, in a row that scrolls sideways with soft ends.
+@Composable
+fun HeaderChips(modifier: Modifier = Modifier, content: LazyListScope.() -> Unit) {
+    val state = rememberLazyListState()
+    LazyRow(
+        state = state,
+        modifier = modifier.filterFades(state),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
     )
 }
 
