@@ -71,7 +71,7 @@ class ControlLinePlanTest {
     private fun charts(screen: Int, chart: Int) = planLine(
         width = line(screen),
         gap = gap,
-        lead = listOf(PlanItem(listOf(150, 76, 54), overflow = 0), PlanItem(listOf(chart), null)),
+        lead = listOf(PlanItem(listOf(150, 76, 54), overflow = 0), PlanItem(listOf(chart), null, squeezeTo = 72)),
         segments = null,
         tail = playShuffle,
         moreButton = button,
@@ -95,7 +95,14 @@ class ControlLinePlanTest {
         assertEquals(LinePlan(listOf(1, 0, 0, 0), SegmentsForm.Full, more = false), charts(412, chart = 170))
         assertEquals(LinePlan(listOf(1, 0, 0, 0), SegmentsForm.Full, more = false), charts(393, chart = 170))
         assertEquals(LinePlan(listOf(2, 0, 0, 0), SegmentsForm.Full, more = false), charts(360, chart = 170))
-        assertEquals(LinePlan(listOf(null, 0, 0, 0), SegmentsForm.Full, more = true), charts(320, chart = 170))
+    }
+
+    @Test
+    fun at320TheLongChartNameEndsInAnEllipsisRatherThanOverflow() {
+        // "Christian & Gospel": the country moves into More, then the chart
+        // button gives up the 22dp still over (170 + 40 + 40 + 40 and three
+        // gaps of 8 on a 292dp line).
+        assertEquals(LinePlan(listOf(null, 0, 0, 0), SegmentsForm.Full, more = true, squeezed = mapOf(1 to 148)), charts(320, chart = 170))
     }
 
     @Test

@@ -70,7 +70,8 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
             item(key = "header") {
                 val chart = vm.choices.firstOrNull { it.id == vm.selected } ?: vm.choices.firstOrNull()
                 // The country first, taking its code and then its globe alone
-                // before it moves into More; the chart button never moves.
+                // before it moves into More; the chart button never moves, and
+                // only as the last step may its name end in an ellipsis.
                 PageHeader(
                     "Charts",
                     onBack,
@@ -84,7 +85,7 @@ fun ChartsScreen(onBack: () -> Unit, vm: ChartsViewModel = hiltViewModel()) {
                             ) { form -> CountryButton(code, CountryForm.entries[form], enabled = !vm.saving, onClick = { pickCountry(sheet, vm) }) }
                         },
                         chart?.let {
-                            LineItem("chart") { _ -> HeaderDropdown(it.label, onClick = { pickChart(sheet, vm) }, clickLabel = "Choose a chart") }
+                            LineItem("chart", squeezes = true) { _ -> HeaderDropdown(it.label, onClick = { pickChart(sheet, vm) }, clickLabel = "Choose a chart") }
                         },
                     ),
                     tail = playShuffleItems({ vm.play(0) }, vm::shuffle, enabled = songs.isNotEmpty()),

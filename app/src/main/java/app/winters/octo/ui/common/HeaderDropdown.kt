@@ -25,6 +25,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
@@ -71,7 +72,11 @@ fun HeaderDropdown(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (icon != null) Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(16.dp))
-        if (showLabel) Text(label, style = OctoType.label, color = ink, maxLines = 1, softWrap = false)
+        // Held short on a narrow line, the words end in an ellipsis; the
+        // whole choice is still read out.
+        if (showLabel) {
+            Text(label, style = OctoType.label, color = ink, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        }
         Icon(painterResource(OctoIcons.Chevron), contentDescription = null, tint = OctoColors.TextMuted, modifier = Modifier.size(12.dp).rotate(90f))
     }
 }

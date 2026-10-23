@@ -20,14 +20,20 @@ import app.winters.octo.design.OctoType
 // for. `overflow` says when it moves into the page's More menu once the line
 // is too narrow, lowest first; null never moves (Play and Shuffle, a page's
 // main choice). `more` is the More row it becomes there, doing the same
-// thing with its value in its words ("Sort: Date liked").
+// thing with its value in its words ("Sort: Date liked"). One that
+// `squeezes` (a button whose words may end in an ellipsis, never a title)
+// gives up room as the very last step, down to SqueezeMin.
 class LineItem(
     val key: String,
     val overflow: Int? = null,
     val more: MoreItem? = null,
     val forms: Int = 1,
+    val squeezes: Boolean = false,
     val content: @Composable (form: Int) -> Unit,
 )
+
+// The least a squeezed button keeps: a few letters and its chevron.
+val SqueezeMin = 72.dp
 
 // A page's main choice on its control line, as segments: never moved into
 // More, only drawn smaller, and a dropdown of the same choices as the last
@@ -39,24 +45,27 @@ class LineSegments(val options: List<String>, val selected: Int, val title: Stri
 enum class SegmentsForm { Full, Small, Dropdown }
 
 // What the planner knows of one item: its width in each form, widest
-// first, and when it moves into More (null: never).
-class PlanItem(val widths: List<Int>, val overflow: Int?)
+// first, when it moves into More (null: never), and the least it can be
+// squeezed to (null: it is never squeezed).
+class PlanItem(val widths: List<Int>, val overflow: Int?, val squeezeTo: Int? = null)
 
 // What the segments need: their least width with full-size words, with
 // stepped-down words, and the dropdown's width.
 class PlanSegments(val full: Int, val small: Int, val dropdown: Int)
 
 // The plan for one control line: each item's form (null when it moved into
-// More), how the segments are drawn, and whether the More button shows.
-data class LinePlan(val forms: List<Int?>, val segments: SegmentsForm, val more: Boolean)
+// More), how the segments are drawn, whether the More button shows, and the
+// width any squeezed item is held to, by its place.
+data class LinePlan(val forms: List<Int?>, val segments: SegmentsForm, val more: Boolean, val squeezed: Map<Int, Int> = emptyMap())
 
 // Fits a control line into `width`, all widths in the same unit, `gap`
 // between any two things on it. Everything shows as it is when it fits.
 // Otherwise, in turn: items with shorter forms take them, left to right;
 // items move into More by `overflow`, lowest first (the More button then
 // shows, if the page had none); the segments' words step down; and last the
-// segments become a dropdown. `lead` and `tail` are planned together, lead
-// first; the plan's forms are in that order.
+// segments become a dropdown; and at the very end an item that squeezes
+// gives up what is still over, down to its least. `lead` and `tail` are
+// planned together, lead first; the plan's forms are in that order.
 fun planLine(
     width: Int,
     gap: Int,
@@ -101,7 +110,18 @@ fun planLine(
         }
         break
     }
-    return LinePlan(forms, segmentsForm, moreShows())
+    val squeezed = mutableMapOf<Int, Int>()
+    items.indices.forEach { index ->
+        val given = squeezed.entries.sumOf { (at, held) -> items[at].widths[forms[at]!!] - held }
+        val over = total() - given - width
+        val form = forms[index]
+        val least = items[index].squeezeTo
+        if (over > 0 && form != null && least != null) {
+            val now = items[index].widths[form]
+            if (now > least) squeezed[index] = maxOf(least, now - over)
+        }
+    }
+    return LinePlan(forms, segmentsForm, moreShows(), squeezed)
 }
 
 // The room between any two things on a control line.
@@ -153,7 +173,13 @@ fun HeaderControlLine(
         val plan = planLine(
             width = width,
             gap = gap,
-            lead = lead.indices.map { index -> PlanItem(forms[index].map { m -> m.maxIntrinsicWidth(Constraints.Infinity) }, lead[index].overflow.takeIf { lead[index].more != null }) },
+            lead = lead.indices.map { index ->
+                PlanItem(
+                    forms[index].map { m -> m.maxIntrinsicWidth(Constraints.Infinity) },
+                    lead[index].overflow.takeIf { lead[index].more != null },
+                    SqueezeMin.roundToPx().takeIf { lead[index].squeezes },
+                )
+            },
             segments = segments?.let {
                 PlanSegments(
                     full = segmentsWidth(it.options.size, full.dp.roundToPx(), tab, tab),
@@ -163,12 +189,18 @@ fun HeaderControlLine(
             },
             tail = tail.indices.map { index ->
                 val at = lead.size + index
-                PlanItem(forms[at].map { m -> m.maxIntrinsicWidth(Constraints.Infinity) }, tail[index].overflow.takeIf { tail[index].more != null })
+                PlanItem(
+                    forms[at].map { m -> m.maxIntrinsicWidth(Constraints.Infinity) },
+                    tail[index].overflow.takeIf { tail[index].more != null },
+                    SqueezeMin.roundToPx().takeIf { tail[index].squeezes },
+                )
             },
             moreButton = HeaderButtonSize.roundToPx(),
             pageMore = more.isNotEmpty(),
         )
-        fun measured(index: Int): Placeable? = plan.forms[index]?.let { form -> forms[index][form].measure(Constraints()) }
+        fun measured(index: Int): Placeable? = plan.forms[index]?.let { form ->
+            forms[index][form].measure(plan.squeezed[index]?.let { Constraints(maxWidth = it) } ?: Constraints())
+        }
         val leadShown = lead.indices.mapNotNull { measured(it) }
         val tailShown = tail.indices.mapNotNull { measured(lead.size + it) }
         val moved = items.indices.filter { plan.forms[it] == null }.mapNotNull { items[it].more }
