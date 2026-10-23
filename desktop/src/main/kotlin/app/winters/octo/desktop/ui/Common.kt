@@ -1,6 +1,29 @@
 package app.winters.octo.desktop.ui
 
 import app.winters.octo.design.TitleAndActions
+import app.winters.octo.desktop.AppState
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntRect
+import app.winters.octo.design.FrameSize
+import app.winters.octo.design.LocalPopups
+import app.winters.octo.design.MenuRow
+import app.winters.octo.design.MenuSeparator
+import app.winters.octo.design.MenuTitle
+import app.winters.octo.design.PageSize
+import app.winters.octo.design.scrollFades
+import app.winters.octo.design.scrollbar
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.LastBaseline
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
+import app.winters.octo.design.ControlHeight
 import app.winters.octo.design.WholeTxt
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.runtime.CompositionLocalProvider
@@ -147,27 +170,93 @@ fun Modifier.onRightClick(action: () -> Unit): Modifier =
         if (event.buttons.isSecondaryPressed) action()
     }
 
-// A page's title, whole however long (it wraps between words rather than
-// being cut), a quiet line under it, and the page's buttons, if any: at
-// the end of the title's line while the whole title fits beside them,
-// else on a line of their own under it.
+// A page's title line: the title, whole however long (it wraps between
+// words rather than being cut), and a quiet `detail` (how many it holds,
+// what the page is) after it on the same baseline, shown only while the
+// whole of it fits beside the title on one line. `trailing` is a quiet
+// action at the end of the line, set on the title's cap-height middle (or
+// under the title, when the two would not fit on one line).
+// `bottom` is the room under it: less when a control line follows.
 @Composable
-fun PageTitle(text: String, modifier: Modifier = Modifier, detail: String? = null, actions: (@Composable () -> Unit)? = null) {
-    val heading = @Composable {
-        Column {
-            WholeTxt(text, DesktopType.pageTitle)
-            if (detail != null) Txt(detail, DesktopType.meta, OctoColors.TextMuted, Modifier.padding(top = Space.Xs))
+fun PageTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+    detail: String? = null,
+    bottom: Dp = Space.Xl,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val density = LocalDensity.current
+    // The middle of the title's capitals under its first baseline.
+    val capMiddle = with(density) { (DesktopType.pageTitle.fontSize * CapShare / 2).roundToPx() }
+    Layout(
+        contents = listOf(
+            { WholeTxt(text, DesktopType.pageTitle) },
+            { if (detail != null) Txt(detail, DesktopType.meta, OctoColors.TextMuted) },
+            { trailing?.invoke() },
+        ),
+        modifier = modifier.fillMaxWidth().padding(bottom = bottom),
+    ) { (titles, details, ends), constraints ->
+        val width = constraints.maxWidth
+        val gap = Space.L.roundToPx()
+        val end = ends.map { it.measure(Constraints()) }
+        // The title is never squeezed: an action that leaves it too little
+        // room for one line goes under it instead.
+        val wholeLine = titles.maxOfOrNull { it.maxIntrinsicWidth(Constraints.Infinity) } ?: 0
+        val beside = end.isEmpty() || wholeLine + gap + end.maxOf { it.width } <= width
+        val endWidth = if (beside) end.maxOfOrNull { it.width }?.let { it + gap } ?: 0 else 0
+        val title = titles.map { it.measure(Constraints(maxWidth = (width - endWidth).coerceAtLeast(0))) }
+        val titleWidth = title.maxOfOrNull { it.width } ?: 0
+        val titleHeight = title.maxOfOrNull { it.height } ?: 0
+        val baseline = title.firstOrNull()?.get(FirstBaseline)?.takeIf { it != AlignmentLine.Unspecified } ?: titleHeight
+        val oneLine = title.firstOrNull()?.let { it[FirstBaseline] == it[LastBaseline] } ?: true
+        val shown = details.map { it.measure(Constraints()) }.takeIf { placed ->
+            oneLine && placed.isNotEmpty() && titleWidth + gap + placed.maxOf { it.width } + endWidth <= width
+        }.orEmpty()
+        // The quiet action is centred on the capitals; a tall one pushes the line down.
+        val endTop = if (beside) end.maxOfOrNull { baseline - capMiddle - it.height / 2 } ?: 0 else titleHeight
+        val lift = (-endTop).coerceAtLeast(0)
+        val height = maxOf(titleHeight + lift, end.maxOfOrNull { endTop + lift + it.height } ?: 0)
+        layout(width, height) {
+            title.forEach { it.place(0, lift) }
+            shown.forEach { line ->
+                val own = line[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: line.height
+                line.place(titleWidth + gap, lift + baseline - own)
+            }
+            end.forEach { it.place(width - it.width, endTop + lift) }
         }
     }
-    Box(modifier.padding(bottom = Space.Xl)) {
-        if (actions == null) heading() else TitleAndActions(text, DesktopType.pageTitle, heading = heading, actions = actions)
+}
+
+// How tall a capital stands, as a share of the type's size.
+private const val CapShare = 0.72f
+
+// A page's header: its title line, and under it its control line when it
+// has anything to put there (see ControlLine), nothing else.
+@Composable
+fun PageHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    detail: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    control: (@Composable () -> Unit)? = null,
+    filters: (@Composable () -> Unit)? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+) {
+    val line = control != null || filters != null || actions != null
+    Column(modifier.fillMaxWidth()) {
+        PageTitle(title, detail = detail, bottom = if (line) TitleToLine else Space.Xl, trailing = trailing)
+        if (line) ControlLine(control = control, filters = filters, actions = actions)
     }
 }
+
+// The room between a page's title and its control line.
+val TitleToLine = Space.M
 
 // A page's control line, under its title and above its content: the
 // page's own control first (a country or sort button), then its filters
 // (chips that scroll sideways, given the room left), then its actions
-// (Play, Shuffle, More) at the end of the line, all on one line.
+// (Play, Shuffle, More) at the end of the line, all on one line, as tall
+// on every page.
 @Composable
 fun ControlLine(
     modifier: Modifier = Modifier,
@@ -176,7 +265,7 @@ fun ControlLine(
     actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     Row(
-        modifier.fillMaxWidth().padding(bottom = Space.L),
+        modifier.fillMaxWidth().padding(bottom = Space.L).heightIn(min = ControlHeight.L),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.M),
     ) {
@@ -184,6 +273,47 @@ fun ControlLine(
         Box(Modifier.weight(1f)) { filters?.invoke() }
         if (actions != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S), content = actions)
     }
+}
+
+// A choice of several as one button on a control line, in place of a row
+// of chips that would scroll sideways: the chosen one's words and a
+// chevron, opening the choices under it (`title` over them), the chosen
+// one marked. `detail` is a quiet word beside a choice (a count); a
+// hairline parts the choices where `group` changes.
+@Composable
+fun <T> ChoiceButton(
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    icon: ImageVector? = null,
+    detail: ((T) -> String?)? = null,
+    group: ((T) -> Any?)? = null,
+    words: String = label(selected),
+) {
+    var anchor by remember { mutableStateOf(IntRect.Zero) }
+    val popups = LocalPopups.current
+    GlazeCapsule(
+        icon,
+        words,
+        {
+            popups.showUnder(anchor, width = FrameSize.Menu, scrollsItself = true) { close ->
+                title?.let { MenuTitle(it) }
+                val scroll = rememberScrollState()
+                Column(Modifier.weight(1f, fill = false).scrollbar(scroll).scrollFades(scroll).verticalScroll(scroll)) {
+                    options.forEachIndexed { index, option ->
+                        if (group != null && index > 0 && group(option) != group(options[index - 1])) MenuSeparator()
+                        MenuRow(label(option), { close(); onSelect(option) }, detail = detail?.invoke(option), selected = option == selected)
+                    }
+                }
+            }
+        },
+        modifier.widthIn(max = PageSize.ChoiceButton).onGloballyPositioned { anchor = it.windowRect() },
+        height = ControlHeight.L,
+        quiet = true,
+    )
 }
 
 // A section's title, whole, and its action at the end of the line, or

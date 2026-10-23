@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.winters.octo.design.Corner
+import app.winters.octo.design.CutTxt
 import app.winters.octo.design.DesktopType
 import app.winters.octo.design.Glyph
 import app.winters.octo.design.IconSize
@@ -47,6 +48,7 @@ import app.winters.octo.desktop.ui.Load
 import app.winters.octo.desktop.ui.LoadingLine
 import app.winters.octo.desktop.ui.PageSide
 import app.winters.octo.desktop.ui.LocalBottomRoom
+import app.winters.octo.desktop.ui.PageHeader
 import app.winters.octo.desktop.ui.PageTitle
 import app.winters.octo.desktop.ui.pagePadding
 import app.winters.octo.desktop.ui.SongTable
@@ -118,7 +120,7 @@ fun FolderPage(app: AppState, visit: Visit, id: String, name: String) {
     when (val state = loaded.state) {
         Load.Loading -> LoadingLine(modifier = Modifier.padding(horizontal = PageSide))
         is Load.Failed -> Column(Modifier.padding(horizontal = PageSide)) {
-            Crumbs(app, trail, name)
+            Crumbs(app, trail, name, Modifier.padding(bottom = Space.S))
             val up = trail.lastOrNull()
             NextStep(
                 "The server wouldn't list this folder",
@@ -187,19 +189,23 @@ private fun FolderBody(app: AppState, visit: Visit, folder: MusicDirectory, give
                 }
             },
         ) {
+            // The title is the folder; the way up and where the server keeps
+            // it are on the line under it.
             item(key = "title") {
-                Column {
-                    Crumbs(app, trail, name)
-                    PageTitle(
-                        name,
-                        detail = listOfNotNull(folderFacts(folder.folders.size, songs.size, songs.sumOf { it.duration }), path).joinToString("  ·  ").ifEmpty { null },
-                        actions = if (songs.isEmpty()) null else ({
-                            Row(horizontalArrangement = Arrangement.spacedBy(Space.M)) {
-                                PlayAndShuffle({ app.play(songs) }, { app.play(songs, shuffle = true) })
+                PageHeader(
+                    name,
+                    detail = folderFacts(folder.folders.size, songs.size, songs.sumOf { it.duration }),
+                    control = { Crumbs(app, trail, current = null) },
+                    filters = path?.let {
+                        {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+                                Glyph(OctoIcons.Folder, size = IconSize.Inline, tint = OctoColors.TextMuted)
+                                CutTxt(it, DesktopType.meta, OctoColors.TextMuted)
                             }
-                        }),
-                    )
-                }
+                        }
+                    },
+                    actions = if (songs.isEmpty()) null else ({ PlayAndShuffle({ app.play(songs) }, { app.play(songs, shuffle = true) }) }),
+                )
             }
             val inside = trail + FolderStep(folder.id, name)
             items(folder.folders, key = { "f:${it.id}" }) { sub -> FolderLine(sub) { app.navigator.go(Page.Folder(sub.id, sub.name, inside)) } }
@@ -211,18 +217,21 @@ private fun FolderBody(app: AppState, visit: Visit, folder: MusicDirectory, give
 // table's heading rather than under it.
 private const val AboveFocus = 2
 
-// "Folders › Radiohead › OK Computer": each step opens that folder; the
-// last is the one open.
+// "Folders › Radiohead ›": each step opens that folder. `current`, the one
+// open, ends the trail when no title over it names it; under a title the
+// trail ends on a chevron pointing at it.
 @Composable
-private fun Crumbs(app: AppState, trail: List<FolderStep>, current: String) {
-    Row(Modifier.offset(x = -Space.S).padding(bottom = Space.S), verticalAlignment = Alignment.CenterVertically) {
+private fun Crumbs(app: AppState, trail: List<FolderStep>, current: String?, modifier: Modifier = Modifier) {
+    Row(modifier.offset(x = -Space.S), verticalAlignment = Alignment.CenterVertically) {
         Crumb("Folders") { app.navigator.go(Page.Folders) }
         trail.forEachIndexed { index, step ->
             Glyph(OctoIcons.Chevron, size = IconSize.Inline, tint = OctoColors.TextMuted)
             Crumb(step.name.ifEmpty { "Folder" }) { app.navigator.go(Page.Folder(step.id, step.name, trail.take(index))) }
         }
         Glyph(OctoIcons.Chevron, size = IconSize.Inline, tint = OctoColors.TextMuted)
-        Box(Modifier.padding(horizontal = Space.S, vertical = Space.Xs)) { Txt(current, DesktopType.meta, OctoColors.TextPrimary) }
+        if (current != null) {
+            Box(Modifier.padding(horizontal = Space.S, vertical = Space.Xs)) { Txt(current, DesktopType.meta, OctoColors.TextPrimary) }
+        }
     }
 }
 

@@ -2,6 +2,7 @@ package app.winters.octo.desktop.pages
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
+import app.winters.octo.design.ControlHeight
 import app.winters.octo.design.GlazeCapsule
 import app.winters.octo.design.scrollbar
 import app.winters.octo.design.GlazeSegments
@@ -45,6 +47,7 @@ import app.winters.octo.desktop.ui.FilterBar
 import app.winters.octo.desktop.ui.LocalBottomRoom
 import app.winters.octo.desktop.ui.MediaCard
 import app.winters.octo.desktop.ui.NoMatches
+import app.winters.octo.desktop.ui.PageHeader
 import app.winters.octo.desktop.ui.PageTitle
 import app.winters.octo.desktop.ui.SongTable
 import app.winters.octo.desktop.ui.artistMenu
@@ -93,14 +96,15 @@ fun SongsPage(app: AppState, visit: Visit) {
             },
         ) {
             item(key = "title") {
-                PageTitle("Songs", Modifier.padding(bottom = Space.L), detail = if (query.filters) filteredCount(songs.size, index.songs.size, true) else facts) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(Space.M)) {
-                        GlazeCapsule(OctoIcons.Play, "Play", { app.play(songs) }, lit = true, enabled = songs.isNotEmpty())
-                        GlazeCapsule(OctoIcons.Shuffle, "Shuffle", { app.play(songs, shuffle = true) }, enabled = songs.isNotEmpty())
-                    }
-                }
+                PageHeader(
+                    "Songs",
+                    detail = if (query.filters) filteredCount(songs.size, index.songs.size, true) else facts,
+                    filters = if (index.songs.isEmpty()) null else ({
+                        FilterBar(app, query, filter, index.songs, onSaveAsLive = { saveAsLiveList(app, emptyList(), query, order) }, oneLine = true)
+                    }),
+                    actions = { PlayAndShuffle({ app.play(songs) }, { app.play(songs, shuffle = true) }, enabled = songs.isNotEmpty()) },
+                )
             }
-            if (index.songs.isNotEmpty()) item(key = "filters") { FilterBar(app, query, filter, index.songs, onSaveAsLive = { saveAsLiveList(app, emptyList(), query, order) }) }
         }
     }
 }
@@ -118,7 +122,7 @@ fun AlbumsPage(app: AppState, visit: Visit) {
         val albums = remember(index, order) { sortAlbums(index.albums, order) }
         LazyVerticalGrid(GridCells.Adaptive(GridCard), Modifier.scrollbar(grid, LocalBottomRoom.current), state = grid, contentPadding = pagePadding(LocalBottomRoom.current)) {
             header {
-                PageTitle("Albums", detail = countText(albums.size, "album")) { SortButton(app, SortList.Albums, order, app::sortAlbums) }
+                PageHeader("Albums", detail = countText(albums.size, "album"), control = { SortButton(app, SortList.Albums, order, app::sortAlbums) })
             }
             if (albums.isEmpty()) header { NothingHere("No albums yet", "Once your server has music, every album shows here.") }
             items(albums, key = { it.id }) { AlbumCard(app, it) }
@@ -182,10 +186,16 @@ fun FavouritesPage(app: AppState, visit: Visit) {
     val query = app.navigator.filterOf(visit)
     val filter: (LibraryQuery) -> Unit = { app.navigator.keepFilter(visit, it) }
     val fields = rememberShownFields(app)
-    val title: @Composable (String?) -> Unit = { detail ->
-        PageTitle("Favorites", detail = detail) {
-            GlazeSegments(FavouriteKind.entries, kind, { it.label }, { kind = it; app.navigator.keepTab(visit, it.name) })
-        }
+    // The kinds lead the control line; the songs' filters and Play and
+    // Shuffle follow them on the Songs tab.
+    val title: @Composable (String?, (@Composable () -> Unit)?, (@Composable RowScope.() -> Unit)?) -> Unit = { detail, filters, actions ->
+        PageHeader(
+            "Favorites",
+            detail = detail,
+            control = { GlazeSegments(FavouriteKind.entries, kind, { it.label }, { kind = it; app.navigator.keepTab(visit, it.name) }) },
+            filters = filters,
+            actions = actions,
+        )
     }
     loaded.show(Modifier.padding(horizontal = 28.dp)) { starred ->
         when (kind) {
@@ -203,12 +213,24 @@ fun FavouritesPage(app: AppState, visit: Visit) {
                         else NothingHere("No favorite songs yet", "Right-click a song and pick Add to favorites.")
                     },
                 ) {
-                    item(key = "title") { title(if (query.filters) filteredCount(songs.size, all.size, true) else null) }
-                    if (all.isNotEmpty()) item(key = "filters") { FilterBar(app, query, filter, all, onSaveAsLive = { saveAsLiveList(app, listOf(FilterPresets.Favourites), query, null) }) }
+                    item(key = "title") {
+                        title(
+                            if (query.filters) filteredCount(songs.size, all.size, true) else countText(all.size, "song"),
+                            if (all.isEmpty()) null else ({ FilterBar(app, query, filter, all, onSaveAsLive = { saveAsLiveList(app, listOf(FilterPresets.Favourites), query, null) }, oneLine = true) }),
+                            { PlayAndShuffle({ app.play(songs) }, { app.play(songs, shuffle = true) }, enabled = songs.isNotEmpty()) },
+                        )
+                    }
                 }
             }
             FavouriteKind.Albums, FavouriteKind.Artists -> LazyVerticalGrid(GridCells.Adaptive(GridCard), Modifier.scrollbar(grid, LocalBottomRoom.current), state = grid, contentPadding = pagePadding(LocalBottomRoom.current)) {
-                header { title(null) }
+                header {
+                    val count = if (kind == FavouriteKind.Albums) {
+                        countText(starred.album.count { app.isAlbumStarred(it.id, it.starred) }, "album")
+                    } else {
+                        countText(starred.artist.count { app.isArtistStarred(it.id, it.starred) }, "artist")
+                    }
+                    title(count, null, null)
+                }
                 if (kind == FavouriteKind.Albums) {
                     val albums = starred.album.filter { app.isAlbumStarred(it.id, it.starred) }
                     if (albums.isEmpty()) header { NothingHere("No favorite albums yet") }
@@ -234,7 +256,7 @@ fun LazyGridScope.header(content: @Composable () -> Unit) {
 fun SortButton(app: AppState, list: SortList, order: SortOrder, onPick: (SortOrder) -> Unit) {
     var anchor by remember { mutableStateOf(IntRect.Zero) }
     val words = "${order.by.label}, ${sortScale(order.by).label(order.descending)}"
-    TextAction(words, {
+    GlazeCapsule(OctoIcons.Sort, words, {
         app.popups.showUnder(anchor) { close ->
             MenuTitle("Sort by")
             list.options.forEach { option ->
@@ -245,7 +267,7 @@ fun SortButton(app: AppState, list: SortList, order: SortOrder, onPick: (SortOrd
                 MenuRow(choice.label, { onPick(order.copy(descending = choice.descending)); close() }, if (choice.descending == order.descending) OctoIcons.Check else null)
             }
         }
-    }, Modifier.onGloballyPositioned { anchor = it.windowRect() }, icon = OctoIcons.Sort)
+    }, Modifier.onGloballyPositioned { anchor = it.windowRect() }, height = ControlHeight.L, quiet = true)
 }
 
 // "2,835 songs · 182 albums · 143 artists · 6 d 14 h", from what the

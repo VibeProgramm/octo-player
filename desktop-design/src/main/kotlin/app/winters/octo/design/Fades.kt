@@ -56,15 +56,22 @@ private fun Modifier.edgeFades(height: Dp, top: (Float) -> Float, bottom: (Float
 // Soft fades at the two ends of a row that scrolls sideways, each only
 // while there is more of the row that way, so a chip running under the
 // next control melts away instead of being cut.
-fun Modifier.rowFades(state: LazyListState, width: Dp = 16.dp): Modifier = this
+fun Modifier.rowFades(state: LazyListState, width: Dp = 16.dp): Modifier =
+    sideFades(width, { state.canScrollBackward }, { state.canScrollForward })
+
+// The same, for a row scrolled by a ScrollState.
+fun Modifier.rowFades(state: ScrollState, width: Dp = 16.dp): Modifier =
+    sideFades(width, { state.value > 0 }, { state.value < state.maxValue })
+
+private fun Modifier.sideFades(width: Dp, before: () -> Boolean, after: () -> Boolean): Modifier = this
     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
     .drawWithContent {
         drawContent()
         val edge = width.toPx()
-        if (state.canScrollBackward) {
+        if (before()) {
             drawRect(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = 0f, endX = edge), size = Size(edge, size.height), blendMode = BlendMode.DstIn)
         }
-        if (state.canScrollForward) {
+        if (after()) {
             drawRect(
                 Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = size.width - edge, endX = size.width),
                 topLeft = Offset(size.width - edge, 0f),

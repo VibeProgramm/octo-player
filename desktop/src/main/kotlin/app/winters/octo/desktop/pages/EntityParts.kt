@@ -16,9 +16,11 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -34,6 +36,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.Layout
+import app.winters.octo.design.MenuRow
+import app.winters.octo.design.MenuTitle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntRect
 import app.winters.octo.design.ControlHeight
@@ -41,6 +46,7 @@ import app.winters.octo.design.Corner
 import app.winters.octo.design.CutTxt
 import app.winters.octo.design.DesktopType
 import app.winters.octo.design.GlazeCapsule
+import app.winters.octo.design.GlazeRound
 import app.winters.octo.design.IconAction
 import app.winters.octo.design.IconSize
 import app.winters.octo.design.OctoColors
@@ -70,58 +76,85 @@ fun rememberIndex(app: AppState): LibraryIndex? {
     return (state as? LibraryState.Ready)?.index
 }
 
-// The top of an album, artist or genre page: its picture, what it is, its
-// name, a line under the name (an artist to open), a line of facts, a
-// quiet note under them when there is one, and its actions. Compact, since
-// the page is for the list under it.
+// The top of an album, artist, genre or live list page: its picture, and
+// beside it its name, one quiet line under the name (an artist to open,
+// then its facts, or what a live list picks), and its control line:
+// `control` first (links down the page, a note on what the library has),
+// the actions at the end (Play and Shuffle, the heart, More). `aside`
+// sits beside the name (an artist's biography, on a wide page).
+// Compact, since the page is for the list under it.
 @Composable
 fun EntityHeader(
-    kind: String,
     title: String,
     picture: @Composable (Modifier) -> Unit,
     subtitle: @Composable (() -> Unit)? = null,
     facts: List<Fact> = emptyList(),
     note: @Composable (() -> Unit)? = null,
+    control: @Composable (() -> Unit)? = null,
+    aside: @Composable (() -> Unit)? = null,
+    titleContent: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val art = headerArt(maxWidth)
         Row(Modifier.fillMaxWidth().padding(bottom = Space.Xl), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Space.Page)) {
             picture(Modifier.size(art))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.Xs)) {
-                Txt(kind.uppercase(), DesktopType.label, OctoColors.TextMuted)
-                WholeTxt(title, DesktopType.pageTitle)
-                subtitle?.invoke()
-                if (facts.isNotEmpty()) FactLine(facts)
-                note?.invoke()
-                HeaderActions(actions)
+            Column(Modifier.weight(1f)) {
+                // The aside follows the name closely rather than across the page.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.Section)) {
+                    Column(Modifier.weight(1f, fill = aside == null), verticalArrangement = Arrangement.spacedBy(Space.Xs)) {
+                        if (titleContent != null) titleContent() else WholeTxt(title, DesktopType.pageTitle)
+                        MetaLine(subtitle, facts, note)
+                    }
+                    if (aside != null) Box(Modifier.weight(1f, fill = false).widthIn(max = PageSize.Reading)) { aside() }
+                }
+                HeaderLine(control, actions)
             }
         }
+    }
+}
+
+// The quiet line under a header's name: the subtitle, then the facts, then
+// the note, one after another with a dot between.
+@Composable
+private fun MetaLine(subtitle: @Composable (() -> Unit)?, facts: List<Fact>, note: @Composable (() -> Unit)?) {
+    if (subtitle == null && facts.isEmpty() && note == null) return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        subtitle?.let {
+            Box(Modifier.weight(1f, fill = false)) { it() }
+            if (facts.isNotEmpty() || note != null) Txt(" · ", DesktopType.meta, OctoColors.TextMuted)
+        }
+        if (facts.isNotEmpty()) FactLine(facts)
+        note?.let {
+            if (facts.isNotEmpty()) Txt(" · ", DesktopType.meta, OctoColors.TextMuted)
+            Box(Modifier.weight(1f, fill = false)) { it() }
+        }
+    }
+}
+
+// A header's control line, under the quiet line: `control` first, the
+// actions at its end.
+@Composable
+fun HeaderLine(control: @Composable (() -> Unit)?, actions: @Composable RowScope.() -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = Space.L).heightIn(min = ControlHeight.L),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Space.M),
+    ) {
+        Box(Modifier.weight(1f)) { control?.invoke() }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S), content = actions)
     }
 }
 
 // The heading picture's size on a page `width` wide.
 fun headerArt(width: Dp): Dp = if (width < PageSize.HeaderNarrow) PageSize.HeaderArtSmall else PageSize.HeaderArt
 
-// A heading's buttons, in a row that wraps rather than cutting the last off
-// on a narrow page.
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun HeaderActions(actions: @Composable RowScope.() -> Unit) {
-    FlowRow(
-        Modifier.padding(top = Space.L),
-        horizontalArrangement = Arrangement.spacedBy(Space.M),
-        verticalArrangement = Arrangement.spacedBy(Space.M),
-        itemVerticalAlignment = Alignment.CenterVertically,
-        content = actions,
-    )
-}
-
-// Play and Shuffle, a page's first two actions.
+// Play and Shuffle, a page's first two actions, round at the end of its
+// control line.
 @Composable
 fun PlayAndShuffle(onPlay: () -> Unit, onShuffle: () -> Unit, enabled: Boolean = true) {
-    GlazeCapsule(OctoIcons.Play, "Play", onPlay, lit = true, enabled = enabled, height = ControlHeight.L)
-    GlazeCapsule(OctoIcons.Shuffle, "Shuffle", onShuffle, enabled = enabled, height = ControlHeight.L)
+    GlazeRound(OctoIcons.Play, "Play", onPlay, enabled = enabled, lit = true)
+    GlazeRound(OctoIcons.Shuffle, "Shuffle", onShuffle, enabled = enabled)
 }
 
 // An action as an icon beside them: the heart, Add to queue, a radio.
@@ -154,17 +187,63 @@ fun FactLine(facts: List<Fact>) {
     }
 }
 
-// Links down a long page to its sections: "Artists · Albums · Songs".
+// Links down a long page to its sections: "Artists · Albums · Songs". As
+// many as fit the line show; when some do not, a last "All sections" opens
+// them all, so the line never runs on past its room.
 @Composable
-fun JumpLinks(links: List<Pair<String, () -> Unit>>) {
+fun JumpLinks(app: AppState, links: List<Pair<String, () -> Unit>>) {
     if (links.size < 2) return
-    Row(Modifier.offset(x = -Space.S).padding(bottom = Space.Xs), verticalAlignment = Alignment.CenterVertically) {
-        links.forEachIndexed { index, (label, go) ->
-            if (index > 0) Txt("·", DesktopType.meta, OctoColors.TextMuted)
-            Box(Modifier.hoverLift(Corner.RowShape).clickable(role = Role.Button, onClick = go).padding(horizontal = Space.S, vertical = Space.Xs)) {
-                Txt(label, DesktopType.meta, OctoColors.TextSecondary)
+    var anchor by remember { mutableStateOf(IntRect.Zero) }
+    val more = @Composable {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Txt("·", DesktopType.meta, OctoColors.TextMuted)
+            JumpLink("All sections", Modifier.onGloballyPositioned { anchor = it.windowRect() }) {
+                app.popups.showUnder(anchor) { close ->
+                    MenuTitle("Go to")
+                    links.forEach { (label, go) -> MenuRow(label, { close(); go() }) }
+                }
             }
         }
+    }
+    Layout(
+        contents = listOf(
+            {
+                links.forEachIndexed { index, (label, go) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (index > 0) Txt("·", DesktopType.meta, OctoColors.TextMuted)
+                        JumpLink(label, onClick = go)
+                    }
+                }
+            },
+            more,
+        ),
+        modifier = Modifier.offset(x = -Space.S),
+    ) { (shown, extra), constraints ->
+        val loose = constraints.copy(minWidth = 0)
+        val each = shown.map { it.measure(loose) }
+        val tail = extra.map { it.measure(loose) }
+        val width = constraints.maxWidth
+        val all = each.sumOf { it.width }
+        // Every link when they all fit; else as many as fit beside More.
+        val fits = if (all <= width) each.size else {
+            val room = width - (tail.maxOfOrNull { it.width } ?: 0)
+            var used = 0
+            each.indexOfFirst { used += it.width; used > room }.let { if (it < 0) each.size else it }
+        }
+        val height = (each + tail).maxOfOrNull { it.height } ?: 0
+        layout(width.coerceAtMost(maxOf(all, constraints.minWidth)), height) {
+            var x = 0
+            each.take(fits).forEach { it.place(x, (height - it.height) / 2); x += it.width }
+            if (fits < each.size) tail.forEach { it.place(x, (height - it.height) / 2) }
+        }
+    }
+}
+
+// One link on the line.
+@Composable
+private fun JumpLink(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(modifier.hoverLift(Corner.RowShape).clickable(role = Role.Button, onClick = onClick).padding(horizontal = Space.S, vertical = Space.Xs)) {
+        Txt(label, DesktopType.meta, OctoColors.TextSecondary)
     }
 }
 

@@ -105,54 +105,53 @@ fun AlbumCard(app: AppState, album: Album, modifier: Modifier = Modifier, outsid
     )
 }
 
-// The top of a page that plays a list: the picture, what it is, its name,
-// a line of details, and Play and Shuffle as two glass capsules. Laid out
-// as an album's heading is (EntityHeader), so the two pages match.
+// The top of a page that plays a list: the picture, its name, one quiet
+// line of details and then `subtitle` (a playlist's description), and
+// Play and Shuffle round at the end of its control line with `extras`
+// after them, `control` at its start. Laid out as an album's heading is (EntityHeader), so the
+// two pages match.
 @Composable
 fun ListHeader(
-    kind: String,
     title: String,
     coverId: String?,
     details: String?,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
-    modifier: Modifier = Modifier,
     subtitle: @Composable (() -> Unit)? = null,
     round: Boolean = false,
     playable: Boolean = true,
     online: Boolean = false,
     extras: @Composable () -> Unit = {},
+    // Leads the control line, like the list's filters.
+    control: (@Composable () -> Unit)? = null,
     // Draws the name instead of the plain title, like one renamed by clicking it.
     titleContent: (@Composable () -> Unit)? = null,
     // Draws the picture instead of the cover, like a playlist's designed one.
     picture: (@Composable (Modifier) -> Unit)? = null,
 ) {
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val art = headerArt(maxWidth)
-        Row(Modifier.fillMaxWidth().padding(bottom = Space.Xl), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Space.Page)) {
+    EntityHeader(
+        title,
+        picture = { modifier ->
             if (picture != null) {
-                picture(Modifier.size(art))
+                picture(modifier)
             } else {
                 Cover(
                     coverId,
-                    Modifier.size(art),
+                    modifier,
                     shape = if (round) CircleShape else Corner.ArtLShape,
                     online = online,
                     placeholder = if (round) OctoIcons.Artist else OctoIcons.Album,
                 )
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.Xs)) {
-                Txt(kind.uppercase(), DesktopType.label, OctoColors.TextMuted)
-                if (titleContent != null) titleContent() else WholeTxt(title, DesktopType.pageTitle)
-                subtitle?.invoke()
-                if (details != null) Txt(details, DesktopType.meta, OctoColors.TextMuted)
-                // Play and Shuffle stay, greyed, on an empty list, so the row keeps its place.
-                HeaderActions {
-                    PlayAndShuffle(onPlay, onShuffle, enabled = playable)
-                    extras()
-                }
-            }
-        }
+        },
+        facts = listOfNotNull(details?.let(::Fact)),
+        note = subtitle,
+        control = control,
+        titleContent = titleContent,
+    ) {
+        // Play and Shuffle stay, greyed, on an empty list, so the line keeps its place.
+        PlayAndShuffle(onPlay, onShuffle, enabled = playable)
+        extras()
     }
 }
 

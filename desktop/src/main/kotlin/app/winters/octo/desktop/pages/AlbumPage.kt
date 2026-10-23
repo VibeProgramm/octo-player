@@ -133,13 +133,12 @@ fun AlbumPage(app: AppState, visit: Visit, id: String) {
             ) {
                 item(key = "head") {
                     EntityHeader(
-                        "Album",
                         album.name,
                         picture = { modifier -> AlbumArt(app, album, modifier, online = !inLibrary) },
                         // No line at all for an album with no artist, rather than an empty one.
                         subtitle = artistName?.takeIf(String::isNotBlank)?.let { name -> { LinkText(name, album.artistId) { app.navigator.go(Page.Artist(it, album.artist)) } } },
                         facts = albumFacts(app, album, songs.size, songs.sumOf { it.duration }, format),
-                        note = share?.let {
+                        control = share?.let {
                             {
                                 LibraryNote(
                                     it,

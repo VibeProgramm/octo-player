@@ -190,6 +190,8 @@ private fun ArtistBody(app: AppState, id: String, fallbackName: String, artist: 
     BoxWithConstraints {
         val columns = cardColumns(maxWidth)
         val artistColumns = cardColumns(maxWidth, PageSize.ArtistCard)
+        // On a wide page the biography sits beside the name; else under the header.
+        val besideName = maxWidth >= PageSize.AsideFrom
         SongTable(
             app,
             songs,
@@ -210,13 +212,24 @@ private fun ArtistBody(app: AppState, id: String, fallbackName: String, artist: 
             val page = PageItems(this, spots)
             page.item("head") {
                 EntityHeader(
-                    "Artist",
                     name,
                     picture = { ArtistPicture(name, artist.coverArt, artist.picture, it) },
                     facts = listOfNotNull(
                         Fact(if (artist.albums.size == 1) "1 album" else "${artist.albums.size} albums"),
                         songCount.takeIf { it > 0 }?.let { Fact(songsLine(it, seconds)) },
                     ),
+                    control = {
+                        JumpLinks(
+                            app,
+                            buildList {
+                                if (top.isNotEmpty()) add("Top songs" to { jump("top-title") })
+                                groups.forEach { (group, _) -> add(group.title to { jump("group-${group.name}") }) }
+                                if (artist.similar.isNotEmpty()) add("Similar artists" to { jump("similar-title") })
+                                if (artist.albums.isNotEmpty()) add("All songs" to { jump("all-title") })
+                            },
+                        )
+                    },
+                    aside = artist.about?.takeIf { besideName }?.let { about -> { Biography(about, beside = true) } },
                 ) {
                     PlayAndShuffle({ playAll(false) }, { playAll(true) }, enabled = artist.albums.isNotEmpty())
                     val starred = app.isArtistStarred(id, index?.artists?.firstOrNull { it.id == id }?.starred)
@@ -225,17 +238,7 @@ private fun ArtistBody(app: AppState, id: String, fallbackName: String, artist: 
                     MoreButton(app, "More for this artist") { close -> ArtistMenu(app, id, name, index?.artists?.firstOrNull { it.id == id }?.starred, close) }
                 }
             }
-            page.item("jump") {
-                JumpLinks(
-                    buildList {
-                        if (top.isNotEmpty()) add("Top songs" to { jump("top-title") })
-                        groups.forEach { (group, _) -> add(group.title to { jump("group-${group.name}") }) }
-                        if (artist.similar.isNotEmpty()) add("Similar artists" to { jump("similar-title") })
-                        if (artist.albums.isNotEmpty()) add("All songs" to { jump("all-title") })
-                    },
-                )
-            }
-            artist.about?.let { about -> page.item("about") { Biography(about) } }
+            artist.about?.takeIf { !besideName }?.let { about -> page.item("about") { Biography(about) } }
             if (top.isNotEmpty()) {
                 page.item("top-title") {
                     GroupTitle(
@@ -300,15 +303,16 @@ private fun TopSongs(app: AppState, songs: List<Song>) {
     )
 }
 
-// The biography, a few lines at first; "Read more" shows the rest.
+// The biography, a few lines at first; "Read more" shows the rest. Beside
+// the name it is set in the header's quiet type and needs no room under it.
 @Composable
-private fun Biography(text: String) {
+private fun Biography(text: String, beside: Boolean = false) {
     var open by remember(text) { mutableStateOf(false) }
     var clipped by remember(text) { mutableStateOf(false) }
-    Column(Modifier.widthIn(max = PageSize.Reading).padding(bottom = Space.S)) {
+    Column(Modifier.widthIn(max = PageSize.Reading).padding(bottom = if (beside) Space.None else Space.S)) {
         androidx.compose.foundation.text.BasicText(
             text,
-            style = DesktopType.body.copy(color = OctoColors.TextSecondary),
+            style = (if (beside) DesktopType.meta else DesktopType.body).copy(color = OctoColors.TextSecondary),
             maxLines = if (open) Int.MAX_VALUE else 3,
             overflow = TextOverflow.Ellipsis,
             onTextLayout = { if (!open) clipped = it.hasVisualOverflow },

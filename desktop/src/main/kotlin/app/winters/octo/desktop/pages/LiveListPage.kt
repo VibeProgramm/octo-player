@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.IntRect
 import app.winters.octo.design.ControlHeight
 import app.winters.octo.design.Corner
+import app.winters.octo.design.CutTxt
 import app.winters.octo.design.DesktopType
 import app.winters.octo.design.FrameSize
 import app.winters.octo.design.GlassField
@@ -36,6 +37,7 @@ import app.winters.octo.design.GlazeCapsule
 import app.winters.octo.design.GlazeSegments
 import app.winters.octo.design.IconAction
 import app.winters.octo.design.IconSize
+import app.winters.octo.design.MenuBack
 import app.winters.octo.design.MenuRow
 import app.winters.octo.design.MenuSeparator
 import app.winters.octo.design.MenuTitle
@@ -60,6 +62,8 @@ import app.winters.octo.desktop.ui.PageLoadingLine
 import app.winters.octo.desktop.ui.FilterPill
 import app.winters.octo.desktop.ui.LiveListMenu
 import app.winters.octo.desktop.ui.LiveMark
+import app.winters.octo.desktop.ui.ChoiceButton
+import app.winters.octo.desktop.ui.PageHeader
 import app.winters.octo.desktop.ui.PageSide
 import app.winters.octo.desktop.ui.SongTable
 import app.winters.octo.desktop.ui.rememberListState
@@ -185,7 +189,6 @@ private fun LiveListBody(
                 }
             }
             if (starters) item(key = "starters") { Starters(app) }
-            if (editing) item(key = "preview") { PreviewLine(songs.size) }
         }
     }
 }
@@ -196,14 +199,13 @@ private fun LiveListBody(
 private fun LiveListHeader(app: AppState, list: LiveList, songs: List<Song>, onEdit: () -> Unit) {
     val covers = remember(songs) { liveListCovers(songs) }
     EntityHeader(
-        "Live list",
         list.name,
         picture = { modifier ->
             LiveListPicture(app, list, modifier, Corner.ArtMShape, songs) {
                 if (covers.isEmpty()) Cover(null, modifier, shape = Corner.ArtMShape, placeholder = OctoIcons.Filter) else Mosaic(covers, modifier)
             }
         },
-        note = { Txt(liveListSummary(list.query, songs.size), DesktopType.meta, OctoColors.TextSecondary, maxLines = 2) },
+        note = { CutTxt(liveListSummary(list.query, songs.size), DesktopType.meta, OctoColors.TextSecondary) },
     ) {
         PlayAndShuffle({ app.play(songs, source = list.name) }, { app.play(songs, shuffle = true, source = list.name) }, enabled = songs.isNotEmpty())
         HeaderIcon(OctoIcons.Filter, "Edit rules", onEdit)
@@ -211,9 +213,11 @@ private fun LiveListHeader(app: AppState, list: LiveList, songs: List<Song>, onE
     }
 }
 
-// The editor: the name, the rules as pills with Add a rule, whether songs
-// must match all or any of them (once there are two), the order and how
-// many. Nothing is kept until Save.
+// The editor: its title with how many songs match now, the name on the
+// control line with Cancel and Save at its end, then the order, how many,
+// whether songs must match all or any of the rules (once there are two),
+// and the rules as pills with Add a rule, on one line that wraps. Nothing
+// is kept until Save.
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LiveListEditor(
@@ -230,78 +234,67 @@ private fun LiveListEditor(
     fun change(to: LibraryQuery) {
         draft.value = draft.value.copy(query = to)
     }
-    Column(Modifier.fillMaxWidth().padding(bottom = Space.L), verticalArrangement = Arrangement.spacedBy(Space.L)) {
-        Txt(if (new) "NEW LIVE LIST" else "EDITING LIVE LIST", DesktopType.label, OctoColors.TextMuted)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.M)) {
-            GlassField(
-                value.name,
-                { draft.value = draft.value.copy(name = it) },
-                Modifier.width(PageSize.NameField),
-                placeholder = liveListName(query),
-                onSubmit = onSave,
-                onEscape = onCancel,
-            )
-            Spacer(Modifier.weight(1f))
-            GlazeCapsule(null, "Cancel", onCancel, height = ControlHeight.L)
-            GlazeCapsule(null, if (new) "Make live list" else "Save", onSave, lit = true, height = ControlHeight.L)
-        }
-        Txt(
-            "Picks songs from your whole library that match these rules, and keeps up as songs are added, played and liked.",
-            DesktopType.meta,
-            OctoColors.TextMuted,
-            maxLines = 2,
+    Column(Modifier.fillMaxWidth().padding(bottom = Space.L)) {
+        PageHeader(
+            if (new) "New live list" else "Edit live list",
+            detail = if (count > 0) matchWords(count) else null,
+            control = {
+                GlassField(
+                    value.name,
+                    { draft.value = draft.value.copy(name = it) },
+                    Modifier.width(PageSize.NameField).height(ControlHeight.L),
+                    placeholder = liveListName(query),
+                    onSubmit = onSave,
+                    onEscape = onCancel,
+                )
+            },
+            actions = {
+                GlazeCapsule(null, "Cancel", onCancel, height = ControlHeight.L)
+                GlazeCapsule(null, if (new) "Make live list" else "Save", onSave, lit = true, height = ControlHeight.L)
+            },
         )
-        RuleRow(app, draft, library)
-        if (query.asksMatch()) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.L)) {
-                Txt("A song needs to match", DesktopType.body, OctoColors.TextSecondary)
-                GlazeSegments(QueryMatch.entries, query.match, { if (it == QueryMatch.All) "All of these" else "Any of these" }, { change(query.copy(match = it)) })
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
-            Txt("Order", DesktopType.body, OctoColors.TextMuted)
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Space.M),
+            verticalArrangement = Arrangement.spacedBy(Space.M),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
             OrderButton(app, query.sort) { change(query.copy(sort = it)) }
-            Txt("How many", DesktopType.body, OctoColors.TextMuted, Modifier.padding(start = Space.L))
             LimitButton(app, query.limit) { change(query.copy(limit = it)) }
+            if (query.asksMatch()) {
+                ChoiceButton(QueryMatch.entries, query.match, { if (it == QueryMatch.All) "Match all of these" else "Match any of these" }, { change(query.copy(match = it)) })
+            }
+            RuleItems(app, draft, library)
         }
-        Separator()
     }
 }
 
 // The words field, each rule as a pill (a click takes it off), and Add a
 // rule, which reads the draft as it is now so picks add up while it is open.
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RuleRow(app: AppState, draft: MutableState<LiveListDraft>, library: List<Song>) {
+private fun RuleItems(app: AppState, draft: MutableState<LiveListDraft>, library: List<Song>) {
     val query = draft.value.query
     fun change(to: LibraryQuery) {
         draft.value = draft.value.copy(query = to)
     }
     var anchor by remember { mutableStateOf(IntRect.Zero) }
-    FlowRow(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(Space.M),
-        verticalArrangement = Arrangement.spacedBy(Space.M),
-        itemVerticalAlignment = Alignment.CenterVertically,
-    ) {
-        GlassField(
-            query.text,
-            { change(query.copy(text = it)) },
-            Modifier.width(FrameSize.FilterWidth).height(ControlHeight.S),
-            placeholder = "With these words",
-            icon = OctoIcons.Search,
-            trailing = if (query.text.isEmpty()) null else ({
-                IconAction(OctoIcons.Close, "Clear the words", { change(query.copy(text = "")) }, size = ControlHeight.Xs, iconSize = IconSize.Inline)
-            }),
-        )
-        query.rules.forEach { rule -> FilterPill(rule.label()) { change(query.without(rule)) } }
-        TextAction(
-            if (query.rules.isEmpty()) "Add a rule" else "Add another rule",
-            { app.popups.showUnder(anchor) { close -> RuleMenu({ draft.value.query }, ::change, library, close) } },
-            Modifier.onGloballyPositioned { anchor = it.windowRect() },
-            icon = OctoIcons.Add,
-        )
-    }
+    GlassField(
+        query.text,
+        { change(query.copy(text = it)) },
+        Modifier.width(FrameSize.FilterWidth).height(ControlHeight.S),
+        placeholder = "With these words",
+        icon = OctoIcons.Search,
+        trailing = if (query.text.isEmpty()) null else ({
+            IconAction(OctoIcons.Close, "Clear the words", { change(query.copy(text = "")) }, size = ControlHeight.Xs, iconSize = IconSize.Inline)
+        }),
+    )
+    query.rules.forEach { rule -> FilterPill(rule.label()) { change(query.without(rule)) } }
+    TextAction(
+        if (query.rules.isEmpty()) "Add a rule" else "Add another rule",
+        { app.popups.showUnder(anchor) { close -> RuleMenu({ draft.value.query }, ::change, library, close) } },
+        Modifier.onGloballyPositioned { anchor = it.windowRect() },
+        icon = OctoIcons.Add,
+    )
 }
 
 private sealed interface RulePage {
@@ -329,6 +322,7 @@ private fun ColumnScope.RuleMenu(current: () -> LibraryQuery, onChange: (Library
     when (val shown = page) {
         RulePage.Main -> {
             MenuTitle("Add a rule")
+            Txt(LIVE_LIST_ABOUT, DesktopType.meta, OctoColors.TextMuted, Modifier.padding(horizontal = Space.Xl).padding(bottom = Space.S), maxLines = 3)
             LiveListRuleGroups.filter { it.title != "Other" }.forEach { group ->
                 MenuRow(group.title, { page = RulePage.Group(group) }, more = true, checked = group.choices.any { on(it.rule) })
             }
@@ -343,14 +337,11 @@ private fun ColumnScope.RuleMenu(current: () -> LibraryQuery, onChange: (Library
             }
         }
         is RulePage.Group -> {
-            MenuRow("Back", back, OctoIcons.Back)
-            MenuSeparator()
-            MenuTitle(shown.group.title)
+            MenuBack(shown.group.title, back)
             shown.group.choices.forEach { choice -> MenuRow(choice.words, { pick(choice.rule) }, checked = on(choice.rule)) }
         }
         RulePage.Rating -> {
-            MenuRow("Back", back, OctoIcons.Back)
-            MenuSeparator()
+            MenuBack("Rating", back)
             for (stars in 5 downTo 1) {
                 val rule = FilterPresets.ratingAtLeast(stars)
                 MenuRow(FilterPresets.ratingWords(stars), { pick(rule) }, checked = on(rule))
@@ -358,15 +349,14 @@ private fun ColumnScope.RuleMenu(current: () -> LibraryQuery, onChange: (Library
         }
         RulePage.Genre -> {
             val genres = remember(library) { genresIn(library, SubsonicSongs) }
-            FindAndPick("Find a genre", genres, back) { name -> FilterPresets.genre(name).let { MenuRow(name, { pick(it, stay = true) }, checked = on(it)) } }
+            FindAndPick("Genre", "Find a genre", genres, back) { name -> FilterPresets.genre(name).let { MenuRow(name, { pick(it, stay = true) }, checked = on(it)) } }
         }
         RulePage.Artist -> {
             val artists = remember(library) { artistsIn(library, SubsonicSongs) }
-            FindAndPick("Find an artist", artists, back) { name -> FilterPresets.artist(name).let { MenuRow(name, { pick(it, stay = true) }, checked = on(it)) } }
+            FindAndPick("Artist", "Find an artist", artists, back) { name -> FilterPresets.artist(name).let { MenuRow(name, { pick(it, stay = true) }, checked = on(it)) } }
         }
         RulePage.Year -> {
-            MenuRow("Back", back, OctoIcons.Back)
-            MenuSeparator()
+            MenuBack("Year", back)
             val decades = remember(library) { decadesIn(library, SubsonicSongs).asReversed() }
             decades.forEach { start -> FilterPresets.decade(start).let { MenuRow("The ${start}s", { pick(it, stay = true) }, checked = on(it)) } }
         }
@@ -378,10 +368,9 @@ private const val PICK_ROWS = 60
 
 // A long list to pick from, with a field that narrows it as you type.
 @Composable
-private fun ColumnScope.FindAndPick(hint: String, names: List<String>, back: () -> Unit, row: @Composable (String) -> Unit) {
+private fun ColumnScope.FindAndPick(title: String, hint: String, names: List<String>, back: () -> Unit, row: @Composable (String) -> Unit) {
     var find by remember { mutableStateOf("") }
-    MenuRow("Back", back, OctoIcons.Back)
-    MenuSeparator()
+    MenuBack(title, back)
     Box(Modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = Space.Xs)) {
         GlassField(find, { find = it }, Modifier.fillMaxWidth(), placeholder = hint, icon = OctoIcons.Search)
     }
@@ -398,7 +387,7 @@ private fun OrderButton(app: AppState, sort: QuerySort?, onPick: (QuerySort?) ->
     var anchor by remember { mutableStateOf(IntRect.Zero) }
     val order = sort?.order()
     val words = sort?.let(::sortWords)?.replaceFirstChar(Char::uppercaseChar) ?: "In library order"
-    TextAction(words, {
+    GlazeCapsule(OctoIcons.Sort, words, {
         app.popups.showUnder(anchor) { close ->
             MenuTitle("Order")
             LiveListSorts.forEach { option ->
@@ -412,33 +401,24 @@ private fun OrderButton(app: AppState, sort: QuerySort?, onPick: (QuerySort?) ->
                 }
             }
         }
-    }, Modifier.onGloballyPositioned { anchor = it.windowRect() }, icon = OctoIcons.Sort)
+    }, Modifier.onGloballyPositioned { anchor = it.windowRect() }, height = ControlHeight.L, quiet = true)
 }
 
 // How many songs it keeps, opening the choices with a word on when to use one.
 @Composable
 private fun LimitButton(app: AppState, limit: Int?, onPick: (Int?) -> Unit) {
     var anchor by remember { mutableStateOf(IntRect.Zero) }
-    TextAction(limitWords(limit), {
+    GlazeCapsule(OctoIcons.Songs, limitWords(limit), {
         app.popups.showUnder(anchor) { close ->
             MenuTitle("How many songs")
             Txt("Keep it short for a list like a top 50.", DesktopType.meta, OctoColors.TextMuted, Modifier.padding(horizontal = Space.Xl).padding(bottom = Space.S))
             LiveListLimits.forEach { choice -> MenuRow(limitWords(choice), { onPick(choice); close() }, selected = choice == limit) }
         }
-    }, Modifier.onGloballyPositioned { anchor = it.windowRect() }, icon = OctoIcons.Songs)
+    }, Modifier.onGloballyPositioned { anchor = it.windowRect() }, height = ControlHeight.L, quiet = true)
 }
 
-// How many songs the rules pick now, above the preview.
-@Composable
-private fun PreviewLine(count: Int) {
-    if (count == 0) return
-    Txt(
-        matchWords(count),
-        DesktopType.meta,
-        OctoColors.TextMuted,
-        Modifier.padding(bottom = Space.M),
-    )
-}
+// What a live list does, said at the top of the rules to add.
+private const val LIVE_LIST_ABOUT = "Picks songs from your whole library that match these rules, and keeps up as songs are added, played and liked."
 
 // Ready-made live lists, offered while the listener has none. One is made
 // only when picked.

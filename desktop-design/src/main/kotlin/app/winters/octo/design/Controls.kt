@@ -184,6 +184,8 @@ fun GlazeRound(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val look = rememberButtonLook(interaction)
+    // With no words of its own, resting the pointer on it says what it does.
+    val tip = rememberTooltipState()
     Glaze(
         modifier
             .size(size)
@@ -192,11 +194,13 @@ fun GlazeRound(
             .hoverable(interaction)
             .pointerHoverIcon(PointerIcon.Hand)
             .tabStop(LocalTabStops.current)
+            .tooltipTarget(tip)
             .clickable(interactionSource = interaction, indication = FocusRing(CircleShape), enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = description },
         light = if (lit || look.hovered || look.pressed) GlazeLight.Lifted else GlazeLight.Rest,
     ) {
         Glyph(icon, size = 18.dp)
+        TooltipPopup(tip, description)
     }
 }
 
