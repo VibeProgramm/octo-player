@@ -92,7 +92,7 @@ fun AppearancePage(
         }
         AmbientPreview(prefs.strength, Modifier.padding(horizontal = 16.dp))
         SettingsGroup {
-            ChoiceRow(SettingsIndex.Ambient, value = StrengthChoices.getValue(prefs.strength).label, onClick = {
+            ChoiceRow(SettingsIndex.Ambient, value = StrengthChoices.getValue(prefs.strength).label, answers = AmbientStrength.entries.map { StrengthChoices.getValue(it).label }, onClick = {
                 val options = AmbientStrength.entries
                 sheet.show(
                     ChoiceRequest(SettingsIndex.Ambient.title, options.map(StrengthChoices::getValue), options.indexOf(prefs.strength)) {
@@ -129,7 +129,7 @@ fun AppearancePage(
         }
         PlayerBackgroundSection()
         SettingsGroup(title = "Playlists", icon = OctoIcons.Playlists) {
-            ChoiceRow(SettingsIndex.PlaylistCovers, value = playlistCoverStyleName(coverStyle), onClick = {
+            ChoiceRow(SettingsIndex.PlaylistCovers, value = playlistCoverStyleName(coverStyle), answers = PlaylistCoverStyle.entries.map(::playlistCoverStyleName), onClick = {
                 val options = PlaylistCoverStyle.entries
                 sheet.show(
                     ChoiceRequest(
