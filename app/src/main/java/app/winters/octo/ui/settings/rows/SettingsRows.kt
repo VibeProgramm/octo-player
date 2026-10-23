@@ -272,7 +272,11 @@ private fun RowScope.TitleValue(
         val width = minOf(need, (room * ValueShare).roundToInt())
         val shown = reading.measure(Constraints.fixedWidth(width))
         val words = label.measure(Constraints(maxWidth = room - width))
-        val height = maxOf(words.height, shown.height, constraints.minHeight)
+        // As tall as the tallest answer at this width, so the row keeps one height for all of them.
+        val tallest = answers.maxOfOrNull {
+            measurer.measure(it, OctoType.bodySmall, overflow = TextOverflow.Ellipsis, maxLines = 2, constraints = Constraints(maxWidth = width)).size.height
+        } ?: 0
+        val height = maxOf(words.height, shown.height, tallest, constraints.minHeight)
         layout(constraints.maxWidth, height) {
             words.placeRelative(0, (height - words.height) / 2)
             shown.placeRelative(constraints.maxWidth - shown.width, (height - shown.height) / 2)
