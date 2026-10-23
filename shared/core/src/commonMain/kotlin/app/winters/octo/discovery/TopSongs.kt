@@ -10,6 +10,7 @@ import app.winters.octo.subsonic.Extension
 import app.winters.octo.subsonic.OCTO_TOP_SONGS
 import app.winters.octo.subsonic.OCTO_TOP_SONGS_CHARTS
 import app.winters.octo.subsonic.OCTO_TOP_SONGS_COUNTRIES
+import app.winters.octo.subsonic.SubsonicException
 import app.winters.octo.subsonic.TOP_SONGS_APPLE
 import app.winters.octo.subsonic.TOP_SONGS_DEEZER
 import app.winters.octo.subsonic.TOP_SONGS_LASTFM
@@ -81,6 +82,12 @@ fun chartsOffered(extensions: List<Extension>): Boolean = extensions.lists(OCTO_
 
 // The line under the buttons when a chart country or pin was not saved.
 const val CHART_SAVE_FAILED = "Couldn't save. Try again."
+
+// The server's own words when it refused a chart call for a reason the
+// listener can act on: too many countries looked at in an hour (code 0) or
+// a country or pin it does not take (code 10). Null for anything else.
+fun chartRefusal(e: SubsonicException): String? =
+    (e as? SubsonicException.Server)?.takeIf { it.code == 0 || it.code == 10 }?.message?.takeIf { it.isNotBlank() }
 
 // Whether a server's extensions offer chart countries: octoTopSongs at the
 // version whose chart calls take a country and that saves the listener's

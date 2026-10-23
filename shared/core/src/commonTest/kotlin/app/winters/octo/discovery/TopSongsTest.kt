@@ -144,4 +144,14 @@ class TopSongsTest {
         assertTrue(countryMatches("Germany", "de", ""))
         assertTrue(countryMatches("Germany", "de", "  "))
     }
+
+    @Test
+    fun onlyRefusalsTheListenerCanActOnKeepTheServersWords() {
+        val tooMany = app.winters.octo.subsonic.SubsonicException.Server(0, "Too many countries in an hour. Try again later.")
+        val fourth = app.winters.octo.subsonic.SubsonicException.Server(10, "You can pin at most 3 countries.")
+        assertEquals("Too many countries in an hour. Try again later.", chartRefusal(tooMany))
+        assertEquals("You can pin at most 3 countries.", chartRefusal(fourth))
+        assertNull(chartRefusal(app.winters.octo.subsonic.SubsonicException.Server(70, "Not found")))
+        assertNull(chartRefusal(app.winters.octo.subsonic.SubsonicException.NotFound("gone")))
+    }
 }
