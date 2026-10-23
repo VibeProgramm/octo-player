@@ -213,4 +213,27 @@ class MenuActionsTest {
         val inPlaylist = songMenuActions(2, SongPlace.Playlist("p", listOf(0, 1)), ownsPlaylist = true, canDelete = true).last()
         assertEquals(listOf(SongAction.RemoveFromPlaylist, SongAction.DeleteFromDisk), inPlaylist)
     }
+
+    @Test
+    fun aFamilyPlaylistsSongsComeOut_ButAreNeverMoved() {
+        val family = songMenuActions(1, SongPlace.Playlist("p", listOf(0)), ownsPlaylist = true, movesInPlaylist = false).flatten()
+        assertEquals(true, family.contains(SongAction.RemoveFromPlaylist))
+        assertEquals(false, family.contains(SongAction.Move))
+        val own = songMenuActions(1, SongPlace.Playlist("p", listOf(0)), ownsPlaylist = true).flatten()
+        assertEquals(true, own.contains(SongAction.RemoveFromPlaylist))
+        assertEquals(true, own.contains(SongAction.Move))
+    }
+
+    @Test
+    fun aPlaylistMenuFollowsWhatTheListenerMayDo() {
+        val renameOnly = playlistMenuActions(owns = false, renames = true, visibility = false, deletes = false).flatten()
+        assertEquals(true, renameOnly.contains(CollectionAction.Rename))
+        assertEquals(false, renameOnly.contains(CollectionAction.Public))
+        assertEquals(false, renameOnly.contains(CollectionAction.Delete))
+        assertEquals(true, renameOnly.contains(CollectionAction.Duplicate))
+        val manager = playlistMenuActions(owns = false, renames = true, visibility = false, deletes = true).flatten()
+        assertEquals(true, manager.contains(CollectionAction.Delete))
+        val own = playlistMenuActions(owns = true).flatten()
+        assertEquals(true, own.containsAll(listOf(CollectionAction.Rename, CollectionAction.Public, CollectionAction.Delete)))
+    }
 }

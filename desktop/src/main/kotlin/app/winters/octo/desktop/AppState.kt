@@ -96,6 +96,8 @@ import app.winters.octo.sort.SortList
 import app.winters.octo.sort.SortOrder
 import app.winters.octo.subsonic.FORM_POST_EXTENSION
 import app.winters.octo.subsonic.Playlist
+import app.winters.octo.subsonic.PlaylistAccess
+import app.winters.octo.subsonic.playlistAccess
 import app.winters.octo.subsonic.Song
 import app.winters.octo.subsonic.SubsonicException
 import app.winters.octo.ui.family.FamilyModel
@@ -1027,10 +1029,10 @@ class AppState(
     // Songs of an album, for the menus on album cards.
     suspend fun albumSongs(id: String): List<Song> = connection?.client?.album(id)?.song.orEmpty()
 
-    // Whether the listener can change a playlist: their own, and not one
-    // the server keeps for itself.
-    fun canEdit(playlist: Playlist): Boolean =
-        !playlist.readonly && (playlist.owner == null || playlist.owner == connection?.client?.username)
+    // What the listener may do with a playlist: their own, a family
+    // playlist under Octo's rules, or nothing (playlistAccess).
+    fun access(playlist: Playlist): PlaylistAccess =
+        playlistAccess(playlist.owner, playlist.readonly, connection?.client?.username, family.me)
 
     // Whether the server takes playlist changes in a form body.
     internal val formPost: Boolean

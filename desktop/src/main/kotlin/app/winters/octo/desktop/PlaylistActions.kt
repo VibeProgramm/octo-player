@@ -66,6 +66,20 @@ suspend fun AppState.loadPlaylist(id: String): String? {
 // Why a playlist's page closed by itself.
 const val PLAYLIST_GONE = "That playlist isn't on the server any more, so it's gone from your list."
 
+// Why a family playlist's songs were not moved.
+const val FAMILY_KEEPS_ORDER = "A family playlist keeps the order songs were added in."
+
+// Why songs were not taken out of a family playlist: the server showed
+// fewer songs than it holds, so places in the list could point at others.
+const val FAMILY_MISCOUNT = "Octo couldn't read every song in this family playlist just now, so nothing was taken out. Try again in a moment."
+
+// A refused playlist change in the server's own words when it says why
+// (error 50, not allowed), otherwise the usual line.
+internal fun playlistFailure(e: SubsonicException): String {
+    val words = e.message
+    return if (e is SubsonicException.Server && e.code == 50 && !words.isNullOrBlank()) words else e.userMessage()
+}
+
 // A playlist the server says it does not have (deleted on another device,
 // or one of Octo's own mixes or stations it has since made anew): out of
 // the sidebar, its pin, its page and the jump list at once, and the list
@@ -104,7 +118,7 @@ private fun AppState.editPlaylist(
         } catch (e: SubsonicException) {
             // Unless a later edit has already replaced this one.
             if (before != null && playlistViews[id] === shown) playlistViews[id] = before
-            notice = "$failure: ${e.userMessage()}"
+            notice = "$failure: ${playlistFailure(e)}"
         } finally {
             val left = (playlistSaves[id] ?: 1) - 1
             if (left > 0) playlistSaves[id] = left else playlistSaves.remove(id)
@@ -117,6 +131,12 @@ private fun AppState.editPlaylist(
 // Makes a playlist's songs exactly these, in this order, as a drag that
 // ends or a Move row does: shown at once, then saved in one replace.
 fun AppState.reorderPlaylist(id: String, songs: List<Song>) {
+    val family = playlists.firstOrNull { it.id == id }?.let { access(it).family }
+        ?: playlistView(id)?.asPlaylist()?.let { access(it).family }
+    if (family == true) {
+        notice = FAMILY_KEEPS_ORDER
+        return
+    }
     val formPost = formPost
     editPlaylist(id, "Couldn't move the songs", { it.copy(entry = songs) }) { client ->
         client.replacePlaylistSongs(id, songs.map { it.id }, formPost)
@@ -197,7 +217,7 @@ fun AppState.deletePlaylist(playlist: Playlist) {
         try {
             client.deletePlaylist(playlist.id)
         } catch (e: SubsonicException) {
-            notice = "Couldn't delete the playlist: ${e.userMessage()}"
+            notice = "Couldn't delete the playlist: ${playlistFailure(e)}"
             return@launch
         }
         if (isPinned(playlist.id)) setPinned(playlist.id, false)
@@ -220,9 +240,10 @@ class AddQuestion(val playlist: Playlist, val plan: AddPlan, songs: List<Song>) 
     val fresh: List<Song> get() = plan.fresh.mapNotNull(byId::get)
 }
 
-// The listener's own playlists they added songs to lately, newest first.
+// The playlists the listener can add to that they added songs to lately,
+// newest first.
 fun AppState.lastPlaylists(): List<Playlist> {
-    val own = playlists.filter(::canEdit).associateBy { it.id }
+    val own = playlists.filter { access(it).add }.associateBy { it.id }
     return settings.current.recentPlaylists.mapNotNull(own::get)
 }
 
@@ -236,8 +257,9 @@ private fun AppState.usedPlaylist(id: String) =
 suspend fun AppState.checkAdd(playlist: Playlist, songs: List<Song>): AddQuestion? {
     val client = connection?.client ?: return null
     if (songs.isEmpty()) return null
-    if (!canEdit(playlist)) {
-        notice = "Only its owner can change ${playlist.name}"
+    val access = access(playlist)
+    if (!access.add) {
+        notice = if (access.family) "Your plan lets you listen to family playlists, not change them." else "Only its owner can change ${playlist.name}"
         return null
     }
     val onIt = try {
@@ -272,7 +294,7 @@ fun AppState.addSongsToPlaylist(playlist: Playlist, songs: List<Song>) {
             notice = addedMessage(playlist.name, songs.size)
             refreshPlaylists()
         } catch (e: SubsonicException) {
-            notice = "Couldn't add to the playlist: ${e.userMessage()}"
+            notice = "Couldn't add to the playlist: ${playlistFailure(e)}"
         }
     }
 }

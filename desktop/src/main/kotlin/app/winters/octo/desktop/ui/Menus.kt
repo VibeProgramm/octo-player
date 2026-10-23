@@ -111,7 +111,7 @@ fun ColumnScope.SongMenu(
     when (page) {
         MenuPage.Main -> {
             MenuTitle(one?.title ?: "${songs.size} songs")
-            val owns = inPlaylist?.let { p -> app.playlists.firstOrNull { it.id == p.id }?.let(app::canEdit) } == true
+            val access = inPlaylist?.let { p -> app.playlists.firstOrNull { it.id == p.id }?.let(app::access) }
             val starred = songs.all(app::isStarred)
             val rating = sharedRating(songs.map(app::ratingOf))
             if (extra != null) {
@@ -135,7 +135,8 @@ fun ColumnScope.SongMenu(
                 songs.size,
                 place,
                 outside,
-                owns,
+                ownsPlaylist = access?.remove == true,
+                movesInPlaylist = access?.reorder == true,
                 lastPlaylist = last != null,
                 inFolder = !one?.parent.isNullOrEmpty(),
                 canAdd = fetches != null,
@@ -404,7 +405,14 @@ fun ColumnScope.PlaylistMenu(app: AppState, playlist: Playlist, close: () -> Uni
         return
     }
     MenuTitle(playlist.name)
-    playlistMenuActions(empty = playlist.songCount == 0, owns = app.canEdit(playlist)).forEachIndexed { index, group ->
+    val access = app.access(playlist)
+    playlistMenuActions(
+        empty = playlist.songCount == 0,
+        owns = access.reorder,
+        renames = access.rename || access.mayRename,
+        visibility = access.visibility,
+        deletes = access.delete,
+    ).forEachIndexed { index, group ->
         if (index > 0) MenuSeparator()
         group.forEach { action ->
             when (action) {
@@ -445,7 +453,7 @@ fun ColumnScope.PlaylistMenu(app: AppState, playlist: Playlist, close: () -> Uni
 // stay in the library.
 @Composable
 private fun ColumnScope.ConfirmDelete(app: AppState, playlist: Playlist, close: () -> Unit, cancel: () -> Unit) {
-    Question("Delete \"${playlist.name}\"?", "It can't be undone. The songs stay in your library.")
+    Question("Delete \"${playlist.name}\"?", if (app.access(playlist).family) "It's deleted for everyone in the family. The songs stay in your library." else "It can't be undone. The songs stay in your library.")
     MenuRow("Delete", { app.deletePlaylist(playlist); close() }, OctoIcons.Delete, destructive = true)
     MenuRow("Cancel", cancel, OctoIcons.Close)
 }
@@ -488,7 +496,7 @@ fun playlistMenu(app: AppState, playlist: Playlist): () -> Unit {
 }
 
 // Picks a playlist to add songs to, or makes a new one with them: the
-// playlists added to lately first, then the rest of the listener's own.
+// playlists added to lately first, then the rest the listener can add to.
 // The songs are gathered only once a playlist is chosen. When some are on
 // it already, the chooser turns into the question of what to add. With
 // `start`, it adds to that playlist at once, as "Add to last playlist" does.
@@ -535,7 +543,7 @@ fun ColumnScope.PlaylistChooser(app: AppState, songs: suspend () -> List<Song>, 
         MenuRow("New playlist", { naming = true }, OctoIcons.AddToLibrary)
     }
     val recent = app.lastPlaylists()
-    val rest = app.playlists.filter(app::canEdit) - recent.toSet()
+    val rest = app.playlists.filter { app.access(it).add } - recent.toSet()
     listOf(recent, rest).filter { it.isNotEmpty() }.forEach { group ->
         MenuSeparator()
         group.forEach { playlist ->

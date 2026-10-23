@@ -42,8 +42,10 @@ enum class SongAction {
 // they would play or queue the songs a second time. Songs found online
 // (`outside`) are not in the library, so they cannot be favourites, be
 // rated or open an album or artist; where the server can fetch them
-// (`canAdd`) they can be added to it. A playlist's songs can be moved or
-// come out of it only when the listener's own playlist (`ownsPlaylist`).
+// (`canAdd`) they can be added to it. A playlist's songs can come out of
+// it when the listener may change it (`ownsPlaylist`), and be moved only
+// when it keeps the order the listener sets (`movesInPlaylist`; a family
+// playlist does not).
 // `lastPlaylist` is whether there is a playlist added to lately, offered
 // first among the ways to keep the songs. Show in folder needs the server
 // to have said which folder the song is in (`inFolder`). Find higher
@@ -62,6 +64,7 @@ fun songMenuActions(
     place: SongPlace,
     outside: Boolean = false,
     ownsPlaylist: Boolean = false,
+    movesInPlaylist: Boolean = ownsPlaylist,
     lastPlaylist: Boolean = false,
     inFolder: Boolean = false,
     canAdd: Boolean = false,
@@ -74,7 +77,8 @@ fun songMenuActions(
     canKeep: Boolean = false,
 ): List<List<SongAction>> {
     val one = count == 1
-    val editable = place is SongPlace.Playlist && ownsPlaylist && place.positions.isNotEmpty()
+    val removable = place is SongPlace.Playlist && ownsPlaylist && place.positions.isNotEmpty()
+    val movable = removable && movesInPlaylist
     val groups = listOf(
         if (place is SongPlace.Queue) {
             listOfNotNull(SongAction.StartRadio.takeIf { one })
@@ -93,9 +97,9 @@ fun songMenuActions(
         ),
         if (one && !outside) listOfNotNull(SongAction.GoToAlbum, SongAction.GoToArtist, SongAction.ShowInFolder.takeIf { inFolder }) else emptyList(),
         listOfNotNull(SongAction.Details.takeIf { one }, SongAction.FindSongs.takeIf { one && canFind }),
-        listOfNotNull(SongAction.Move.takeIf { editable }),
+        listOfNotNull(SongAction.Move.takeIf { movable }),
         listOfNotNull(
-            SongAction.RemoveFromPlaylist.takeIf { editable },
+            SongAction.RemoveFromPlaylist.takeIf { removable },
             SongAction.RemoveFromQueue.takeIf { place is SongPlace.Queue && place.keys.isNotEmpty() },
             SongAction.RemoveFromMyLibrary.takeIf { canRemoveFromMine && !outside },
             SongAction.DeleteFromDisk.takeIf { canDelete && !outside },
@@ -181,16 +185,24 @@ fun artistMenuActions(outside: Boolean = false): List<List<CollectionAction>> = 
 ).filter { it.isNotEmpty() }
 
 // A playlist's menu. An empty one has nothing to play or write to a file.
-// Only the listener's own (`owns`) can be renamed, made public or private,
-// or deleted; anyone's can be copied into a new one of their own.
-fun playlistMenuActions(empty: Boolean = false, owns: Boolean = false): List<List<CollectionAction>> = listOf(
+// Rename, public or private and Delete follow what the listener may do
+// (`renames`, `visibility`, `deletes`; a family playlist: rename for a
+// manager or its maker, delete for a manager, never public or private).
+// Anyone's can be copied into a new one of their own.
+fun playlistMenuActions(
+    empty: Boolean = false,
+    owns: Boolean = false,
+    renames: Boolean = owns,
+    visibility: Boolean = owns,
+    deletes: Boolean = owns,
+): List<List<CollectionAction>> = listOf(
     if (empty) emptyList() else Playing,
     listOf(CollectionAction.Pin),
     listOfNotNull(
-        CollectionAction.Rename.takeIf { owns },
+        CollectionAction.Rename.takeIf { renames },
         CollectionAction.Duplicate,
         CollectionAction.Export.takeIf { !empty },
-        CollectionAction.Public.takeIf { owns },
+        CollectionAction.Public.takeIf { visibility },
     ),
-    listOfNotNull(CollectionAction.Delete.takeIf { owns }),
+    listOfNotNull(CollectionAction.Delete.takeIf { deletes }),
 ).filter { it.isNotEmpty() }

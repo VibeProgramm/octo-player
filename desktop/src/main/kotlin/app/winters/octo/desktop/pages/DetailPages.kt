@@ -95,7 +95,7 @@ fun PlaylistPage(app: AppState, visit: Visit, id: String) {
         val shown = rememberFiltered(all, query, fields) ?: return@show PageLoadingLine()
         val songs = shown.songs
         val menuPlaylist = known ?: playlist.asPlaylist()
-        val owns = app.canEdit(menuPlaylist)
+        val access = app.access(menuPlaylist)
         SongTable(
             app,
             songs,
@@ -105,9 +105,9 @@ fun PlaylistPage(app: AppState, visit: Visit, id: String) {
             place = { picked -> SongPlace.Playlist(id, picked.map { shown.placeOf(it.position) }) },
             // The number is the song's place in the playlist, filtered or not.
             number = { index, _ -> "${shown.placeOf(index) + 1}" },
-            // In the listener's own playlist, its rows dragged onto another
-            // row move there, above or below it.
-            rowDrop = if (!owns) {
+            // In a playlist the listener may reorder, its rows dragged onto
+            // another row move there, above or below it.
+            rowDrop = if (!access.reorder) {
                 null
             } else {
                 RowDrop("Move here", takes = { (it as? SongPlace.Playlist)?.id == id }) { _, from, row, below ->
@@ -129,21 +129,21 @@ fun PlaylistPage(app: AppState, visit: Visit, id: String) {
                     if (query.filters) {
                         listOfNotNull(playlist.owner?.let { "By $it" }, filteredCount(songs.size, all.size, true)).joinToString(" · ")
                     } else {
-                        playlistDetails(playlist.owner, all.size, all.sumOf { it.duration }, playlist.public)
+                        playlistDetails(playlist.owner, all.size, all.sumOf { it.duration }, if (access.family) null else playlist.public)
                     },
                     { app.play(songs) },
                     { app.play(songs, shuffle = true) },
                     playable = songs.isNotEmpty(),
                     picture = { modifier -> PlaylistPicture(app, playlist.summary(), modifier, Corner.ArtLShape) },
                     titleContent = {
-                        EditInPlace(playlist.name, "Playlist name", owns, "Rename", TitleFieldWidth, { app.renamePlaylist(id, it) }) { modifier ->
+                        EditInPlace(playlist.name, "Playlist name", access.rename || access.mayRename, "Rename", TitleFieldWidth, { app.renamePlaylist(id, it) }) { modifier ->
                             WholeTxt(playlist.name, DesktopType.pageTitle, modifier = modifier)
                         }
                     },
                     subtitle = {
                         val comment = playlist.comment.orEmpty()
-                        if (owns || comment.isNotBlank()) {
-                            EditInPlace(comment, "Add a description", owns, "Edit the description", TitleFieldWidth, { app.setPlaylistComment(id, it) }) { modifier ->
+                        if (access.describe || comment.isNotBlank()) {
+                            EditInPlace(comment, "Add a description", access.describe, "Edit the description", TitleFieldWidth, { app.setPlaylistComment(id, it) }) { modifier ->
                                 if (comment.isBlank()) {
                                     Txt("Add a description", DesktopType.table, OctoColors.TextMuted, modifier)
                                 } else {
@@ -163,9 +163,10 @@ fun PlaylistPage(app: AppState, visit: Visit, id: String) {
 }
 
 // The line under a playlist's name: whose it is, how many songs and how
-// long, and whether everyone on the server can see it.
-fun playlistDetails(owner: String?, count: Int, seconds: Int, public: Boolean): String =
-    listOfNotNull(owner?.let { "By $it" }, songsLine(count, seconds), if (public) "Public" else "Private").joinToString(" · ")
+// long, and whether everyone on the server can see it (nothing for a
+// family playlist, where it does not apply).
+fun playlistDetails(owner: String?, count: Int, seconds: Int, public: Boolean?): String =
+    listOfNotNull(owner?.let { "By $it" }, songsLine(count, seconds), public?.let { if (it) "Public" else "Private" }).joinToString(" · ")
 
 private val TitleFieldWidth = 420.dp
 

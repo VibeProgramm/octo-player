@@ -208,17 +208,27 @@ suspend fun AppState.playlistSongs(id: String): List<Song> = connection?.client?
 // Taking songs away.
 
 // Takes rows out of a playlist by their places in it, all in one call so
-// no place moves before the others go.
+// no place moves before the others go. A family playlist is first checked
+// to show every song it holds, since Octo counts places over all of them.
 fun AppState.removeFromPlaylist(id: String, positions: List<Int>) {
     val client = connection?.client ?: return
     if (positions.isEmpty()) return
     val formPost = formPost
+    val family = playlists.firstOrNull { it.id == id }?.let { access(it).family } == true
     scope.launch {
         try {
+            if (family) {
+                val shown = client.playlist(id).entry.size
+                val held = client.playlists().firstOrNull { it.id == id }?.songCount
+                if (held != shown) {
+                    notice = FAMILY_MISCOUNT
+                    return@launch
+                }
+            }
             client.updatePlaylist(id, songIndexesToRemove = positions.distinct().sorted(), formPost = formPost)
             refreshPlaylists()
         } catch (e: SubsonicException) {
-            notice = "Couldn't remove from the playlist: ${e.userMessage()}"
+            notice = "Couldn't remove from the playlist: ${playlistFailure(e)}"
         }
     }
 }
