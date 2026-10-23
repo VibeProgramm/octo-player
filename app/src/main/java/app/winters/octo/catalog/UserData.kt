@@ -1,5 +1,6 @@
 package app.winters.octo.catalog
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -60,6 +61,12 @@ data class PlaylistEntity(
     // Which of Octo's notice lists the server copy is ("review",
     // "duplicates"), so its cover carries that list's glyph.
     val octoNotice: String? = null,
+    // A family playlist: anyone in the family may add and take out songs,
+    // and its order is the server's.
+    @ColumnInfo(defaultValue = "0") val family: Boolean = false,
+    // The server's songs as both sides last agreed, one id a line, so a
+    // family playlist's own changes can be told from everyone else's.
+    val syncedSongs: String? = null,
 )
 
 @Entity(

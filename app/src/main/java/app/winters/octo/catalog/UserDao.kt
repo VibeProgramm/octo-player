@@ -204,6 +204,15 @@ interface UserDao {
     @Query("UPDATE playlist SET octoNotice = :notice WHERE id = :id")
     suspend fun markNotice(id: String, notice: String?)
 
+    // Whether the server lists its copy of a playlist as a family playlist.
+    @Query("UPDATE playlist SET family = :family WHERE id = :id")
+    suspend fun markFamily(id: String, family: Boolean)
+
+    // A family playlist's songs as both sides agree once a change from here
+    // reached the server, kept at once so the change is never sent twice.
+    @Query("UPDATE playlist SET syncedSongs = :songs WHERE id = :id")
+    suspend fun markFamilyBase(id: String, songs: String)
+
     // Both sides now agree on what the playlist was at `syncedAt`.
     @Query("UPDATE playlist SET syncedAt = :syncedAt, syncedName = :name, serverStamp = :stamp WHERE id = :id")
     suspend fun markSynced(id: String, syncedAt: Long, name: String, stamp: String)
@@ -212,7 +221,7 @@ interface UserDao {
     @Query(
         """
         UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
-            octoNotice = NULL
+            octoNotice = NULL, syncedSongs = NULL, family = 0
         WHERE id = :id
         """,
     )
@@ -221,7 +230,8 @@ interface UserDao {
     // Every playlist kept with this server goes back to being only on the phone.
     @Query(
         """
-        UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL
+        UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
+            syncedSongs = NULL, family = 0
         WHERE sourceId = :sourceId
         """,
     )
@@ -231,7 +241,8 @@ interface UserDao {
     // only on the phone.
     @Query(
         """
-        UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL
+        UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
+            syncedSongs = NULL, family = 0
         WHERE sourceId IS NOT NULL AND sourceId NOT IN (:kept)
         """,
     )

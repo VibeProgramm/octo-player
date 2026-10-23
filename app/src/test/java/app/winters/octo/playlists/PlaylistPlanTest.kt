@@ -154,6 +154,67 @@ class PlaylistPlanTest {
     }
 
     @Test
+    fun theFamilysChangeablePlaylistsComeOverButNotReadOnlyOnes() {
+        val all = listOf(
+            listed("fam", owner = "Family"),
+            listed("famRo", owner = "Family", readonly = true),
+            listed("theirs", owner = "sam"),
+        )
+        assertEquals(listOf("fam"), importable(all, emptySet(), username = "alex").map { it.id })
+    }
+
+    @Test
+    fun aNewPlaylistsCandidatesAreTheUsersOwnByThatName() {
+        val own = Playlist(id = "own", name = "Road trip", owner = "alex")
+        val family = Playlist(id = "fam", name = "Road trip", owner = "Family")
+        val found = newestNamedCandidates(listOf(own, family), "Road trip", "alex", emptySet())
+        assertEquals(listOf("own"), found.map { it.id })
+        assertEquals(emptyList<Playlist>(), newestNamedCandidates(listOf(own, family), "Road trip", "alex", setOf("own")))
+    }
+
+    @Test
+    fun aFamilyPlaylistChangedOnBothSidesIsPushedNotPulled() {
+        val newer = ServerPlaylist("s", "n", "new")
+        val family = LinkedPlaylist("l", "s", "n", edited = true, syncedName = "n", syncedStamp = "old", family = true)
+        assertEquals(PlaylistStep.Push("l", "s"), planLinked(newer, family))
+        val step = planLinked(newer, family.copy(family = false))
+        assertTrue(step is PlaylistStep.Pull)
+    }
+
+    @Test
+    fun familyChangesAreTheCountsTheListenerChanged() {
+        val a = familyChanges(listOf("a", "b", "c"), listOf("a", "c", "d"), listOf("a", "b", "c", "e"))
+        assertEquals(FamilyChanges(listOf(1), listOf("d")), a)
+        assertTrue(familyChanges(listOf("a", "b"), listOf("a"), listOf("a")).none)
+        assertEquals(FamilyChanges(listOf(2), emptyList()), familyChanges(listOf("a", "a"), listOf("a"), listOf("a", "x", "a")))
+        assertTrue(familyChanges(listOf("a", "b"), listOf("b", "a"), listOf("a", "b")).none)
+        assertEquals(FamilyChanges(emptyList(), listOf("a", "a")), familyChanges(emptyList(), listOf("a", "a"), listOf("a")))
+        assertEquals(FamilyChanges(emptyList(), listOf("b")), familyChanges(listOf("a"), listOf("a", "b"), listOf("x", "a", "y")))
+    }
+
+    @Test
+    fun aRefusedTakeBetweenTwoPushesDoesNotRemoveSomeoneElsesSong() {
+        val first = familyChanges(listOf("a", "b"), listOf("a", "b", "d"), listOf("a", "b", "Y"))
+        assertEquals(FamilyChanges(emptyList(), listOf("d")), first)
+        val kept = listOf("a", "b", "d")
+        val second = familyChanges(kept, listOf("a", "b", "d", "e"), listOf("a", "b", "Y", "d"))
+        assertEquals(FamilyChanges(emptyList(), listOf("e")), second)
+    }
+
+    @Test
+    fun keptSongsReadBackAsTheyWereWritten() {
+        assertNull(syncedSongsOf(null))
+        assertEquals(listOf("a", "b"), syncedSongsOf("a\n\nb"))
+        assertEquals(listOf("a", "b"), syncedSongsOf(syncedSongsText(listOf("a", "b"))))
+    }
+
+    @Test
+    fun rowsKeepTheIdsOfTheSameSongInOrder() {
+        val ids = keptRowIds(listOf(1L to "t1", 2L to "t2", 3L to "t1"), listOf(Row("t1"), Row("t3"), Row("t1"), Row("t2")))
+        assertEquals(listOf<Long?>(1L, null, 3L, 2L), ids)
+    }
+
+    @Test
     fun theStampFollowsTimeAndCount() {
         assertEquals("2026-09-26T10:00:00Z|12", stampOf("2026-09-26T10:00:00Z", 12))
         assertEquals("|0", stampOf(null, 0))
