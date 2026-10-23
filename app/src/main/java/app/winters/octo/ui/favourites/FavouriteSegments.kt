@@ -42,3 +42,9 @@ fun favouriteCount(segment: FavouriteSegment, songCount: Int?, albumCount: Int?,
     FavouriteSegment.Albums -> albumCount?.let { albums(it) }
     FavouriteSegment.Artists -> artistCount?.let { artists(it) }
 }
+
+// The room the three parts have on the control line of a screen `screen`
+// dp wide, at its narrowest, the Songs part: the line's 12dp and 16dp
+// edges, the sort button in its small form and its room, and round Play,
+// Shuffle and More with theirs.
+fun favouriteSegmentsRoom(screen: Int): Int = screen - 12 - 16 - (60 + 10) - (40 * 3 + 8 * 2 + 10)

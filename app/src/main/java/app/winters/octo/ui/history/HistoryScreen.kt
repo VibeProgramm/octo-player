@@ -1,6 +1,7 @@
 package app.winters.octo.ui.history
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -53,7 +54,12 @@ import app.winters.octo.listening.rangeStart
 import app.winters.octo.listening.recentHistory
 import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.ui.common.HeaderDropdown
+import app.winters.octo.ui.common.DROPDOWN_CHROME_DP
+import app.winters.octo.ui.common.HeaderSegments
 import app.winters.octo.ui.common.PageHeader
+import app.winters.octo.ui.common.rememberWidestWords
+import app.winters.octo.ui.common.screenWidthDp
+import app.winters.octo.ui.common.segmentsFit
 import app.winters.octo.ui.common.showDropdown
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
@@ -114,9 +120,15 @@ class HistoryViewModel @Inject constructor(
 // The two ways to look at what was played.
 val HistoryViews = listOf("Recently played", "Most played")
 
+// The room the two segments have on a screen `screen` dp wide, beside the
+// time range button (`range` dp at its widest) and its 8dp, inside the
+// line's 12dp and 16dp edges.
+fun historySegmentsRoom(screen: Int, range: Int): Int = screen - 12 - 16 - 8 - range
+
 // What was played: the latest plays day by day, or the songs played most.
-// The control line picks which, and for the songs played most, over what
-// stretch of time; both are dropdowns, since as chips they would not fit.
+// The control line picks which as two segments (a dropdown on a screen too
+// narrow for their words beside the time range), and for the songs played
+// most, over what stretch of time.
 @Composable
 fun HistoryScreen(startMostPlayed: Boolean, onBack: () -> Unit, vm: HistoryViewModel = hiltViewModel()) {
     var most by rememberSaveable { mutableStateOf(startMostPlayed) }
@@ -126,18 +138,25 @@ fun HistoryScreen(startMostPlayed: Boolean, onBack: () -> Unit, vm: HistoryViewM
             PageHeader(
                 "History",
                 onBack,
-                control = {
-                    val view = if (most) 1 else 0
-                    HeaderDropdown(HistoryViews[view], onClick = {
-                        showDropdown(sheet, "Show", HistoryViews, view) { most = it == 1 }
-                    }, clickLabel = "Choose what to show")
-                },
-                filters = if (!most) null else {
-                    {
-                        val range = vm.range
-                        HeaderDropdown(range.label, onClick = {
-                            showDropdown(sheet, "Most played in", HistoryRange.entries.map { it.label }, range.ordinal) { vm.range = HistoryRange.entries[it] }
-                        }, description = "Most played, ${range.label}", clickLabel = "Change the time range")
+                filters = {
+                    val ranges = HistoryRange.entries.map { it.label }
+                    val rangeButton = rememberWidestWords(ranges, OctoType.label) + DROPDOWN_CHROME_DP
+                    val segments = segmentsFit(historySegmentsRoom(screenWidthDp(), rangeButton), HistoryViews.size, rememberWidestWords(HistoryViews))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        HeaderSegments(
+                            HistoryViews,
+                            if (most) 1 else 0,
+                            { most = it == 1 },
+                            asSegments = segments,
+                            title = "Show",
+                            modifier = if (segments) Modifier.weight(1f) else Modifier,
+                        )
+                        if (most) {
+                            val range = vm.range
+                            HeaderDropdown(range.label, onClick = {
+                                showDropdown(sheet, "Most played in", ranges, range.ordinal) { vm.range = HistoryRange.entries[it] }
+                            }, description = "Most played, ${range.label}", clickLabel = "Change the time range")
+                        }
                     }
                 },
             )
