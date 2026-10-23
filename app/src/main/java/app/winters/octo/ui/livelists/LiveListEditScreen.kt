@@ -1,5 +1,10 @@
 package app.winters.octo.ui.livelists
 
+import app.winters.octo.ui.common.rememberOpenedBeside
+import app.winters.octo.ui.common.PopupQuestion
+import app.winters.octo.ui.common.LocalHaze
+import app.winters.octo.design.GlassPopup
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -91,6 +96,12 @@ class LiveListEditViewModel @AssistedInject constructor(
     private val _draft = MutableStateFlow(editorStart(null, start))
     val draft: StateFlow<LiveListDraft> = _draft
 
+    // What the editor started from, to tell whether leaving loses anything.
+    private var started = _draft.value
+
+    // Whether the draft has changes not saved yet.
+    val unsaved: Boolean get() = unsavedChanges(started, _draft.value)
+
     // Whether to offer the starters, worked out once.
     private val _starters = MutableStateFlow(false)
     val starters: StateFlow<Boolean> = _starters
@@ -106,7 +117,10 @@ class LiveListEditViewModel @AssistedInject constructor(
 
     init {
         viewModelScope.launch {
-            if (id != null) store.byId(id)?.let { _draft.value = editorStart(it, null) }
+            if (id != null) store.byId(id)?.let {
+                started = editorStart(it, null)
+                _draft.value = started
+            }
             _starters.value = offersStarters(store.lists.first(), id, start)
         }
     }
@@ -171,6 +185,10 @@ fun LiveListEditScreen(
     val sheet = LocalChoiceSheet.current
     val query = draft.query
     val new = id == null
+    // Leaving with changes not saved asks first; without, it just goes.
+    var discarding by remember { mutableStateOf(false) }
+    val leave = { if (vm.unsaved) discarding = true else onBack() }
+    BackHandler(enabled = !discarding && vm.unsaved) { discarding = true }
 
     // The page of choices to ask next. The sheet closes itself after a pick,
     // so the next page opens once that has happened.
@@ -204,11 +222,12 @@ fun LiveListEditScreen(
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
-            // Back leaves without saving; the save is on the control line.
+            // Back leaves, asking first when there are changes; the save is
+            // on the control line.
             item(key = "title") {
                 PageHeader(
                     if (new) "New live list" else "Edit live list",
-                    onBack,
+                    leave,
                     actions = { AccentButton(if (new) "Make live list" else "Save", onClick = { vm.save(onSaved) }, size = ButtonSize.Small) },
                 )
             }
@@ -280,7 +299,28 @@ fun LiveListEditScreen(
                 itemsIndexed(songs, key = { _, track -> track.id }) { index, track -> SongRow(track) { vm.play(index) } }
             }
         }
+        GlassPopup(
+            visible = discarding,
+            anchor = rememberOpenedBeside(discarding),
+            onDismiss = { discarding = false },
+            backdrop = LocalHaze.current,
+            title = DISCARD_CHANGES,
+        ) {
+            PopupQuestion(
+                DISCARD_CHANGES,
+                if (new) "This live list has not been made yet." else "Your changes to this live list are not saved.",
+                "Discard",
+                onConfirm = {
+                    discarding = false
+                    onBack()
+                },
+                onCancel = { discarding = false },
+                cancel = "Keep editing",
+            )
+        }
     }
 }
+
+const val DISCARD_CHANGES = "Discard changes?"
 
 const val NO_RULE_MATCHES = "No songs match these rules yet. Take a rule off, or pick Any of these so a song needs to match only one."
