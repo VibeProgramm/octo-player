@@ -49,9 +49,10 @@ struct FoldersPage: View {
             LibraryList {
                 // Until the phone's first scan and the library are read, nothing is known yet.
                 if !phoneRead || !device.scannedOnce {
-                    LibrarySpinner().padding(.top, detailTopGap)
+                    PageHeader("Folders").padding(.top, pageTopGap)
+                    LibrarySpinner()
                 } else if !hasPhone && !hasServer {
-                    ScreenTitle("Folders").padding(.top, detailTopGap).bigTitle()
+                    PageHeader("Folders").padding(.top, pageTopGap).bigTitle()
                     EmptyLibraryNote(text: "Folders show here once there is music on this phone or a server is signed in.")
                 } else {
                     folderHeader
@@ -128,35 +129,71 @@ struct FoldersPage: View {
         return hasPhone && hasServer ? names : Array(names.dropFirst())
     }
 
+    /// Line one: the back button, the folder's name and what it holds; line two: the path back to
+    /// the start, then Play and Shuffle for everything under the folder.
     private var folderHeader: some View {
         let shown = shownNames
         return VStack(alignment: .leading, spacing: 0) {
-            ScreenTitle(shown.last ?? "Folders").bigTitle()
-            if shown.count > 1 {
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 0) {
-                            ForEach(Array(shown.enumerated()), id: \.offset) { index, name in
-                                if index > 0 { Text(" / ").font(.octoCaption).foregroundStyle(OctoColor.textSecondary) }
-                                if index == shown.count - 1 {
-                                    Text(name).font(.octoCaption).foregroundStyle(.white).id("end")
-                                } else {
-                                    Button(name) { goTo(depth: index, of: shown.count) }
-                                        .font(.octoCaption)
-                                        .foregroundStyle(OctoColor.textSecondary)
-                                        .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 20)
+            PageHeader(shown.last ?? "Folders", count: levelCount).bigTitle()
+            ControlLine(fills: true) {
+                if shown.count > 1 { crumbs(shown) }
+            } actions: {
+                switch path.last {
+                case .phone, .phoneFolder:
+                    let node = phone?.root.at(phoneNames)
+                    RoundPlayShuffle(enabled: (node?.songCount ?? 0) > 0) {
+                        if let node { actions.play(node.allSongs()) }
+                    } shuffle: {
+                        if let node { actions.play(node.allSongs(), shuffled: true) }
                     }
-                    .scrollIndicators(.hidden)
-                    .onAppear { proxy.scrollTo("end", anchor: .trailing) }
+                case .server, .serverFolder:
+                    RoundPlayShuffle(enabled: !gathering, loading: gathering) {
+                        Task { await playAll(shuffled: false) }
+                    } shuffle: {
+                        Task { await playAll(shuffled: true) }
+                    }
+                case nil:
+                    EmptyView()
                 }
-                .padding(.bottom, 12)
             }
         }
-        .padding(.top, detailTopGap)
+        .padding(.top, pageTopGap)
+    }
+
+    /// What a phone folder holds, for the title's line.
+    private var levelCount: String? {
+        guard case .some(let step) = path.last, step == .phone || isPhoneFolder(step), let node = phone?.root.at(phoneNames) else { return nil }
+        return [node.folders.isEmpty ? nil : (node.folders.count == 1 ? "1 folder" : "\(node.folders.count) folders"),
+                songsCount(node.songCount)].compactMap { $0 }.joined(separator: " • ")
+    }
+
+    private func isPhoneFolder(_ step: Step) -> Bool {
+        if case .phoneFolder = step { return true }
+        return false
+    }
+
+    /// The path from the start, each earlier place a way back to it, kept scrolled to its end.
+    private func crumbs(_ shown: [String]) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(Array(shown.enumerated()), id: \.offset) { index, name in
+                        if index > 0 { Text(" / ").font(.octoCaption).foregroundStyle(OctoColor.textSecondary) }
+                        if index == shown.count - 1 {
+                            Text(name).font(.octoCaption).foregroundStyle(.white).id("end")
+                        } else {
+                            Button(name) { goTo(depth: index, of: shown.count) }
+                                .font(.octoCaption)
+                                .foregroundStyle(OctoColor.textSecondary)
+                                .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .frame(minHeight: 48)
+            }
+            .scrollIndicators(.hidden)
+            .onAppear { proxy.scrollTo("end", anchor: .trailing) }
+        }
     }
 
     /// Back to a place on the path line.
@@ -191,14 +228,6 @@ struct FoldersPage: View {
     @ViewBuilder
     private var phoneLevel: some View {
         if let node = phone?.root.at(phoneNames) {
-            let details = [node.folders.isEmpty ? nil : (node.folders.count == 1 ? "1 folder" : "\(node.folders.count) folders"),
-                           songsCount(node.songCount)].compactMap { $0 }.joined(separator: " • ")
-            VStack(alignment: .leading, spacing: 10) {
-                Text(details).font(.octoCaption).foregroundStyle(OctoColor.textMuted)
-                PlayShuffle(enabled: node.songCount > 0) { actions.play(node.allSongs()) } shuffle: { actions.play(node.allSongs(), shuffled: true) }
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 8)
             ForEach(Array(node.folders.enumerated()), id: \.offset) { index, folder in
                 if index > 0 { LibraryHairline() }
                 FolderRow(name: folder.name, subtitle: songsCount(folder.songCount)) { trail.append(.phoneFolder(folder.name)) }
@@ -216,16 +245,13 @@ struct FoldersPage: View {
 
     @ViewBuilder
     private var serverLevel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            PlayShuffle(enabled: !gathering, loading: gathering) { Task { await playAll(shuffled: false) } } shuffle: {
-                Task { await playAll(shuffled: true) }
-            }
-            if let note {
-                Text(note).font(.octoCaption).foregroundStyle(OctoColor.textMuted).padding(.top, 10)
-            }
+        if let note {
+            Text(note)
+                .font(.octoCaption)
+                .foregroundStyle(OctoColor.textMuted)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
         if session.client == nil {
             MutedNote("Sign in to your server to see this.")
         } else if let level = serverLevels[serverKey], level.read {

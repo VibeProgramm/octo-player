@@ -101,39 +101,6 @@ struct LibraryHairline: View {
     }
 }
 
-// MARK: Shared list page frame
-
-/// The play line under a list page's title: the count, room for one quiet action, then the small
-/// Play pill and Shuffle button.
-struct ListPlayLine<Extra: View>: View {
-    let count: String
-    let play: () -> Void
-    let shuffle: () -> Void
-    @ViewBuilder var extra: Extra
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(count)
-                .font(.octoCaption)
-                .foregroundStyle(OctoColor.textMuted)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            // The buttons keep their words whole; the count gives way first.
-            extra.fixedSize()
-            PlayPills(play: play, shuffle: shuffle).fixedSize()
-        }
-        .padding(.leading, 20)
-        .padding(.trailing, 13)
-        .padding(.bottom, 6)
-    }
-}
-
-extension ListPlayLine where Extra == EmptyView {
-    init(count: String, play: @escaping () -> Void, shuffle: @escaping () -> Void) {
-        self.init(count: count, play: play, shuffle: shuffle) { EmptyView() }
-    }
-}
-
 /// Runs of rows under their letters, for a list ordered by name.
 struct LetterRuns<Item, Row: View>: View {
     let items: [Item]
@@ -210,22 +177,31 @@ struct AlbumsView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    TitleWithButtons(title: "Albums") { SortButton(list: .albums) }
-                        .padding(.top, detailTopGap)
-                        .bigTitle()
+                    VStack(spacing: 0) {
+                        PageHeader("Albums", count: sorted.flatMap { $0.items.isEmpty ? nil : countText($0.items.count, "album", "albums") })
+                        ControlLine {
+                            SortButton(list: .albums)
+                        } actions: {
+                            if let sorted, !sorted.items.isEmpty {
+                                GlassMoreMenu {
+                                    Button("Random album", systemImage: "dice") {
+                                        if let album = sorted.items.randomElement() { router.go(.album(album.asAlbum)) }
+                                    }
+                                }
+                                RoundPlayShuffle {
+                                    playAll(sorted.items, shuffled: false)
+                                } shuffle: {
+                                    playAll(sorted.items, shuffled: true)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, pageTopGap)
+                    .bigTitle()
                     if let sorted {
                         if sorted.items.isEmpty {
                             EmptyLibraryNote()
                         } else {
-                            ListPlayLine(count: countText(sorted.items.count, "album", "albums")) {
-                                playAll(sorted.items, shuffled: false)
-                            } shuffle: {
-                                playAll(sorted.items, shuffled: true)
-                            } extra: {
-                                QuietButton("Random album") {
-                                    if let album = sorted.items.randomElement() { router.go(.album(album.asAlbum)) }
-                                }
-                            }
                             FirstRowMark().id("first")
                             LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
                                 ForEach(sorted.items) { album in GridAlbumCard(album: album).id(album.id) }
@@ -280,18 +256,26 @@ struct ArtistsView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
-                    TitleWithButtons(title: "Artists") { SortButton(list: .artists) }
-                        .padding(.top, detailTopGap)
-                        .bigTitle()
+                    VStack(spacing: 0) {
+                        PageHeader("Artists", count: sorted.flatMap { $0.items.isEmpty ? nil : countText($0.items.count, "artist", "artists") })
+                        ControlLine {
+                            SortButton(list: .artists)
+                        } actions: {
+                            if let sorted, !sorted.items.isEmpty {
+                                RoundPlayShuffle {
+                                    playAll(sorted.items, shuffled: false)
+                                } shuffle: {
+                                    playAll(sorted.items, shuffled: true)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, pageTopGap)
+                    .bigTitle()
                     if let sorted {
                         if sorted.items.isEmpty {
                             EmptyLibraryNote()
                         } else {
-                            ListPlayLine(count: countText(sorted.items.count, "artist", "artists")) {
-                                playAll(sorted.items, shuffled: false)
-                            } shuffle: {
-                                playAll(sorted.items, shuffled: true)
-                            }
                             FirstRowMark().id("first")
                             LetterRuns(items: sorted.items, headings: sorted.headings, id: \.id) { _, artist in
                                 ArtistRow(artist: artist)
@@ -337,6 +321,7 @@ struct FavoritesView: View {
     @Environment(LibraryState.self) private var state
     @Environment(LibraryActions.self) private var actions
     @Environment(Router.self) private var router
+    @Environment(OfflineDownloads.self) private var offline
     @State private var segment: FavoriteSegment?
     @State private var songs: [LibraryTrack]?
     @State private var albums: [LikedAlbum]?
@@ -385,23 +370,48 @@ struct FavoritesView: View {
         }
     }
 
-    /// The title with its sort button, then the segments.
-    @ViewBuilder
+    /// The title with the segment's count, then one line: the sort button, the segments, and for
+    /// Liked songs Play, Shuffle and More, which holds Keep downloaded.
     private var top: some View {
-        TitleWithButtons(title: "Favorites") {
-            switch segment {
-            case .songs: SortButton(list: .liked)
-            case .albums, .artists: SortButton(list: .favorites)
-            case nil: EmptyView()
+        VStack(spacing: 0) {
+            PageHeader("Favorites", count: countWords)
+            if let segment {
+                ControlLine(fills: true) {
+                    switch segment {
+                    case .songs: SortButton(list: .liked)
+                    case .albums, .artists: SortButton(list: .favorites)
+                    }
+                } chips: {
+                    GlassSegments(options: FavoriteSegment.allCases.map { ($0, $0.rawValue) },
+                                  selection: Binding(get: { segment }, set: { self.segment = $0 }))
+                } actions: {
+                    if segment == .songs, let songs, !songs.isEmpty {
+                        RoundPlayShuffle {
+                            actions.play(songs, source: "Favorites")
+                        } shuffle: {
+                            actions.play(songs, shuffled: true, source: "Favorites")
+                        }
+                    }
+                    if segment == .songs, let songs, offersKeepDownloaded(offline, tracks: songs, playlistId: nil) {
+                        GlassMoreMenu { KeepDownloadedToggle(tracks: songs) }
+                    }
+                }
             }
         }
-        .padding(.top, detailTopGap)
+        .padding(.top, pageTopGap)
         .bigTitle()
-        if let segment {
-            GlassSegments(options: FavoriteSegment.allCases.map { ($0, $0.rawValue) },
-                          selection: Binding(get: { segment }, set: { self.segment = $0 }))
-                .padding(.horizontal, 20)
-                .padding(.bottom, 12)
+    }
+
+    /// The count of the segment shown, and for Liked songs kept downloaded how far that is.
+    private var countWords: String? {
+        switch segment {
+        case .songs:
+            guard let songs, !songs.isEmpty else { return nil }
+            return [songsCount(songs.count), keptDownloadedWords(offline, tracks: songs, playlistId: nil)]
+                .compactMap { $0 }.joined(separator: " · ")
+        case .albums: return albums.flatMap { $0.isEmpty ? nil : countText($0.count, "album", "albums") }
+        case .artists: return artists.flatMap { $0.isEmpty ? nil : countText($0.count, "artist", "artists") }
+        case nil: return nil
         }
     }
 
@@ -432,16 +442,6 @@ struct FavoritesView: View {
     @ViewBuilder
     private var songsSegment: some View {
         if let songs {
-            if !songs.isEmpty {
-                PlayRow(details: songsCount(songs.count)) {
-                    actions.play(songs, source: "Favorites")
-                } shuffle: {
-                    actions.play(songs, shuffled: true, source: "Favorites")
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 12)
-            }
-            KeepDownloadedLine(tracks: songs)
             if songs.isEmpty {
                 MutedNote("No liked songs yet. Tap the heart in the player to add the song that is playing, or long press any song and choose Add to Liked songs.")
             } else {
