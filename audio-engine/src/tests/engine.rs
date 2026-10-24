@@ -1287,7 +1287,7 @@ fn a_live_stream_paused_a_long_while_starts_again_where_it_is_now() {
 #[test]
 fn the_player_keeps_infos_only_for_queued_songs() {
     let dir = temp_dir();
-    let songs: Vec<QueueItem> = ["a", "b", "c", "d", "e", "f"]
+    let songs: Vec<QueueItem> = ["a", "b", "c", "d", "e", "f", "x"]
         .iter()
         .map(|id| {
             let path = dir.join(format!("{id}.wav"));
@@ -1299,16 +1299,18 @@ fn the_player_keeps_infos_only_for_queued_songs() {
     let engine = Engine::with_driver(Box::new(move || Box::new(driver)));
     let events = Arc::new(Recorder::default());
     engine.set_listener(events.clone());
-    engine.load(songs[..3].to_vec(), 0, 0, true).unwrap();
-    let started = |count: usize| events.starts().len() >= count;
+    let mut first = songs[..3].to_vec();
+    first.push(songs[6].clone());
+    engine.load(first, 0, 0, true).unwrap();
+    let started_x = || events.starts().iter().any(|id| id == "x");
     for _ in 0..3_000 {
         pump.play();
-        if started(2) {
+        if started_x() {
             break;
         }
     }
-    wait_until("the second start", || started(2));
-    engine.load(songs[3..].to_vec(), 0, 0, true).unwrap();
+    wait_until("the start of x", started_x);
+    engine.load(songs[3..6].to_vec(), 0, 0, true).unwrap();
     for _ in 0..3_000 {
         pump.play();
         if events.starts().iter().any(|id| id == "d") {
@@ -1331,7 +1333,7 @@ fn device_reopens_are_counted() {
     let a = dir.join("a.wav");
     write_wav(&a, RATE, 2, &sine(300.0, RATE, 2, 0, RATE as usize * 5, 0.3));
     let (driver, pump) = NullDriver::driven(RATE, 2, None);
-    let trouble = driver.events();
+    let (trouble, refuse) = (driver.events(), driver.refusal());
     let engine = Engine::with_driver(Box::new(move || Box::new(driver)));
     let events = Arc::new(Recorder::default());
     engine.set_listener(events.clone());
@@ -1347,6 +1349,16 @@ fn device_reopens_are_counted() {
     wait_until("three reopens", || {
         pump.play();
         engine.device_reopens() == 3
+    });
+    // A device that will not open is not counted, however often it is tried.
+    refuse.store(true, Ordering::Release);
+    trouble.lock().unwrap().push(DeviceEvent::Lost("t".into()));
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(engine.device_reopens(), 3);
+    refuse.store(false, Ordering::Release);
+    wait_until("the fourth reopen", || {
+        pump.play();
+        engine.device_reopens() == 4
     });
     engine.shutdown();
 }

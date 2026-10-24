@@ -1146,6 +1146,8 @@ impl Player {
                 self.queue[next].item.duration_ms = Some(ms);
             }
             self.infos.insert(up_key, info);
+            #[cfg(test)]
+            self.shared.infos_len.store(self.infos.len(), std::sync::atomic::Ordering::Relaxed);
         }
         let Some(lane) = self.mixer.as_ref().and_then(|m| m.lane()) else { return };
         let failed = matches!(lane.current().status(), DeckStatus::Failed(_));
@@ -1660,12 +1662,14 @@ impl Player {
     // was heard; with no device open, since it was lost, from what was
     // heard last.
     fn reopen_output(&mut self, report: bool) {
-        self.shared.device_reopens.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let heard = self.shared.timeline.at(self.shared.heard_frame()).or(self.lost_at);
         self.driver.close();
         self.out = None;
         *self.shared.output.lock().unwrap_or_else(|e| e.into_inner()) = None;
         self.open_output(report);
+        if self.out.is_some() {
+            self.shared.device_reopens.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
         if self.mixer.is_none() || self.ended {
             self.lost_at = None;
             return;

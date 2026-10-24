@@ -137,7 +137,12 @@ fn windows_gpu() -> Option<(u64, u64)> {
             let dedicated = add("Dedicated Usage")?;
             let shared = add("Shared Usage")?;
             // "No data" here means this process has no graphics memory yet.
-            if PdhCollectQueryData(query) != 0 {
+            // PDH_NO_DATA (0x800007D5): the process has no GPU instances, so it holds none.
+            let status = PdhCollectQueryData(query);
+            if status == 0x800007D5 {
+                return Some((0, 0));
+            }
+            if status != 0 {
                 return None;
             }
             Some((sum(dedicated)?, sum(shared)?))

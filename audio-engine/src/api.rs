@@ -443,8 +443,9 @@ impl Engine {
         self.shared.underruns()
     }
 
-    /// How many times the output device was opened again since the engine
-    /// started: a device lost, the default moved, or an output chosen.
+    /// How many times a device was opened again and opened since the engine
+    /// started (a device lost and found, the default moved, or an output
+    /// chosen), not the attempts that found none.
     pub fn device_reopens(&self) -> u64 {
         self.shared.device_reopens.load(std::sync::atomic::Ordering::Relaxed)
     }
