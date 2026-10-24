@@ -43,7 +43,7 @@ struct StreamingSettingsPage: View {
                 }
             }
             SettingsGroup(title: "Downloads", icon: SettingsIcon.download) {
-                ChoiceRow(SettingsIndex.downloadQuality, value: kept.downloadQuality.downloadLabel, question: SettingsQuestion(
+                ChoiceRow(SettingsIndex.downloadQuality, value: kept.downloadQuality.downloadLabel, values: StreamQuality.allCases.map(\.downloadLabel), question: SettingsQuestion(
                     SettingsIndex.downloadQuality.title, StreamQuality.allCases, current: kept.downloadQuality,
                     answer: { quality in
                         quality == .original ? SettingsAnswer(StreamQuality.originalLabel)
