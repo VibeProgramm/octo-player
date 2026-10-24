@@ -5,13 +5,14 @@ import app.winters.octo.desktop.AppState
 import app.winters.octo.desktop.audio.EnginePlayer
 import app.winters.octo.desktop.copyWords
 import app.winters.octo.desktop.settings.AppPlaces
+import app.winters.octo.desktop.settings.AppSettings
 import app.winters.octo.desktop.settings.DesktopOs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
-import java.lang.management.ManagementFactory
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 import javax.swing.SwingUtilities
@@ -39,19 +40,22 @@ private const val MB = 1024L * 1024L
 // heap and CPU time.
 fun readMemory(reopens: () -> Long?): MemoryReading {
     val stats = runCatching { processStats() }.getOrNull()
-    val runtime = Runtime.getRuntime()
-    val cpuNanos = (ManagementFactory.getOperatingSystemMXBean() as? com.sun.management.OperatingSystemMXBean)?.processCpuTime
+    val cpuSeconds = runCatching { ProcessHandle.current().info().totalCpuDuration().map { it.seconds }.orElse(null) }.getOrNull()
+    val heap = runCatching {
+        val runtime = Runtime.getRuntime()
+        (runtime.totalMemory() - runtime.freeMemory()) / MB to runtime.totalMemory() / MB
+    }.getOrNull()
     return MemoryReading(
-        privateMb = stats?.privateBytes?.let { it.toLong() / MB },
-        workingSetMb = stats?.workingSet?.let { it.toLong() / MB },
-        handles = stats?.handles?.toLong(),
-        threads = stats?.threads?.toLong(),
-        gpuDedicatedMb = stats?.gpuDedicated?.let { it.toLong() / MB },
-        gpuSharedMb = stats?.gpuShared?.let { it.toLong() / MB },
-        ioOtherMb = stats?.ioOtherBytes?.let { it.toLong() / MB },
-        cpuSeconds = cpuNanos?.takeIf { it >= 0 }?.let { it / 1_000_000_000L },
-        heapUsedMb = (runtime.totalMemory() - runtime.freeMemory()) / MB,
-        heapCommittedMb = runtime.totalMemory() / MB,
+        privateMb = runCatching { stats?.privateBytes?.let { it.toLong() / MB } }.getOrNull(),
+        workingSetMb = runCatching { stats?.workingSet?.let { it.toLong() / MB } }.getOrNull(),
+        handles = runCatching { stats?.handles?.toLong() }.getOrNull(),
+        threads = runCatching { stats?.threads?.toLong() }.getOrNull(),
+        gpuDedicatedMb = runCatching { stats?.gpuDedicated?.let { it.toLong() / MB } }.getOrNull(),
+        gpuSharedMb = runCatching { stats?.gpuShared?.let { it.toLong() / MB } }.getOrNull(),
+        ioOtherMb = runCatching { stats?.ioOtherBytes?.let { it.toLong() / MB } }.getOrNull(),
+        cpuSeconds = cpuSeconds,
+        heapUsedMb = heap?.first ?: 0L,
+        heapCommittedMb = heap?.second ?: 0L,
         deviceReopens = runCatching(reopens).getOrNull(),
     )
 }
@@ -110,9 +114,9 @@ fun rendererText(window: java.awt.Window): String? {
         if (SwingUtilities.isEventDispatchThread()) {
             read()
         } else {
-            var text: String? = null
-            SwingUtilities.invokeAndWait { text = read() }
-            text
+            val f = java.util.concurrent.CompletableFuture<String?>()
+            SwingUtilities.invokeLater { f.complete(runCatching { read() }.getOrNull()) }
+            f.get(2, java.util.concurrent.TimeUnit.SECONDS)
         }
     }.getOrNull()
 }
@@ -149,29 +153,41 @@ fun bugDetails(
 }
 
 // Puts the bug report on the clipboard, with a notice that it is there.
-fun copyBugDetails(app: AppState, window: java.awt.Window?, logs: File) {
-    val settings = app.settings.current
-    val shown = window ?: java.awt.Window.getWindows().firstOrNull { findSkiaLayer(it) != null }
-    val choices = buildList {
-        add("animated art" to settings.appearance.animatedArt)
-        add("ambience" to settings.appearance.ambience.name)
-        add("wash moving" to settings.appearance.wash.moving.toString())
-        add("ambient glow" to settings.appearance.ambientGlow.toString())
-        add("Discord status" to settings.discord.on.toString())
-        add("close to tray" to settings.system.closeToTray.toString())
-        add("mini player open" to settings.system.miniPlayerOpen.toString())
-        add("start in tray" to settings.system.startInTray.toString())
-        app.library?.index?.songs?.size?.let { add("library songs" to it.toString()) }
+suspend fun copyBugDetails(app: AppState, window: java.awt.Window?, logs: File) {
+    val text = withContext(Dispatchers.IO) {
+        runCatching {
+            val renderer = window?.let(::rendererText) ?: java.awt.Window.getWindows().firstNotNullOfOrNull(::rendererText)
+            bugDetails(
+                version = System.getProperty("octo.version"),
+                renderer = renderer,
+                uptimeMs = runCatching {
+                    ProcessHandle.current().info().startInstant()
+                        .map { java.time.Duration.between(it, java.time.Instant.now()).toMillis() }.orElse(0L)
+                }.getOrDefault(0L),
+                reading = readMemory { (app.player as? EnginePlayer)?.engine?.deviceReopens() },
+                settings = bugSettings(app.settings.current, app.library?.index?.songs?.size),
+                logLines = MemoryLog(logs).lastLines(24),
+            )
+        }.getOrNull()
     }
-    val text = bugDetails(
-        version = System.getProperty("octo.version"),
-        renderer = shown?.let(::rendererText),
-        uptimeMs = ManagementFactory.getRuntimeMXBean().uptime,
-        reading = readMemory { (app.player as? EnginePlayer)?.engine?.deviceReopens() },
-        settings = choices,
-        logLines = MemoryLog(logs).lastLines(24),
-    )
-    app.copyWords(text, "Copied the details.")
+    if (text != null) {
+        withContext(Dispatchers.Main) { app.copyWords(text, "Copied the details.") }
+    }
+}
+
+// The settings a bug report names: choices only, never an address, name or
+// certificate.
+internal fun bugSettings(settings: AppSettings, songs: Int?): List<Pair<String, String>> = buildList {
+    add("animated art" to settings.appearance.animatedArt)
+    add("ambience" to settings.appearance.ambience.name)
+    add("wash moving" to settings.appearance.wash.moving.toString())
+    add("ambient glow" to settings.appearance.ambientGlow.toString())
+    add("Discord status" to settings.discord.on.toString())
+    add("close to tray" to settings.system.closeToTray.toString())
+    add("mini player open" to settings.system.miniPlayerOpen.toString())
+    add("start in tray" to settings.system.startInTray.toString())
+    add("side panel" to (settings.sidePanel ?: "none"))
+    songs?.let { add("library songs" to it.toString()) }
 }
 
 private fun nowText(): String =LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS).toString()
@@ -192,11 +208,12 @@ fun startMemoryLog(
                     "os=${System.getProperty("os.name")} ${System.getProperty("os.version")} java=${System.getProperty("java.version")}",
             )
             var rendererLogged = false
-            var minute = 1L
+            val started = System.currentTimeMillis()
             delay(60_000)
             while (true) {
                 runCatching {
                     val (window, playing) = state()
+                    val minute = (System.currentTimeMillis() - started) / 60_000
                     log.append(memoryLine(nowText(), minute, readMemory(reopens), window, playing))
                     if (!rendererLogged) {
                         renderer()?.let {
@@ -206,7 +223,6 @@ fun startMemoryLog(
                     }
                 }
                 delay(10 * 60_000L)
-                minute += 10
             }
         }
     }

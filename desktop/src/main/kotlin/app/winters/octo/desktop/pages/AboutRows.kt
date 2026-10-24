@@ -94,7 +94,7 @@ internal fun AboutRows(app: AppState, settings: AppSettings) {
     }
     Group("Help") {
         SettingRow("Details for a bug report", "Version, graphics and memory, to paste into an issue.") {
-            RowAction("Copy", { copyBugDetails(app, null, logFolder(app.os)) })
+            RowAction("Copy", { app.scope.launch { copyBugDetails(app, null, logFolder(app.os)) } })
         }
     }
 }

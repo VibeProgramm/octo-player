@@ -1,5 +1,6 @@
 package app.winters.octo.desktop.system
 
+import app.winters.octo.desktop.settings.AppSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -34,6 +35,25 @@ class MemoryLogTest {
         lines.forEach(log::append)
         assertEquals(listOf("memory.log", "memory.log.1"), dir.list()!!.sorted())
         assertEquals(lines.takeLast(5), log.lastLines(5))
+        assertEquals(lines.subList(13, 20), log.lastLines(7))
+    }
+
+    @Test
+    fun theBugSettingsHoldNoCertificateOrSearch() {
+        val settings = AppSettings(
+            trustedCertificates = mapOf("music.example.com" to "ab"),
+            recentSearches = listOf("me@example.com"),
+        )
+        val text = bugDetails("1.2.3", null, 0, unknown, bugSettings(settings, 5), emptyList())
+        assertFalse(text.contains("example.com"))
+        assertFalse(text.contains("@"))
+        assertTrue(text.contains("side panel=none"))
+    }
+
+    @Test
+    fun aReadingNeverThrowsAndKnowsTheCpuTime() {
+        val r = readMemory { 1L }
+        assertNotNull(r.cpuSeconds)
     }
 
     @Test
