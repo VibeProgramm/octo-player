@@ -1283,3 +1283,82 @@ fn a_live_stream_paused_a_long_while_starts_again_where_it_is_now() {
     assert!(engine.position().position_ms < 2_000.0, "{}", engine.position().position_ms);
     engine.shutdown();
 }
+
+#[test]
+fn the_player_keeps_infos_only_for_queued_songs() {
+    let dir = temp_dir();
+    let songs: Vec<QueueItem> = ["a", "b", "c", "d", "e", "f", "x"]
+        .iter()
+        .map(|id| {
+            let path = dir.join(format!("{id}.wav"));
+            write_wav(&path, RATE, 2, &sine(300.0, RATE, 2, 0, RATE as usize * 3, 0.3));
+            item(id, &path)
+        })
+        .collect();
+    let (driver, pump) = NullDriver::driven(RATE, 2, None);
+    let engine = Engine::with_driver(Box::new(move || Box::new(driver)));
+    let events = Arc::new(Recorder::default());
+    engine.set_listener(events.clone());
+    let mut first = songs[..3].to_vec();
+    first.push(songs[6].clone());
+    engine.load(first, 0, 0, true).unwrap();
+    let started_x = || events.starts().iter().any(|id| id == "x");
+    for _ in 0..3_000 {
+        pump.play();
+        if started_x() {
+            break;
+        }
+    }
+    wait_until("the start of x", started_x);
+    engine.load(songs[3..6].to_vec(), 0, 0, true).unwrap();
+    for _ in 0..3_000 {
+        pump.play();
+        if events.starts().iter().any(|id| id == "d") {
+            break;
+        }
+    }
+    wait_until("the start of d", || events.starts().iter().any(|id| id == "d"));
+    // About 2 s more.
+    for _ in 0..200 {
+        pump.play();
+    }
+    // Three queued and the heard one.
+    assert!(engine.infos_len() <= 4, "infos kept {}", engine.infos_len());
+    engine.shutdown();
+}
+
+#[test]
+fn device_reopens_are_counted() {
+    let dir = temp_dir();
+    let a = dir.join("a.wav");
+    write_wav(&a, RATE, 2, &sine(300.0, RATE, 2, 0, RATE as usize * 5, 0.3));
+    let (driver, pump) = NullDriver::driven(RATE, 2, None);
+    let (trouble, refuse) = (driver.events(), driver.refusal());
+    let engine = Engine::with_driver(Box::new(move || Box::new(driver)));
+    let events = Arc::new(Recorder::default());
+    engine.set_listener(events.clone());
+    engine.load(vec![item("a", &a)], 0, 0, true).unwrap();
+    pump.play();
+    events.wait_for("start", Duration::from_secs(10), |e| matches!(e, EngineEvent::TrackStarted { .. }));
+    for _ in 0..3 {
+        trouble.lock().unwrap().push(DeviceEvent::Lost("t".into()));
+        for _ in 0..5 {
+            pump.play();
+        }
+    }
+    wait_until("three reopens", || {
+        pump.play();
+        engine.device_reopens() == 3
+    });
+    // A device that will not open is not counted, however often it is tried.
+    refuse.store(true, Ordering::Release);
+    trouble.lock().unwrap().push(DeviceEvent::Lost("t".into()));
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(engine.device_reopens(), 3);
+    refuse.store(false, Ordering::Release);
+    wait_until("the fourth reopen", || {
+        pump.play();
+        engine.device_reopens() == 4
+    });
+    engine.shutdown();
+}

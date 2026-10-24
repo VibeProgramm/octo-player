@@ -701,9 +701,13 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_octo_audio_checksum_func_graphic_bands(
     ): Int
+    external fun uniffi_octo_audio_checksum_func_process_stats(
+    ): Int
     external fun uniffi_octo_audio_checksum_func_loop_video_available(
     ): Int
     external fun uniffi_octo_audio_checksum_method_engine_current_device(
+    ): Int
+    external fun uniffi_octo_audio_checksum_method_engine_device_reopens(
     ): Int
     external fun uniffi_octo_audio_checksum_method_engine_devices(
     ): Int
@@ -836,6 +840,8 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_octo_audio_fn_method_engine_current_device(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_octo_audio_fn_method_engine_device_reopens(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
     external fun uniffi_octo_audio_fn_method_engine_devices(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_octo_audio_fn_method_engine_enqueue(`ptr`: Long,`items`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -945,6 +951,8 @@ internal object UniffiLib {
     external fun uniffi_octo_audio_fn_func_equalizer_presets(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_octo_audio_fn_func_graphic_bands(uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_octo_audio_fn_func_process_stats(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_octo_audio_fn_func_loop_video_available(uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
@@ -1073,10 +1081,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_octo_audio_checksum_func_graphic_bands() and 0xFFFF) != 40024) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_octo_audio_checksum_func_process_stats() and 0xFFFF) != 56945) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_octo_audio_checksum_func_loop_video_available() and 0xFFFF) != 58253) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_octo_audio_checksum_method_engine_current_device() and 0xFFFF) != 45769) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_octo_audio_checksum_method_engine_device_reopens() and 0xFFFF) != 59436) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_octo_audio_checksum_method_engine_devices() and 0xFFFF) != 33937) {
@@ -1743,6 +1757,12 @@ public interface EngineInterface {
     fun `currentDevice`(): OutputDevice?
     
     /**
+     * How many times the output device was opened again since the engine
+     * started: a device lost, the default moved, or an output chosen.
+     */
+    fun `deviceReopens`(): kotlin.ULong
+    
+    /**
      * The sound devices there are now.
      */
     fun `devices`(): List<OutputDevice>
@@ -2037,6 +2057,23 @@ open class Engine: Disposable, AutoCloseable, EngineInterface
     callWithHandle {
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_octo_audio_fn_method_engine_current_device(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * How many times the output device was opened again since the engine
+     * started: a device lost, the default moved, or an output chosen.
+     */override fun `deviceReopens`(): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_octo_audio_fn_method_engine_device_reopens(
         it,
         _status)
 }
@@ -4098,6 +4135,90 @@ public object FfiConverterTypePlaybackPosition: FfiConverterRustBuffer<PlaybackP
             FfiConverterOptionalUInt.write(value.`index`, buf)
             FfiConverterDouble.write(value.`positionMs`, buf)
             FfiConverterOptionalULong.write(value.`durationMs`, buf)
+    }
+}
+
+
+
+data class ProcessStats (
+    /**
+     * Private bytes (Task Manager's "Commit size"): memory only this process holds.
+     */
+    val `privateBytes`: kotlin.ULong?
+    , 
+    /**
+     * The working set: the process's memory that is in RAM now.
+     */
+    val `workingSet`: kotlin.ULong?
+    , 
+    /**
+     * Open handles (Task Manager's "Handles").
+     */
+    val `handles`: kotlin.UInt?
+    , 
+    /**
+     * Running threads (Task Manager's "Threads").
+     */
+    val `threads`: kotlin.UInt?
+    , 
+    /**
+     * "GPU dedicated memory": video memory used by this process.
+     */
+    val `gpuDedicated`: kotlin.ULong?
+    , 
+    /**
+     * "GPU shared memory": system memory the graphics card uses for this process.
+     */
+    val `gpuShared`: kotlin.ULong?
+    , 
+    /**
+     * "I/O other bytes" (Process Explorer): where socket reads land.
+     */
+    val `ioOtherBytes`: kotlin.ULong?
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeProcessStats: FfiConverterRustBuffer<ProcessStats> {
+    override fun read(buf: ByteBuffer): ProcessStats {
+        return ProcessStats(
+            FfiConverterOptionalULong.read(buf),
+            FfiConverterOptionalULong.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalULong.read(buf),
+            FfiConverterOptionalULong.read(buf),
+            FfiConverterOptionalULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ProcessStats) = (
+            FfiConverterOptionalULong.allocationSize(value.`privateBytes`) +
+            FfiConverterOptionalULong.allocationSize(value.`workingSet`) +
+            FfiConverterOptionalUInt.allocationSize(value.`handles`) +
+            FfiConverterOptionalUInt.allocationSize(value.`threads`) +
+            FfiConverterOptionalULong.allocationSize(value.`gpuDedicated`) +
+            FfiConverterOptionalULong.allocationSize(value.`gpuShared`) +
+            FfiConverterOptionalULong.allocationSize(value.`ioOtherBytes`)
+    )
+
+    override fun write(value: ProcessStats, buf: ByteBuffer) {
+            FfiConverterOptionalULong.write(value.`privateBytes`, buf)
+            FfiConverterOptionalULong.write(value.`workingSet`, buf)
+            FfiConverterOptionalUInt.write(value.`handles`, buf)
+            FfiConverterOptionalUInt.write(value.`threads`, buf)
+            FfiConverterOptionalULong.write(value.`gpuDedicated`, buf)
+            FfiConverterOptionalULong.write(value.`gpuShared`, buf)
+            FfiConverterOptionalULong.write(value.`ioOtherBytes`, buf)
     }
 }
 
@@ -6314,6 +6435,19 @@ public object FfiConverterSequenceTypeTrustedCertificate: FfiConverterRustBuffer
             return FfiConverterSequenceFloat.lift(
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_octo_audio_fn_func_graphic_bands(
+    
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * The counters now; each is `None` when it cannot be read.
+         */ fun `processStats`(): ProcessStats {
+            return FfiConverterTypeProcessStats.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_octo_audio_fn_func_process_stats(
     
         _status)
 }
