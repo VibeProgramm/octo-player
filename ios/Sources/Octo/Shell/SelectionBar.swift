@@ -116,6 +116,8 @@ private struct SelectableSongs: ViewModifier {
                 target?.remove = onRemove
                 selection.keepOnly(Set(keys))
             }
+            // Remove can come and go without the songs changing (the family details load).
+            .onChange(of: onRemove == nil) { target?.remove = onRemove }
     }
 }
 

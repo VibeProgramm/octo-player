@@ -990,10 +990,10 @@ struct PlaylistPage: View {
         .inlineTitle(summary?.name ?? "")
         .backAction(reordering ? { editMode = .inactive } : nil)
         .backStopsPicking()
-        .selectableSongs(state.pickables(rows)) { picked in
+        .selectableSongs(state.pickables(rows), onRemove: summary.map(takesOut) == true ? { picked in
             guard let summary else { return }
             actions.remove(picked.compactMap { Int64($0.key) }, from: summary)
-        }
+        } : nil)
         .task(id: "\(id)|\(library.stamp(.playlists, .library))") { await readPage() }
     }
 

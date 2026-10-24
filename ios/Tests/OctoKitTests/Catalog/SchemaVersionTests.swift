@@ -54,6 +54,20 @@ import Testing
         #expect(row.syncedSongs == nil)
     }
 
+    @Test func openingTwiceStaysAtTheCurrentVersionAndKeepsRows() throws {
+        let path = tempPath()
+        defer { for end in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + end) } }
+        do {
+            let db = try SQLiteDatabase(path: path)
+            try Schema.open(db)
+            try db.execute("INSERT INTO playlist (id, name, createdAt, updatedAt) VALUES ('p', 'Mix', 1, 2)")
+        }
+        let db = try SQLiteDatabase(path: path)
+        try Schema.open(db)
+        #expect(db.userVersion == 3)
+        #expect(try db.rows(PlaylistRow.self, "SELECT * FROM playlist").map(\.id) == ["p"])
+    }
+
     @Test func theStoreThrowsForANewerFileSoTheAppOpensAFreshOne() throws {
         let path = tempPath()
         defer { for end in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + end) } }

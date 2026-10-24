@@ -146,18 +146,26 @@ enum Schema {
 
     /// Makes the tables, or brings a file from an older version up to `version`. A file written
     /// by a newer Octo is left exactly as it is and `NewerCatalogFile` is thrown, so the app
-    /// opens a fresh catalog in its place, as it does for a file it cannot read.
+    /// opens a fresh catalog in its place, as it does for a file it cannot read. The work runs
+    /// in one transaction, so an upgrade cut short leaves the file as it was.
     static func open(_ db: SQLiteDatabase, version: Int = Schema.version, migrations: [Int: String] = Schema.migrations) throws {
         let found = db.userVersion
         if found > version { throw NewerCatalogFile(found: found, known: version) }
-        if found == 0 {
-            try db.execute(create)
-        } else {
-            for step in found..<version {
-                if let sql = migrations[step] { try db.execute(sql) }
+        try db.execute("BEGIN IMMEDIATE")
+        do {
+            if found == 0 {
+                try db.execute(create)
+            } else {
+                for step in found..<version {
+                    if let sql = migrations[step] { try db.execute(sql) }
+                }
+                try db.execute(create)
             }
-            try db.execute(create)
+            try db.execute("PRAGMA user_version = \(version)")
+            try db.execute("COMMIT")
+        } catch {
+            try? db.execute("ROLLBACK")
+            throw error
         }
-        db.userVersion = version
     }
 }
