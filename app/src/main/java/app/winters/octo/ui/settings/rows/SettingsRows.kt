@@ -252,7 +252,7 @@ private fun RowScope.TitleValue(
     answers: List<String> = emptyList(),
     belows: List<String> = emptyList(),
 ) {
-    val measurer = rememberTextMeasurer(cacheSize = 32)
+    val measurer = rememberTextMeasurer(cacheSize = 64)
     Layout(
         content = {
             Column {
@@ -308,16 +308,9 @@ private fun RowScope.TitleValue(
             wide
         } else {
             val byWidth = ones.entries.sortedByDescending { it.value }
-            val twos = byWidth.map { twoLines(it.key) }
-            val labelWide = labelHeight(wide)
-            val rowWide = maxOf(labelWide, valueHeight(wide))
-            (1 until byWidth.size).asSequence()
-                .map { k -> maxOf(byWidth[k].value, twos.take(k).max()) }
-                .filter { it < wide }
-                .firstOrNull { step ->
-                    val labelStep = labelHeight(step)
-                    labelStep < labelWide && maxOf(labelStep, valueHeight(step)) <= rowWide
-                } ?: wide
+            narrowValue(wide, byWidth.map { it.value }, byWidth.map { twoLines(it.key) }, ::labelHeight) { w ->
+                maxOf(labelHeight(w), valueHeight(w))
+            }
         }
         val shown = reading.measure(Constraints.fixedWidth(width))
         val words = label.measure(Constraints(maxWidth = room - width))
@@ -343,6 +336,22 @@ private fun RowScope.TitleValue(
 // and the most of the row a value may take.
 private val TitleValueGap = 12.dp
 private const val ValueShare = 0.8f / 1.8f
+
+// The value width a row settles on when its value may narrow: `ones` and
+// `twos` are its answers' one-line and two-line widths, widest first, and
+// `label` and `row` give the title side's and the whole row's height at a
+// value width. Each step is as wide as the next answer down, the wider
+// ones wrapping to two lines; the first step that takes a line off the
+// title's side with the row no taller wins, else `wide`.
+internal fun narrowValue(wide: Int, ones: List<Int>, twos: List<Int>, label: (Int) -> Int, row: (Int) -> Int): Int {
+    val labelAtWide = label(wide)
+    val rowAtWide = row(wide)
+    return (1 until ones.size).asSequence()
+        .map { k -> maxOf(ones[k], twos.take(k).max()) }
+        .filter { it < wide }
+        .distinct()
+        .firstOrNull { step -> label(step) < labelAtWide && row(step) <= rowAtWide } ?: wide
+}
 
 // An icon tinted to its place, or a brand's mark in its own colours.
 @Composable
