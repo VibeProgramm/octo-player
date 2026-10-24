@@ -334,7 +334,7 @@ struct Reading: View {
     var body: some View {
         ZStack(alignment: .trailing) {
             ForEach(Array(answers.enumerated()), id: \.offset) { _, answer in
-                Text(answer).font(.octoBodySmall).multilineTextAlignment(.trailing).lineLimit(2).hidden()
+                Text(answer).font(.octoBodySmall).multilineTextAlignment(.trailing).lineLimit(2).hidden().accessibilityHidden(true)
             }
             Text(value)
                 .font(.octoBodySmall)
