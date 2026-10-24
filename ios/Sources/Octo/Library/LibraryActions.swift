@@ -315,12 +315,13 @@ final class LibraryActions {
         }
     }
 
-    /// Asks before a playlist goes; one kept with the server goes from there too. `deleted` runs
-    /// once it is gone.
+    /// Asks before a playlist goes; one kept with the server goes from there too, and a family
+    /// playlist goes for the whole family. `deleted` runs once it is gone.
     func askDeletePlaylist(_ playlist: PlaylistSummary, deleted: (@MainActor () -> Void)? = nil) {
         question = Question(title: "Delete \"\(playlist.name)\"?",
-                            detail: playlist.onServer ? "It is deleted from your server too. The songs stay in your library."
-                                : "The songs stay in your library.",
+                            detail: playlist.family ? "It's deleted for everyone in the family. The songs stay in your library."
+                                : (playlist.onServer ? "It is deleted from your server too. The songs stay in your library."
+                                    : "The songs stay in your library."),
                             confirm: "Delete") { [weak self] in
             self?.delete(playlist)
             deleted?()

@@ -10,7 +10,7 @@ extension PlaylistRow {
     var edited: Bool { syncedAt == nil || updatedAt > (syncedAt ?? 0) }
 
     var linked: LinkedPlaylist? {
-        serverId.map { LinkedPlaylist(id, $0, name, edited, syncedName, serverStamp) }
+        serverId.map { LinkedPlaylist(id, $0, name, edited, syncedName, serverStamp, family: family) }
     }
 }
 
@@ -37,6 +37,8 @@ final class PlaylistSync {
     @ObservationIgnored private var waits: [String: Task<Void, Never>] = [:]
     /// When the server's playlists were last brought together with the phone's.
     @ObservationIgnored private var reconciledAt: Int64 = 0
+    /// The signed-in account as the family sees it, when Family is on (set by AccountHooks).
+    @ObservationIgnored var familyMe: @MainActor () -> FamilyMe? = { nil }
 
     init(session: Session, library: Library, discovery: ServerDiscovery, sync: ServerSync) {
         self.session = session
@@ -177,6 +179,13 @@ final class PlaylistSync {
             guard let serverId = row.serverId, let notice = notices[serverId], notice != row.octoNotice else { continue }
             try? await store.markNotice(row.id, notice: notice)
         }
+        // Which of them the server lists as the family's.
+        var families: [String: Bool] = [:]
+        for playlist in keep { families[playlist.id] = isFamilyPlaylist(owner: playlist.owner, username: server.username) }
+        for row in (try? await store.serverPlaylists(server.sourceId)) ?? [] {
+            guard let serverId = row.serverId, let isFamily = families[serverId], isFamily != row.family else { continue }
+            try? await store.markFamily(row.id, family: isFamily)
+        }
     }
 
     private func run(_ server: ServerInUse, _ step: PlaylistStep) async throws {
@@ -213,10 +222,14 @@ final class PlaylistSync {
         let store = library.store
         let full = try await server.client.fullPlaylist(serverId)
         guard let rows = await rowsOf(full) else { return }
+        let isFamily = isFamilyPlaylist(owner: full.owner, username: server.username)
+        let songs = syncedSongsText(full.entry.map(\.id))
         for playlist in try await store.phonePlaylists() where playlist.name == full.name {
             if try await store.playlistItems(playlist.id).map(\.trackId) == rows.map(\.trackId) {
                 try await store.linkPlaylist(playlist.id, serverId: serverId, sourceId: server.sourceId, syncedAt: playlist.updatedAt,
                                              name: playlist.name, stamp: stamp)
+                try await store.markFamily(playlist.id, family: isFamily)
+                try await store.markFamilyBase(playlist.id, songs: songs)
                 return
             }
         }
@@ -224,7 +237,8 @@ final class PlaylistSync {
         let at = min(epochMs(full.changed) ?? now, now)
         let id = UUID().uuidString.lowercased()
         let row = PlaylistRow(id: id, name: full.name, createdAt: min(epochMs(full.created) ?? at, at), updatedAt: at,
-                              serverId: serverId, sourceId: server.sourceId, syncedAt: at, syncedName: full.name, serverStamp: stamp)
+                              serverId: serverId, sourceId: server.sourceId, syncedAt: at, syncedName: full.name, serverStamp: stamp,
+                              family: isFamily, syncedSongs: songs)
         try await store.insertServerPlaylist(row, items: await items(id, rows))
     }
 
@@ -235,10 +249,12 @@ final class PlaylistSync {
         guard let before = try await store.playlist(localId) else { return }
         let full = try await server.client.fullPlaylist(serverId)
         guard let fromServer = await rowsOf(full) else { return }
-        let local = try await store.playlistItems(before.id).map { PlaylistSyncRow($0.trackId, $0.serverSongId) }
+        let localItems = try await store.playlistItems(before.id)
+        let local = localItems.map { PlaylistSyncRow($0.trackId, $0.serverSongId) }
         let copies = try await serverCopies(server.sourceId, local.map(\.trackId))
         let rows = withPhoneOnly(fromServer, local) { serverSongFor($0, copies[$0.trackId] ?? []) == nil }
         var updated = before
+        updated.syncedSongs = syncedSongsText(full.entry.map(\.id))
         if keepName {
             // Still counts as changed here until the name reaches the server.
             updated.serverStamp = stamp
@@ -250,7 +266,8 @@ final class PlaylistSync {
             updated.syncedName = full.name
             updated.serverStamp = stamp
         }
-        guard try await store.takeServerSongs(expected: before, items: await items(before.id, rows), updated: updated) else { return }
+        let ids = await items(before.id, rows, ids: before.family ? keptRowIds(localItems.map { (id: $0.id, trackId: $0.trackId) }, rows) : [])
+        guard try await store.takeServerSongs(expected: before, items: ids, updated: updated) else { return }
         if keepName {
             try await server.client.updatePlaylist(serverId, name: before.name)
             guard let after = try await listingStamp(server, serverId) else { return }
@@ -262,6 +279,11 @@ final class PlaylistSync {
     /// settled like a sync would instead.
     private func push(_ server: ServerInUse, _ playlist: PlaylistRow) async throws {
         guard let serverId = playlist.serverId, let linked = playlist.linked else { return }
+        // A family playlist is never replaced whole: its own changes go on top.
+        if playlist.family {
+            try await pushFamily(server, playlist, serverId)
+            return
+        }
         let client = server.client
         let listed = try await client.fullPlaylists().first { $0.id == serverId }
             .map { ServerPlaylist($0.id, $0.name, stampOf($0.changed, $0.songCount)) }
@@ -290,6 +312,59 @@ final class PlaylistSync {
         try await library.store.markSynced(playlist.id, syncedAt: playlist.updatedAt, name: playlist.name, stamp: after)
     }
 
+    /// Sends a family playlist's own changes since both sides last agreed, on top of everyone
+    /// else's: songs taken out here by their place in the server's list now, songs added here at
+    /// the end, then its name. The phone then takes the server's list and name. Removals wait
+    /// while the server shows fewer songs than it holds (one it could not read), since places
+    /// count over all of them; a listener who hears only clean songs sees too few of them to take
+    /// any out, so theirs come back instead.
+    private func pushFamily(_ server: ServerInUse, _ playlist: PlaylistRow, _ serverId: String) async throws {
+        let client = server.client
+        let store = library.store
+        let there = try await client.fullPlaylist(serverId)
+        let current = there.entry.map(\.id)
+        let phone = try await familySongsToSend(server, playlist.id)
+        let base = syncedSongsOf(playlist.syncedSongs) ?? phone
+        let wanted = familyChanges(base: base, phone: phone, current: current)
+        let cleanOnly = familyMe()?.abilities.cleanOnly == true
+        var miscount = false
+        if !cleanOnly && !wanted.removeAt.isEmpty {
+            let listed = try await client.fullPlaylists().first { $0.id == serverId }
+            miscount = listed?.songCount != current.count
+        }
+        let changes = cleanOnly || miscount ? FamilyChanges(removeAt: [], add: wanted.add) : wanted
+        if !changes.none {
+            try await client.updatePlaylist(serverId, songIdsToAdd: changes.add, songIndexesToRemove: changes.removeAt, formPost: server.formPost)
+            // Kept before anything else can fail, so nothing is sent twice.
+            try await store.markFamilyBase(playlist.id, songs: syncedSongsText(miscount ? base + changes.add : phone))
+        }
+        if playlist.name != playlist.syncedName && playlist.name != there.name {
+            do {
+                try await client.updatePlaylist(serverId, name: playlist.name)
+            } catch let OctoError.server(code, _) where code == 50 {
+                // Only its maker or a family manager may rename it; the server's name comes back below.
+            }
+        }
+        // Still changed here: sent again once the server shows every song.
+        if miscount { return }
+        guard let stamp = try await listingStamp(server, serverId) else { return }
+        let full = try await client.fullPlaylist(serverId)
+        guard let fromServer = await rowsOf(full) else { return }
+        let localItems = try await store.playlistItems(playlist.id)
+        let local = localItems.map { PlaylistSyncRow($0.trackId, $0.serverSongId) }
+        let copies = try await serverCopies(server.sourceId, local.map(\.trackId))
+        let rows = withPhoneOnly(fromServer, local) { serverSongFor($0, copies[$0.trackId] ?? []) == nil }
+        var updated = playlist
+        let at = max(epochNowMs(), playlist.updatedAt + 1)
+        updated.name = full.name
+        updated.updatedAt = at
+        updated.syncedAt = at
+        updated.syncedName = full.name
+        updated.serverStamp = stamp
+        updated.syncedSongs = syncedSongsText(full.entry.map(\.id))
+        _ = try await store.takeServerSongs(expected: playlist, items: await items(playlist.id, rows, ids: keptRowIds(localItems.map { (id: $0.id, trackId: $0.trackId) }, rows)), updated: updated)
+    }
+
     /// Makes a phone playlist on the server and links the two.
     private func create(_ server: ServerInUse, _ playlist: PlaylistRow) async throws {
         guard playlist.serverId == nil, playlist.sourceId == server.sourceId else { return }
@@ -313,6 +388,8 @@ final class PlaylistSync {
             try await server.client.deletePlaylist(serverId)
         } catch OctoError.notFound {
             // Already gone.
+        } catch let OctoError.server(code, _) where code == 50 {
+            // Not allowed (a family playlist for anyone but a manager): never tried again; it comes back to the phone with the next sync.
         }
         removeDeleted(server.account, serverId)
     }
@@ -323,6 +400,15 @@ final class PlaylistSync {
         let rows = try await library.store.playlistItems(localId).map { PlaylistSyncRow($0.trackId, $0.serverSongId) }
         let copies = try await serverCopies(server.sourceId, rows.map(\.trackId))
         return rows.compactMap { serverSongFor($0, copies[$0.trackId] ?? []) }
+    }
+
+    /// A family playlist's songs as the server knows them: each song from the server's copy by the
+    /// id the server gave it, a song added here by its copy on the server; songs only on the phone
+    /// left out.
+    private func familySongsToSend(_ server: ServerInUse, _ localId: String) async throws -> [String] {
+        let rows = try await library.store.playlistItems(localId).map { PlaylistSyncRow($0.trackId, $0.serverSongId) }
+        let copies = try await serverCopies(server.sourceId, rows.map(\.trackId))
+        return rows.compactMap { $0.serverSongId ?? serverSongFor($0, copies[$0.trackId] ?? []) }
     }
 
     /// Each library song's copies on this server, by song.
@@ -341,11 +427,13 @@ final class PlaylistSync {
         return serverRows(playlist.entry.map(\.id), ids)
     }
 
-    private func items(_ playlistId: String, _ rows: [PlaylistSyncRow]) async -> [PlaylistItem] {
+    /// The rows of a playlist's songs, each keeping the id given for its place (0 for a new one).
+    private func items(_ playlistId: String, _ rows: [PlaylistSyncRow], ids: [Int64?] = []) async -> [PlaylistItem] {
         var keys: [String: String] = [:]
         for track in await library.tracks(ids: rows.map(\.trackId).filter { !isFind($0) }) { keys[track.id] = track.relinkKey }
         return rows.enumerated().map { position, row in
-            PlaylistItem(playlistId: playlistId, trackId: row.trackId, relinkKey: keys[row.trackId] ?? "", position: position,
+            PlaylistItem(id: ids.indices.contains(position) ? (ids[position] ?? 0) : 0,
+                         playlistId: playlistId, trackId: row.trackId, relinkKey: keys[row.trackId] ?? "", position: position,
                          serverSongId: row.serverSongId)
         }
     }
@@ -356,11 +444,10 @@ final class PlaylistSync {
     }
 
     /// For a server too old to answer with the playlist it made: the newest one of the user's by
-    /// that name that no phone playlist is linked to.
+    /// that name that no phone playlist is linked to (never a family playlist).
     private func newestNamed(_ server: ServerInUse, _ name: String) async throws -> String? {
         let linked = Set(try await library.store.serverPlaylists(server.sourceId).compactMap(\.serverId))
-        return importable(try await server.client.fullPlaylists(), stationIds: [], username: server.username)
-            .filter { $0.name == name && !linked.contains($0.id) }
+        return newestNamedCandidates(try await server.client.fullPlaylists(), name: name, username: server.username, linked: linked)
             .max { ($0.created ?? "") < ($1.created ?? "") }?.id
     }
 
