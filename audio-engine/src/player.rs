@@ -1725,11 +1725,11 @@ impl Player {
         if self.device_choice.is_none() && self.last_default_check.elapsed() > DEFAULT_DEVICE_CHECK {
             self.last_default_check = Instant::now();
             let current = out.opened.device.id.clone();
-            if let Some(default) = self.driver.default_device()
+            if let Some(default_id) = self.driver.default_device_id()
                 && !current.is_empty()
-                && default.id != current
+                && default_id != current
             {
-                log::info!("default device is now {}", default.name);
+                log::info!("default device is now {default_id}");
                 self.reopen_output(true);
                 return;
             }

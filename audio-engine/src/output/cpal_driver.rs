@@ -74,6 +74,16 @@ impl Driver for CpalDriver {
         Self::describe(&device, Some(&id))
     }
 
+    // cpal 0.18.2's Device::id never frees the string Windows hands back
+    // (fixed on cpal's main branch, not released), and this is asked
+    // every 2 s, so Windows reads the id itself. Drop this once a cpal
+    // release has the fix.
+    #[cfg(windows)]
+    fn default_device_id(&mut self) -> Option<String> {
+        let raw = wasapi_default_render_id()?;
+        Some(cpal::DeviceId::new(self.host.id(), raw).to_string())
+    }
+
     fn open(
         &mut self,
         id: Option<&str>,
@@ -188,6 +198,38 @@ fn device_event(kind: cpal::ErrorKind, why: impl FnOnce() -> String) -> Option<D
     }
 }
 
+// The default playback endpoint's id: the string Windows gives is
+// copied, then freed. One enumerator per thread, never released (as
+// cpal keeps its own), so nothing runs after COM goes at thread exit.
+#[cfg(windows)]
+fn wasapi_default_render_id() -> Option<String> {
+    use std::cell::RefCell;
+    use std::mem::ManuallyDrop;
+    use windows::Win32::Media::Audio::{IMMDeviceEnumerator, MMDeviceEnumerator, eConsole, eRender};
+    use windows::Win32::System::Com::{
+        CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree,
+    };
+    thread_local! {
+        static ENUMERATOR: RefCell<Option<ManuallyDrop<IMMDeviceEnumerator>>> = const { RefCell::new(None) };
+    }
+    ENUMERATOR.with(|slot| unsafe {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            // Already up on this thread, or up in another mode: either
+            // way the calls below work.
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            *slot = CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
+                .ok()
+                .map(ManuallyDrop::new);
+        }
+        let device = slot.as_ref()?.GetDefaultAudioEndpoint(eRender, eConsole).ok()?;
+        let id = device.GetId().ok()?;
+        let text = id.to_string().ok();
+        CoTaskMemFree(Some(id.0 as *const _));
+        text
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,5 +251,58 @@ mod tests {
         // An underrun, a busy moment or a backend's own error is carried on through.
         assert!(device_event(cpal::ErrorKind::Xrun, String::new).is_none());
         assert!(device_event(cpal::ErrorKind::DeviceBusy, String::new).is_none());
+    }
+
+    #[cfg(windows)]
+    fn has_default_device() -> bool {
+        let found = cpal::default_host().default_output_device().is_some();
+        if !found {
+            println!("no default output device here; skipped");
+        }
+        found
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn default_id_matches_cpal() {
+        if !has_default_device() {
+            return;
+        }
+        let mut driver = CpalDriver::new();
+        assert_eq!(driver.default_device_id(), driver.default_device().map(|d| d.id));
+    }
+
+    // Run alone: `cargo test --release --lib default_id_costs_no_memory -- --ignored --test-threads=1`.
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn default_id_costs_no_memory() {
+        use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX};
+        use windows::Win32::System::Threading::GetCurrentProcess;
+        fn private_bytes() -> usize {
+            let mut counters = PROCESS_MEMORY_COUNTERS_EX::default();
+            unsafe {
+                let _ = GetProcessMemoryInfo(
+                    GetCurrentProcess(),
+                    &mut counters as *mut _ as *mut _,
+                    std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+                );
+            }
+            counters.PrivateUsage
+        }
+        if !has_default_device() {
+            return;
+        }
+        let mut driver = CpalDriver::new();
+        for _ in 0..1_000 {
+            assert!(driver.default_device_id().is_some());
+        }
+        let before = private_bytes();
+        for _ in 0..40_000 {
+            std::hint::black_box(driver.default_device_id());
+        }
+        let grown = private_bytes().saturating_sub(before);
+        // cpal's own id leaked about 10.7 MB over 40,000 checks.
+        assert!(grown < 2 * 1024 * 1024, "grew {grown} bytes over 40,000 checks");
     }
 }
