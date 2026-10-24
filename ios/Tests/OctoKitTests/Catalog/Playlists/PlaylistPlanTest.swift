@@ -192,9 +192,58 @@ import Testing
     }
 
     @Test func twoPushesNeverRemoveSomeoneElsesSong() {
-        #expect(familyChanges(base: ["a", "b"], phone: ["a", "b", "d"], current: ["a", "b", "Y"]) == FamilyChanges(removeAt: [], add: ["d"]))
-        #expect(familyChanges(base: ["a", "b", "d"], phone: ["a", "b", "d", "e"], current: ["a", "b", "Y", "d"])
-            == FamilyChanges(removeAt: [], add: ["e"]))
+        let first = familySend(base: ["a", "b"], phone: ["a", "b", "d"], current: ["a", "b", "Y"], listedCount: 3, cleanOnly: false)
+        #expect(first.changes == FamilyChanges(removeAt: [], add: ["d"]))
+        #expect(first.baseAfterSend == ["a", "b", "d"])
+        let second = familySend(base: first.baseAfterSend, phone: ["a", "b", "d", "e"], current: ["a", "b", "Y", "d"],
+                                listedCount: 4, cleanOnly: false)
+        #expect(second.changes == FamilyChanges(removeAt: [], add: ["e"]))
+    }
+
+    @Test func aRemovalIsSentWhenTheCountsAgree() {
+        let send = familySend(base: ["a", "b"], phone: ["a"], current: ["a", "b"], listedCount: 2, cleanOnly: false)
+        #expect(send.changes == FamilyChanges(removeAt: [1], add: []))
+        #expect(send.baseAfterSend == ["a"])
+        #expect(send.held.isEmpty)
+    }
+
+    @Test func aRemovalWaitsWhileOctoListsFewerSongsThanItHolds() {
+        let send = familySend(base: ["a", "b"], phone: ["a", "c"], current: ["a", "b"], listedCount: 3, cleanOnly: false)
+        #expect(send.changes == FamilyChanges(removeAt: [], add: ["c"]))
+        #expect(send.baseAfterSend == ["a", "b", "c"])
+        #expect(send.held == ["b"])
+    }
+
+    @Test func aRemovalWaitsWhenTheListedCountIsNotRead() {
+        let send = familySend(base: ["a", "b"], phone: ["a"], current: ["a", "b"], listedCount: nil, cleanOnly: false)
+        #expect(send.changes.none)
+        #expect(send.baseAfterSend == ["a", "b"])
+        #expect(send.held == ["b"])
+    }
+
+    @Test func aRemovalWaitsWhileCleanOnlyIsNotKnown() {
+        let send = familySend(base: ["a", "b"], phone: ["a"], current: ["a", "b"], listedCount: 2, cleanOnly: nil)
+        #expect(send.changes.none)
+        #expect(send.held == ["b"])
+    }
+
+    @Test func aListenerWhoHearsOnlyCleanSongsGetsTheirRemovalsBack() {
+        let send = familySend(base: ["a", "b"], phone: ["a", "c"], current: ["a", "b"], listedCount: 2, cleanOnly: true)
+        #expect(send.changes == FamilyChanges(removeAt: [], add: ["c"]))
+        #expect(send.baseAfterSend == ["a", "c"])
+        #expect(send.held.isEmpty)
+    }
+
+    @Test func withNoRemovalNothingWaitsAndTheFlagsAreIgnored() {
+        let send = familySend(base: ["a"], phone: ["a", "b"], current: ["a"], listedCount: nil, cleanOnly: nil)
+        #expect(send.changes == FamilyChanges(removeAt: [], add: ["b"]))
+        #expect(send.baseAfterSend == ["a", "b"])
+        #expect(send.held.isEmpty)
+    }
+
+    @Test func aHeldSongLosesItsLastRowFromTheServer() {
+        let rows = [PlaylistSyncRow("t1", "a"), PlaylistSyncRow("t2", "b"), PlaylistSyncRow("t3", "a")]
+        #expect(withoutHeld(rows, ["a"]).map(\.trackId) == ["t1", "t2"])
     }
 
     @Test func syncedSongsRoundTrip() {

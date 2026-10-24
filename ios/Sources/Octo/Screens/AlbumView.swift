@@ -958,8 +958,8 @@ struct PlaylistPage: View {
 
     private var reordering: Bool { editMode.isEditing }
 
-    /// Whether songs can be taken out here: not from a family playlist by a listener who hears only clean songs.
-    private func takesOut(_ playlist: PlaylistSummary) -> Bool { !playlist.family || accounts.family.me?.abilities.cleanOnly != true }
+    /// Whether songs can be taken out here: not from a family playlist unless the listener is known not to hear only clean songs.
+    private func takesOut(_ playlist: PlaylistSummary) -> Bool { !playlist.family || accounts.family.me?.abilities.cleanOnly == false }
 
     var body: some View {
         LibraryList {
@@ -1048,7 +1048,7 @@ struct PlaylistPage: View {
     private func playlistRow(_ position: Int, _ row: PlaylistTrack, _ playlist: PlaylistSummary) -> some View {
         TrackRow(
             track: row.track,
-            context: SongMenuContext(playlistId: playlist.id, playlistItemId: row.itemId, selectKey: String(row.itemId)),
+            context: SongMenuContext(playlistId: playlist.id, playlistItemId: takesOut(playlist) ? row.itemId : nil, selectKey: String(row.itemId)),
             selectKey: String(row.itemId),
             swipe: reordering || !takesOut(playlist) ? .none : .remove {
                 rows.removeAll { $0.itemId == row.itemId }

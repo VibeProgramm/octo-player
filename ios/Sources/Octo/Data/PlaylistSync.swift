@@ -37,8 +37,8 @@ final class PlaylistSync {
     @ObservationIgnored private var waits: [String: Task<Void, Never>] = [:]
     /// When the server's playlists were last brought together with the phone's.
     @ObservationIgnored private var reconciledAt: Int64 = 0
-    /// The signed-in account as the family sees it, when Family is on (set by AccountHooks).
-    @ObservationIgnored var familyMe: @MainActor () -> FamilyMe? = { nil }
+    /// Reads the signed-in account as the family sees it, loading it when not loaded yet (set by AccountHooks).
+    @ObservationIgnored var familyPlan: @MainActor () async -> FamilyMe? = { nil }
 
     init(session: Session, library: Library, discovery: ServerDiscovery, sync: ServerSync) {
         self.session = session
@@ -313,11 +313,10 @@ final class PlaylistSync {
     }
 
     /// Sends a family playlist's own changes since both sides last agreed, on top of everyone
-    /// else's: songs taken out here by their place in the server's list now, songs added here at
-    /// the end, then its name. The phone then takes the server's list and name. Removals wait
-    /// while the server shows fewer songs than it holds (one it could not read), since places
-    /// count over all of them; a listener who hears only clean songs sees too few of them to take
-    /// any out, so theirs come back instead.
+    /// else's (`familySend` decides what): songs taken out here by their place in the server's
+    /// list now, songs added here at the end, then its name. The phone then takes the server's
+    /// list and name; a song whose removal waits stays out of the phone's copy, and the copy stays
+    /// marked changed so it is sent again.
     private func pushFamily(_ server: ServerInUse, _ playlist: PlaylistRow, _ serverId: String) async throws {
         let client = server.client
         let store = library.store
@@ -325,18 +324,18 @@ final class PlaylistSync {
         let current = there.entry.map(\.id)
         let phone = try await familySongsToSend(server, playlist.id)
         let base = syncedSongsOf(playlist.syncedSongs) ?? phone
-        let wanted = familyChanges(base: base, phone: phone, current: current)
-        let cleanOnly = familyMe()?.abilities.cleanOnly == true
-        var miscount = false
-        if !cleanOnly && !wanted.removeAt.isEmpty {
-            let listed = try await client.fullPlaylists().first { $0.id == serverId }
-            miscount = listed?.songCount != current.count
+        let removing = !familyChanges(base: base, phone: phone, current: current).removeAt.isEmpty
+        let cleanOnly: Bool? = removing ? await familyPlan()?.abilities.cleanOnly : false
+        var listedCount: Int?
+        if removing && cleanOnly == false {
+            listedCount = try await client.fullPlaylists().first { $0.id == serverId }?.songCount
         }
-        let changes = cleanOnly || miscount ? FamilyChanges(removeAt: [], add: wanted.add) : wanted
-        if !changes.none {
-            try await client.updatePlaylist(serverId, songIdsToAdd: changes.add, songIndexesToRemove: changes.removeAt, formPost: server.formPost)
+        let send = familySend(base: base, phone: phone, current: current, listedCount: listedCount, cleanOnly: cleanOnly)
+        if !send.changes.none {
+            try await client.updatePlaylist(serverId, songIdsToAdd: send.changes.add, songIndexesToRemove: send.changes.removeAt,
+                                            formPost: server.formPost)
             // Kept before anything else can fail, so nothing is sent twice.
-            try await store.markFamilyBase(playlist.id, songs: syncedSongsText(miscount ? base + changes.add : phone))
+            try await store.markFamilyBase(playlist.id, songs: syncedSongsText(send.baseAfterSend))
         }
         if playlist.name != playlist.syncedName && playlist.name != there.name {
             do {
@@ -345,20 +344,19 @@ final class PlaylistSync {
                 // Only its maker or a family manager may rename it; the server's name comes back below.
             }
         }
-        // Still changed here: sent again once the server shows every song.
-        if miscount { return }
         guard let stamp = try await listingStamp(server, serverId) else { return }
         let full = try await client.fullPlaylist(serverId)
         guard let fromServer = await rowsOf(full) else { return }
         let localItems = try await store.playlistItems(playlist.id)
         let local = localItems.map { PlaylistSyncRow($0.trackId, $0.serverSongId) }
         let copies = try await serverCopies(server.sourceId, local.map(\.trackId))
-        let rows = withPhoneOnly(fromServer, local) { serverSongFor($0, copies[$0.trackId] ?? []) == nil }
+        let rows = withoutHeld(withPhoneOnly(fromServer, local) { serverSongFor($0, copies[$0.trackId] ?? []) == nil }, send.held)
         var updated = playlist
         let at = max(epochNowMs(), playlist.updatedAt + 1)
         updated.name = full.name
         updated.updatedAt = at
-        updated.syncedAt = at
+        // Still changed here while a removal waits, so it is sent again.
+        updated.syncedAt = send.held.isEmpty ? at : playlist.syncedAt
         updated.syncedName = full.name
         updated.serverStamp = stamp
         updated.syncedSongs = syncedSongsText(full.entry.map(\.id))

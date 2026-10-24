@@ -257,3 +257,43 @@ public func keptRowIds(_ local: [(id: Int64, trackId: String)], _ rows: [Playlis
         return id
     }
 }
+
+/// What a family push sends and keeps. `changes` go to the server; `baseAfterSend` is kept as the
+/// songs both sides agree on once they are there; `held` are the songs (one entry per copy) whose
+/// removal waits.
+public struct FamilySend: Equatable, Sendable {
+    public var changes: FamilyChanges
+    public var baseAfterSend: [String]
+    public var held: [String]
+    public init(changes: FamilyChanges, baseAfterSend: [String], held: [String]) {
+        self.changes = changes
+        self.baseAfterSend = baseAfterSend
+        self.held = held
+    }
+}
+
+/// Decides a family push. Removals count places over the list Octo shows, so they wait while Octo
+/// lists fewer songs than it holds (`listedCount`, the playlist's count in the list of playlists,
+/// nil when not read) and while it is not known whether the listener hears only clean songs
+/// (`cleanOnly` nil). A listener who hears only clean songs is shown too few songs to count from,
+/// so their removals are dropped and the songs come back with the server's list.
+public func familySend(base: [String], phone: [String], current: [String], listedCount: Int?, cleanOnly: Bool?) -> FamilySend {
+    let wanted = familyChanges(base: base, phone: phone, current: current)
+    if wanted.removeAt.isEmpty { return FamilySend(changes: wanted, baseAfterSend: phone, held: []) }
+    let adds = FamilyChanges(removeAt: [], add: wanted.add)
+    if cleanOnly == true { return FamilySend(changes: adds, baseAfterSend: phone, held: []) }
+    if cleanOnly == nil || listedCount != current.count {
+        return FamilySend(changes: adds, baseAfterSend: base + wanted.add, held: wanted.removeAt.map { current[$0] })
+    }
+    return FamilySend(changes: wanted, baseAfterSend: phone, held: [])
+}
+
+/// The rows after taking the server's songs, less the songs whose removal waits: for each held
+/// song, its last row from the server goes.
+public func withoutHeld(_ rows: [PlaylistSyncRow], _ held: [String]) -> [PlaylistSyncRow] {
+    var out = rows
+    for id in held {
+        if let at = out.lastIndex(where: { $0.serverSongId == id }) { out.remove(at: at) }
+    }
+    return out
+}
