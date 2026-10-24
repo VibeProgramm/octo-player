@@ -124,6 +124,14 @@ public enum AccountQualityWords {
     public static let originalLine = "As the file is, FLAC stays FLAC"
     public static let originalLabel = "Original (as the file is, FLAC stays FLAC)"
 
+    /// The note over this app's own quality while the account's choice applies. With "Quality on this device"
+    /// shown, it names the answer there that hands the choice to this app; without it there is nothing to point at.
+    public static func appQualityNote(deviceShown: Bool) -> String {
+        deviceShown
+            ? "Your account's choice applies now. Choose \"\(QualityFollows.app.name)\" above to use these."
+            : "Your account's choice applies now."
+    }
+
     /// Why Original cannot be picked under a family limit, or nil when it can.
     public static func originalBlocked(by limitKbps: Int) -> String? {
         limitKbps > 0 ? "Your family plan streams up to \(limitKbps) kbps" : nil
