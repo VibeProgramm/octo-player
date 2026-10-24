@@ -135,6 +135,7 @@ struct PopoverRow<Card: View>: View {
                     .layoutValue(key: RowShare.self, value: 1)
                     Reading(value: value, answers: answers, enabled: enabled)
                         .layoutValue(key: RowShare.self, value: 0.8)
+                        .layoutValue(key: RowAnswers.self, value: answers.isEmpty || answers.contains(value) ? answers : answers + [value])
                     Image(systemName: SettingsIcon.chevron)
                         .font(.system(size: 13, weight: .semibold))
                         .frame(width: 18, height: 18)
