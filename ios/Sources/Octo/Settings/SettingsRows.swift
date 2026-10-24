@@ -284,7 +284,7 @@ struct RowShare: LayoutValueKey {
     static let defaultValue: CGFloat? = nil
 }
 
-/// Every value a row can show, for the narrower value its layout may pick.
+/// Every value a row can show, when the one shown is among them, for the narrower value its layout may pick.
 struct RowAnswers: LayoutValueKey {
     static let defaultValue: [String] = []
 }
@@ -340,26 +340,30 @@ struct TitleValueLayout: Layout {
         return narrower(wide, subviews, shares) ?? wide
     }
 
-    /// The same row with its value narrower, when the row is no taller for it: as narrow as its second-widest
-    /// answer on one line, the widest wrapping to two lines at a space. A row tall anyway beside a long line
-    /// under its title so keeps no wide empty gap beside a short value, and as the width does not depend on
-    /// the answer shown, nothing moves between answers.
+    /// The same row with its value narrower: as narrow as its second-widest answer on one line, the widest
+    /// wrapping to two lines at a space. Taken only when it takes a line off the title's side and the row is
+    /// no taller for it, and only for a row whose value shown is one of its answers (`RowAnswers` is empty
+    /// otherwise), so it never depends on the answer shown: nothing moves between answers, and no wide
+    /// empty gap sits beside a short value.
     private func narrower(_ wide: [CGFloat], _ subviews: Subviews, _ shares: [CGFloat?]) -> [CGFloat]? {
         guard let value = shares.firstIndex(where: { ($0 ?? 1) < 1 }) else { return nil }
-        let answers = subviews[value][RowAnswers.self]
-        guard answers.count >= 2, let widest = answers.max(by: { Self.oneLine($0) < Self.oneLine($1) }) else { return nil }
-        let sizes = answers.map(Self.oneLine).sorted(by: >)
-        let narrow = max(sizes[1], Self.twoLines(widest))
+        let answers = Array(Set(subviews[value][RowAnswers.self]))
+        let font = Self.readingFont
+        let ones = answers.map { Self.oneLine($0, font) }
+        guard ones.count >= 2, let top = ones.indices.max(by: { ones[$0] < ones[$1] }) else { return nil }
+        let narrow = max(ones.sorted(by: >)[1], Self.twoLines(answers[top], font))
         let titles = shares.indices.filter { (shares[$0] ?? 0) >= 1 }
         guard narrow < wide[value], !titles.isEmpty else { return nil }
         var widths = wide
         widths[value] = narrow
         for index in titles { widths[index] += (wide[value] - narrow) / CGFloat(titles.count) }
-        return height(widths, subviews) <= height(wide, subviews) + 0.5 ? widths : nil
+        guard height(widths, subviews, titles) < height(wide, subviews, titles) - 0.5 else { return nil }
+        return height(widths, subviews, Array(subviews.indices)) <= height(wide, subviews, Array(subviews.indices)) + 0.5 ? widths : nil
     }
 
-    private func height(_ widths: [CGFloat], _ subviews: Subviews) -> CGFloat {
-        zip(subviews, widths).map { $0.sizeThatFits(ProposedViewSize(width: $1, height: nil)).height }.max() ?? 0
+    /// How tall the parts at `indices` stand at these widths.
+    private func height(_ widths: [CGFloat], _ subviews: Subviews, _ indices: [Int]) -> CGFloat {
+        indices.map { subviews[$0].sizeThatFits(ProposedViewSize(width: widths[$0], height: nil)).height }.max() ?? 0
     }
 
     /// UIKit's twin of `.octoBodySmall`, the font a value is drawn in.
@@ -367,17 +371,17 @@ struct TitleValueLayout: Layout {
         UIFontMetrics(forTextStyle: .subheadline).scaledFont(for: .systemFont(ofSize: 14, weight: .regular))
     }
 
-    private static func oneLine(_ text: String) -> CGFloat {
-        ceil((text as NSString).size(withAttributes: [.font: readingFont]).width) + 1
+    private static func oneLine(_ text: String, _ font: UIFont) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width) + 1
     }
 
     /// The narrowest width that holds the text on two lines, broken at a space.
-    private static func twoLines(_ text: String) -> CGFloat {
+    private static func twoLines(_ text: String, _ font: UIFont) -> CGFloat {
         let words = text.split(separator: " ").map(String.init)
-        guard words.count > 1 else { return oneLine(text) }
+        guard words.count > 1 else { return oneLine(text, font) }
         return (1..<words.count).map { cut in
-            max(oneLine(words[..<cut].joined(separator: " ")), oneLine(words[cut...].joined(separator: " ")))
-        }.min() ?? oneLine(text)
+            max(oneLine(words[..<cut].joined(separator: " "), font), oneLine(words[cut...].joined(separator: " "), font))
+        }.min() ?? oneLine(text, font)
     }
 }
 
@@ -488,7 +492,7 @@ struct ChoiceRow: View {
                     RowLabel(title: title ?? entry?.title ?? "", below: helper, enabled: enabled, belowAnswers: answerLines).layoutValue(key: RowShare.self, value: 1)
                     Reading(value: value, answers: shownAnswers, enabled: enabled)
                         .layoutValue(key: RowShare.self, value: 0.8)
-                        .layoutValue(key: RowAnswers.self, value: shownAnswers.contains(value) ? shownAnswers : shownAnswers + [value])
+                        .layoutValue(key: RowAnswers.self, value: shownAnswers.contains(value) ? shownAnswers : [])
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 13, weight: .semibold))
                         .frame(width: 18, height: 18)
