@@ -1,6 +1,7 @@
 package app.winters.octo.desktop.system
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume
@@ -33,6 +34,25 @@ class MemoryLogTest {
         lines.forEach(log::append)
         assertEquals(listOf("memory.log", "memory.log.1"), dir.list()!!.sorted())
         assertEquals(lines.takeLast(5), log.lastLines(5))
+    }
+
+    @Test
+    fun theBugDetailsHoldTheReportAndNoAccountDetail() {
+        val text = bugDetails(
+            "1.2.3",
+            "Direct3D | NVIDIA",
+            3_900_000,
+            unknown,
+            listOf("ambience" to "Glow", "close to tray" to "false"),
+            listOf("first log line", "second log line"),
+        )
+        assertTrue(text.contains("Renderer: Direct3D | NVIDIA"))
+        assertTrue(text.contains("Up for 1 h 5 min"))
+        assertTrue(text.contains("Memory now: private=?"))
+        assertTrue(text.contains("ambience=Glow, close to tray=false"))
+        assertTrue(text.indexOf("first log line") in 0 until text.indexOf("second log line"))
+        assertFalse(text.contains("http"))
+        assertFalse(text.contains("@"))
     }
 
     @Test

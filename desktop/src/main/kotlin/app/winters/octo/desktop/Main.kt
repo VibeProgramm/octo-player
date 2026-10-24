@@ -56,6 +56,7 @@ import app.winters.octo.desktop.settings.textScale
 import app.winters.octo.desktop.system.AudioDropZone
 import app.winters.octo.desktop.system.LocalSystem
 import app.winters.octo.desktop.system.MemoryLog
+import app.winters.octo.desktop.system.logFolder
 import app.winters.octo.desktop.system.SOAK_RUN
 import app.winters.octo.desktop.system.SingleInstance
 import app.winters.octo.desktop.system.SystemIntegration
@@ -325,7 +326,7 @@ fun main(args: Array<String>) {
                     val system = ready.system
                     system.watch(window)
                     // A line every 10 minutes on the app's memory, for bug reports.
-                    val logs = if (os == DesktopOs.Windows) File(places.cache.parentFile, "logs") else File(places.cache, "logs")
+                    val logs = logFolder(os)
                     startMemoryLog(
                         scope = app.scope,
                         log = MemoryLog(logs),

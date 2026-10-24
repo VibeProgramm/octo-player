@@ -1,6 +1,11 @@
 package app.winters.octo.desktop.system
 
 import app.winters.octo.audio.processStats
+import app.winters.octo.desktop.AppState
+import app.winters.octo.desktop.audio.EnginePlayer
+import app.winters.octo.desktop.copyWords
+import app.winters.octo.desktop.settings.AppPlaces
+import app.winters.octo.desktop.settings.DesktopOs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -112,7 +117,64 @@ fun rendererText(window: java.awt.Window): String? {
     }.getOrNull()
 }
 
-private fun nowText(): String = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS).toString()
+// The folder the memory log lives in: beside the cache folder on Windows,
+// inside it elsewhere.
+fun logFolder(os: DesktopOs, places: AppPlaces = AppPlaces.forSystem()): File =
+    if (os == DesktopOs.Windows) File(places.cache.parentFile, "logs") else File(places.cache, "logs")
+
+// A plain-text report to paste into a bug report: version, system, graphics,
+// uptime, memory now, the settings that matter and the recent memory log. It
+// holds no server address, user name or other account detail.
+fun bugDetails(
+    version: String?,
+    renderer: String?,
+    uptimeMs: Long,
+    reading: MemoryReading,
+    settings: List<Pair<String, String>>,
+    logLines: List<String>,
+): String {
+    val minutes = uptimeMs / 60_000
+    val fields = memoryLine("", 0, reading, "", false).substringAfter("private=").substringBefore(" window=")
+    return buildString {
+        appendLine("Octo ${version ?: "unknown"}")
+        appendLine("${System.getProperty("os.name")} ${System.getProperty("os.version")}, Java ${System.getProperty("java.version")}")
+        appendLine("Renderer: ${renderer ?: "unknown"}")
+        appendLine("Up for ${minutes / 60} h ${minutes % 60} min")
+        appendLine("Memory now: private=$fields")
+        appendLine("Settings: ${settings.joinToString(", ") { (name, value) -> "$name=$value" }}")
+        appendLine()
+        appendLine("Memory log (newest last):")
+        logLines.forEach(::appendLine)
+    }
+}
+
+// Puts the bug report on the clipboard, with a notice that it is there.
+fun copyBugDetails(app: AppState, window: java.awt.Window?, logs: File) {
+    val settings = app.settings.current
+    val shown = window ?: java.awt.Window.getWindows().firstOrNull { findSkiaLayer(it) != null }
+    val choices = buildList {
+        add("animated art" to settings.appearance.animatedArt)
+        add("ambience" to settings.appearance.ambience.name)
+        add("wash moving" to settings.appearance.wash.moving.toString())
+        add("ambient glow" to settings.appearance.ambientGlow.toString())
+        add("Discord status" to settings.discord.on.toString())
+        add("close to tray" to settings.system.closeToTray.toString())
+        add("mini player open" to settings.system.miniPlayerOpen.toString())
+        add("start in tray" to settings.system.startInTray.toString())
+        app.library?.index?.songs?.size?.let { add("library songs" to it.toString()) }
+    }
+    val text = bugDetails(
+        version = System.getProperty("octo.version"),
+        renderer = shown?.let(::rendererText),
+        uptimeMs = ManagementFactory.getRuntimeMXBean().uptime,
+        reading = readMemory { (app.player as? EnginePlayer)?.engine?.deviceReopens() },
+        settings = choices,
+        logLines = MemoryLog(logs).lastLines(24),
+    )
+    app.copyWords(text, "Copied the details.")
+}
+
+private fun nowText(): String =LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS).toString()
 
 // Writes a start line, then one memory line a minute in and every 10 minutes
 // after, and the renderer once it is known. Nothing here throws into the app.
