@@ -78,11 +78,11 @@ public enum FadeCurve: String, StoredChoice, Codable {
 
     public var detail: String {
         switch self {
-        case .equalPower: "Steady loudness from one song to the next."
-        case .linear: "A straight fade, a little quieter in the middle."
-        case .sCurve: "Holds each song longer, then swaps them quickly."
-        case .evenLoudness: "Every second of the fade is the same step down."
-        case .mixOnly: "Both songs play in full over each other, like a DJ."
+        case .equalPower: "Steady loudness through the fade."
+        case .linear: "A straight fade, softer midway."
+        case .sCurve: "Holds each song, then swaps fast."
+        case .evenLoudness: "Steps down the same each second."
+        case .mixOnly: "Both play full, like a DJ mix."
         }
     }
 }
