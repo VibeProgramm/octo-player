@@ -29,9 +29,25 @@
 #   -Source <name>    library (default) or radio
 #   -Minimized        minimizes the window once it is up
 #   -MinimizeAfter <m> minimizes it that many minutes in
+#   -TrayAfter <m>    closes the window to the tray that many minutes in
+#   -CycleTray <s>    from minute 2, closes the window to the tray and brings
+#                     it back (a second start) every that many seconds
+#   -CycleMinimize <s> from minute 2, minimizes and restores it every that
+#                     many seconds
+#   -MiniPlayer       opens the mini player beside the window
+#   -AmbientGlow <on|off> the song's colours behind the pages and the mini player
+#   -Discord          leaves the Discord status on (it shows the soak's songs)
 #   -PauseAfter <m>   pauses the music that many minutes in, for good
 #   -CacheAfter <m:MB> sets the window's GPU cache limit that many minutes in
 #   -Advance <s>      seconds per song (default 45; 0 lets each play out)
+#   -Output <name>    plays to the first output whose name holds this
+#   -MiniOnly         hands over to the mini player once playing (the window
+#                     goes away, as the mini player button does)
+#   -PurgeEvery <m>   empties every window's GPU cache every that many minutes
+#   -SwitchOutputs <s> moves the music to the next output (Octo's own
+#                     choice, not Windows') every that many seconds
+#   -CycleResize <s>  from minute 2, switches the window between two sizes
+#                     every that many seconds
 #   -Every <s>        seconds between samples (default 60)
 #   -Queue <file>     the songs every library run plays (default
 #                     desktop\build\soak\queue.txt, written by the first run)
@@ -54,12 +70,23 @@ param(
     [ValidateSet("on", "off")][string]$WashMotion = "on",
     [ValidateSet("on", "off")][string]$Lyrics = "on",
     [ValidateSet("on", "off")][string]$Full = "on",
-    [ValidateSet("library", "radio")][string]$Source = "library",
+    [ValidateSet("library", "radio", "live")][string]$Source = "library",
     [switch]$Minimized,
     [int]$MinimizeAfter = 0,
+    [int]$TrayAfter = 0,
+    [int]$CycleTray = 0,
+    [int]$CycleMinimize = 0,
+    [switch]$MiniPlayer,
+    [ValidateSet("on", "off")][string]$AmbientGlow = "on",
+    [switch]$Discord,
     [int]$PauseAfter = 0,
     [string]$CacheAfter = "",
     [int]$Advance = 45,
+    [int]$SwitchOutputs = 0,
+    [string]$Output = "",
+    [switch]$MiniOnly,
+    [int]$PurgeEvery = 0,
+    [int]$CycleResize = 0,
     [int]$Every = 60,
     [string]$Queue = "",
     [string]$Jvm = "",
@@ -84,6 +111,7 @@ if (-not ("OctoSoak.Win" -as [type])) {
 [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
 [DllImport("user32.dll")] public static extern bool PrintWindow(System.IntPtr hWnd, System.IntPtr hdc, uint flags);
 [DllImport("user32.dll")] public static extern bool GetWindowRect(System.IntPtr hWnd, out Rect rect);
+[DllImport("user32.dll")] public static extern bool SetWindowPos(System.IntPtr hWnd, System.IntPtr after, int x, int y, int cx, int cy, uint flags);
 public struct Rect { public int Left, Top, Right, Bottom; }
 public static string ThreadName(int id) {
     System.IntPtr thread = OpenThread(0x0800, false, id);
@@ -178,6 +206,7 @@ function Get-Sample([int]$ProcessId, [double]$Minute, [string]$Note = "") {
         GpuDedicatedMB = $gpu[0]
         GpuSharedMB = $gpu[1]
         CpuS = [math]::Round($p.TotalProcessorTime.TotalSeconds, 1)
+        IoOtherMB = $(try { [math]::Round((Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId").OtherTransferCount / 1MB, 1) } catch { $null })
     }
     $heap = Read-HeapInfo (Invoke-Jcmd $ProcessId "GC.heap_info")
     $row["HeapMB"] = $heap.HeapMB
@@ -250,27 +279,40 @@ foreach ($place in "config\settings.json", "Roaming\Octo\settings.json") {
     if (-not $settings.appearance.wash) { $settings.appearance | Add-Member -NotePropertyName wash -NotePropertyValue ([pscustomobject]@{}) }
     $settings.appearance.wash | Add-Member -NotePropertyName moving -NotePropertyValue ($WashMotion -eq "on") -Force
     $settings | Add-Member -NotePropertyName window -NotePropertyValue ([pscustomobject]@{ x = 60; y = 60; width = $Width; height = $Height; maximized = $false }) -Force
+    $settings.system | Add-Member -NotePropertyName closeToTray -NotePropertyValue ($TrayAfter -gt 0 -or $CycleTray -gt 0) -Force
+    $settings.system | Add-Member -NotePropertyName miniPlayerOpen -NotePropertyValue ([bool]$MiniPlayer) -Force
+    $settings.appearance | Add-Member -NotePropertyName ambientGlow -NotePropertyValue ($AmbientGlow -eq "on") -Force
+    if ($Discord) {
+        if (-not $settings.discord) { $settings | Add-Member -NotePropertyName discord -NotePropertyValue ([pscustomobject]@{}) }
+        $settings.discord | Add-Member -NotePropertyName on -NotePropertyValue $true -Force
+    }
     [IO.File]::WriteAllText($file, ($settings | ConvertTo-Json -Depth 32), (New-Object System.Text.UTF8Encoding($false)))
 }
 $plan = Join-Path $profileDir "soak.properties"
-$planText = "source=$Source`nlyrics=$Lyrics`nfull=$Full`npauseAfter=$PauseAfter`ncacheAfter=$CacheAfter`nadvance=$Advance`nqueue=$($Queue -replace '\\', '/')`n"
+$planText = "source=$Source`nlyrics=$Lyrics`nfull=$Full`npauseAfter=$PauseAfter`ncacheAfter=$CacheAfter`nadvance=$Advance`nswitchOutputs=$SwitchOutputs`noutput=$Output`nminiOnly=$(if ($MiniOnly) { 'true' } else { 'false' })`npurgeEvery=$PurgeEvery`nqueue=$($Queue -replace '\\', '/')`n"
 [IO.File]::WriteAllText($plan, $planText)
 
 $gcLog = Join-Path $out "gc.log"
 $options = "-XX:NativeMemoryTracking=summary -Xlog:gc*:file=$($gcLog -replace '\\', '/'):time,uptime -Docto.soak=$($plan -replace '\\', '/') $Jvm".Trim()
 if ($options -match ' "') { throw "Paths with spaces cannot go in JAVA_TOOL_OPTIONS" }
 
-$saved = @{ OCTO_PROFILE_DIR = $env:OCTO_PROFILE_DIR; APPDATA = $env:APPDATA; LOCALAPPDATA = $env:LOCALAPPDATA; JAVA_TOOL_OPTIONS = $env:JAVA_TOOL_OPTIONS }
-try {
-    $env:OCTO_PROFILE_DIR = $profileDir
-    $env:APPDATA = Join-Path $profileDir "Roaming"
-    $env:LOCALAPPDATA = Join-Path $profileDir "Local"
-    $env:JAVA_TOOL_OPTIONS = $options
-    $exe = Join-Path $App "Octo.exe"
-    $launcher = Start-Process -FilePath $exe -WorkingDirectory $App -PassThru
-} finally {
-    foreach ($name in $saved.Keys) { if ($saved[$name]) { Set-Item -Path "Env:$name" -Value $saved[$name] } else { Remove-Item "Env:$name" -ErrorAction SilentlyContinue } }
+# Starts Octo on the test profile. A second start hands over to the one
+# running, which brings its window back (out of the tray too); it gets no
+# JVM options, so the first one's GC log is left alone.
+$exe = Join-Path $App "Octo.exe"
+function Start-Octo([string]$JavaOptions) {
+    $saved = @{ OCTO_PROFILE_DIR = $env:OCTO_PROFILE_DIR; APPDATA = $env:APPDATA; LOCALAPPDATA = $env:LOCALAPPDATA; JAVA_TOOL_OPTIONS = $env:JAVA_TOOL_OPTIONS }
+    try {
+        $env:OCTO_PROFILE_DIR = $profileDir
+        $env:APPDATA = Join-Path $profileDir "Roaming"
+        $env:LOCALAPPDATA = Join-Path $profileDir "Local"
+        if ($JavaOptions) { $env:JAVA_TOOL_OPTIONS = $JavaOptions } else { Remove-Item Env:JAVA_TOOL_OPTIONS -ErrorAction SilentlyContinue }
+        Start-Process -FilePath $exe -WorkingDirectory $App -PassThru
+    } finally {
+        foreach ($name in $saved.Keys) { if ($saved[$name]) { Set-Item -Path "Env:$name" -Value $saved[$name] } else { Remove-Item "Env:$name" -ErrorAction SilentlyContinue } }
+    }
 }
+$launcher = Start-Octo $options
 
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $process = $null
@@ -292,6 +334,10 @@ try {
 
     $shown = $clock.Elapsed.TotalSeconds
     $minimizedLate = $false
+    $trayed = $false
+    $away = $false
+    $cycles = 0
+    $nextCycle = 120
     $shotsDue = @($Shots -split ',' | Where-Object { $_.Trim() } | ForEach-Object { [int]$_ } | Sort-Object)
     $csv = Join-Path $out "samples.csv"
     $samples = @()
@@ -310,6 +356,35 @@ try {
             $process.Refresh()
             [void][OctoSoak.Win]::ShowWindow($process.MainWindowHandle, 6)
             $minimizedLate = $true
+        }
+        if ($TrayAfter -gt 0 -and -not $trayed -and $clock.Elapsed.TotalMinutes -ge $TrayAfter) {
+            $process.Refresh()
+            [void]$process.CloseMainWindow()
+            $trayed = $true
+        }
+        # Half of each cycle away (in the tray, or minimized), half shown.
+        if ($CycleTray -gt 0 -and $clock.Elapsed.TotalSeconds -ge $nextCycle) {
+            $process.Refresh()
+            if ($away) { [void](Start-Octo "") } else { [void]$process.CloseMainWindow() }
+            $away = -not $away
+            $cycles++
+            $nextCycle += $CycleTray / 2
+        }
+        if ($CycleResize -gt 0 -and $clock.Elapsed.TotalSeconds -ge $nextCycle) {
+            $process.Refresh()
+            $w = if ($away) { $Width } else { [int]($Width * 0.7) }
+            $h = if ($away) { $Height } else { [int]($Height * 0.7) }
+            [void][OctoSoak.Win]::SetWindowPos($process.MainWindowHandle, [IntPtr]::Zero, 60, 60, $w, $h, 0x0014)
+            $away = -not $away
+            $cycles++
+            $nextCycle += $CycleResize
+        }
+        if ($CycleMinimize -gt 0 -and $clock.Elapsed.TotalSeconds -ge $nextCycle) {
+            $process.Refresh()
+            [void][OctoSoak.Win]::ShowWindow($process.MainWindowHandle, $(if ($away) { 9 } else { 6 }))
+            $away = -not $away
+            $cycles++
+            $nextCycle += $CycleMinimize / 2
         }
         while ($shotsDue.Count -gt 0 -and $clock.Elapsed.TotalSeconds - $shown -ge $shotsDue[0]) {
             $process.Refresh()
@@ -333,7 +408,7 @@ try {
     $mark = $regular | Where-Object { $_.Minute -ge 15 } | Select-Object -First 1
     $last = $regular[-1]
     $summary = @(
-        "Soak $Label ($((Get-Date).ToString('yyyy-MM-dd HH:mm'))): art $Art, wash $Wash (moving $WashMotion), lyrics $Lyrics, full player $Full, $Source, $(if ($Minimized) { 'minimized' } elseif ($MinimizeAfter) { "minimized after $MinimizeAfter min" } else { 'shown' }), $(if ($PauseAfter) { "paused after $PauseAfter min, " })$Advance s a song, $Minutes min, JVM extra '$Jvm'",
+        "Soak $Label ($((Get-Date).ToString('yyyy-MM-dd HH:mm'))): art $Art, wash $Wash (moving $WashMotion), lyrics $Lyrics, full player $Full, $Source, $(if ($Minimized) { 'minimized' } elseif ($MinimizeAfter) { "minimized after $MinimizeAfter min" } else { 'shown' }), $(if ($PauseAfter) { "paused after $PauseAfter min, " })$Advance s a song, $Minutes min, $(if ($cycles) { "$cycles tray or minimize steps, " })JVM extra '$Jvm'",
         "Private MB: start $($regular[0].PrivateMB), 15 min $($mark.PrivateMB), end $($last.PrivateMB), most $(($regular | Measure-Object PrivateMB -Maximum).Maximum), after GC $($after.PrivateMB) (drop $([math]::Round($before.PrivateMB - $after.PrivateMB, 1)))",
         "Growth MB/h from 15 min: private $(Get-Slope $samples 'PrivateMB'), working set $(Get-Slope $samples 'WorkingSetMB'), outside the JVM $(Get-Slope $samples 'OutsideJvmMB'), JVM total $(Get-Slope $samples 'NmtMB'), heap used $(Get-Slope $samples 'HeapUsedMB'), GPU dedicated $(Get-Slope $samples 'GpuDedicatedMB')",
         "End: working set $($last.WorkingSetMB), threads $($last.Threads), octo-video threads $($last.VideoThreads), handles $($last.Handles), heap $($last.HeapUsedMB)/$($last.HeapMB), JVM total $($last.NmtMB), outside the JVM $($last.OutsideJvmMB), GPU dedicated $($last.GpuDedicatedMB)",

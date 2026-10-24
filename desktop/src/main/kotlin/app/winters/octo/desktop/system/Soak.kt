@@ -11,8 +11,10 @@ import app.winters.octo.desktop.playStations
 import app.winters.octo.desktop.radioId
 import app.winters.octo.liveradio.radioId
 import app.winters.octo.subsonic.Song
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import app.winters.octo.desktop.library.LibraryState
 import kotlinx.coroutines.flow.filterIsInstance
@@ -33,13 +35,19 @@ import kotlin.random.Random
 // properties file:
 //   source=library   songs from albums with a tall animated loop first
 //                    (`songs` of them, asking about at most `ask` albums),
-//                    or radio: the server's stations, else the kept ones
+//                    or radio: the server's stations, else the kept ones,
+//                    or live: only the kept stations (internet radio)
 //   lyrics=on|off    the lyrics beside the cover
 //   full=on|off      the full player open, or Home behind the player bar
 //   pauseAfter=20    minutes before it pauses and stays paused (0, never)
 //   cacheAfter=30:32 minutes before the window's graphics card cache limit
 //                    is set to that many MB, to see what it gives back
 //   advance=45       seconds a song plays before the next
+//   output=XG270     plays to the first output whose name holds this
+//   miniOnly=true    hands over to the mini player (the window goes away)
+//   purgeEvery=5     minutes between emptying every window's GPU cache
+//   switchOutputs=30 seconds between moving the music to the next output
+//                    (0, never)
 //   queue=<file>     the songs picked, written by the first run and read by
 //                    the next ones, so every run plays the same songs
 // What it plays is written to <plan>.events, a line each.
@@ -57,8 +65,9 @@ suspend fun soakRun(app: AppState, plan: File) {
     val pauseAfter = wants.getProperty("pauseAfter", "0").toLong() * 60_000
     val cacheAfter = wants.getProperty("cacheAfter", "").split(":").mapNotNull(String::toLongOrNull).takeIf { it.size == 2 }
     var cacheSet = false
-    val radio = wants.getProperty("source", "library") == "radio"
-    note("start source=${if (radio) "radio" else "library"} lyrics=$lyrics full=$full advance=$advance")
+    val source = wants.getProperty("source", "library")
+    val radio = source == "radio" || source == "live"
+    note("start source=$source lyrics=$lyrics full=$full advance=$advance")
 
     val index = withTimeoutOrNull(300_000) {
         val library = snapshotFlow { app.library }.filterNotNull().first()
@@ -67,7 +76,7 @@ suspend fun soakRun(app: AppState, plan: File) {
     if (index == null) return note("stop: the library was not read within 5 minutes")
     app.player.setVolume(0f)
     if (radio) {
-        val ids = soakStations(app)
+        val ids = soakStations(app, liveOnly = source == "live")
         if (ids.isEmpty()) return note("stop: no radio stations")
         note("stations ${ids.size}")
         app.playStations(ids, 0, "Soak")
@@ -78,6 +87,49 @@ suspend fun soakRun(app: AppState, plan: File) {
         app.play(songs, 0, source = "Soak")
     }
     app.player.setRepeat(RepeatMode.All)
+    // Moves the music to the next output every `switchOutputs` seconds, so
+    // the engine opens a device again and again, as sleep and wake or a
+    // headset coming and going make it.
+    // Every `purgeEvery` minutes, each window's graphics card cache is
+    // emptied (its limit set to nothing for a moment, then back), so the
+    // spares it holds go and the blocks they sat in can be let go.
+    val purgeEvery = wants.getProperty("purgeEvery", "0").toLong()
+    if (purgeEvery > 0) CoroutineScope(Dispatchers.Default).launch {
+        while (true) {
+            delay(purgeEvery * 60_000)
+            val contexts = withContext(Dispatchers.Main) { allWindowContexts() }
+            val limits = contexts.map { it.resourceCacheLimit }
+            withContext(Dispatchers.Main) { contexts.forEach { it.resourceCacheLimit = 0 } }
+            delay(2_000)
+            withContext(Dispatchers.Main) { contexts.zip(limits).forEach { (context, limit) -> context.resourceCacheLimit = limit } }
+            note("purged ${contexts.size} windows' caches")
+        }
+    }
+    // Hands over to the mini player, which puts the window away.
+    if (wants.getProperty("miniOnly", "false") == "true") {
+        withContext(Dispatchers.Main) { app.toggleMiniPlayer?.invoke() }
+        note("mini player only")
+    }
+    // Plays to the output whose name holds `output`, when one does.
+    wants.getProperty("output", "").takeIf(String::isNotBlank)?.let { part ->
+        val chosen = withTimeoutOrNull(30_000) {
+            app.player.state.first { state -> state.outputs.any { it.name.contains(part, ignoreCase = true) } }
+        }?.outputs?.first { it.name.contains(part, ignoreCase = true) }
+        if (chosen != null) app.player.selectOutput(chosen.id)
+        note("output ${chosen?.id} ${chosen?.name ?: "none matched $part"}")
+    }
+    val switchEvery = wants.getProperty("switchOutputs", "0").toLong()
+    if (switchEvery > 0) CoroutineScope(Dispatchers.Default).launch {
+        var turn = 0
+        while (true) {
+            delay(switchEvery * 1000)
+            val outputs = app.player.state.value.outputs
+            if (outputs.size < 2) continue
+            val next = outputs[++turn % outputs.size]
+            withContext(Dispatchers.Main) { app.player.selectOutput(next.id) }
+            note("output ${next.id} ${next.name}")
+        }
+    }
     var played = 0
     val started = System.currentTimeMillis()
     while (true) {
@@ -116,6 +168,22 @@ suspend fun soakRun(app: AppState, plan: File) {
 // has it: skiko keeps the context out of reach, so it is read by reflection
 // (null when its insides differ, or it draws without the card).
 private fun gpuCacheLimit(): Long? = windowContext()?.resourceCacheLimit
+
+// Every window's graphics card context, found as windowContext finds the first.
+private fun allWindowContexts(): List<org.jetbrains.skia.DirectContext> {
+    fun layers(component: java.awt.Component): List<org.jetbrains.skiko.SkiaLayer> = when (component) {
+        is org.jetbrains.skiko.SkiaLayer -> listOf(component)
+        is java.awt.Container -> component.components.flatMap(::layers)
+        else -> emptyList()
+    }
+    return java.awt.Window.getWindows().flatMap(::layers).mapNotNull { layer ->
+        runCatching {
+            val redrawer = layer.javaClass.getMethod("getRedrawer\$skiko").invoke(layer) ?: return@runCatching null
+            val handler = redrawer.javaClass.getDeclaredField("contextHandler").apply { isAccessible = true }.get(redrawer) ?: return@runCatching null
+            Class.forName("org.jetbrains.skiko.context.ContextHandler").getDeclaredMethod("getContext").apply { isAccessible = true }.invoke(handler) as? org.jetbrains.skia.DirectContext
+        }.getOrNull()
+    }
+}
 
 private fun windowContext(): org.jetbrains.skia.DirectContext? = runCatching {
     fun find(component: java.awt.Component): org.jetbrains.skiko.SkiaLayer? {
@@ -160,7 +228,8 @@ private suspend fun soakSongs(app: AppState, library: List<Song>, wants: Propert
 
 // The stations a radio run plays: the server's, else the ones kept here,
 // without their catalog ids, so the catalog never hears of these starts.
-private suspend fun soakStations(app: AppState): List<String> {
+private suspend fun soakStations(app: AppState, liveOnly: Boolean = false): List<String> {
+    if (liveOnly) return app.liveRadio.kept().stations.map { it.copy(uuid = "").radioId() }
     app.liveRadio.readServerStations()
     val server = app.liveRadio.serverStations.orEmpty().filter { it.streamUrl.isNotBlank() }
     if (server.isNotEmpty()) return server.map { it.radioId() }
