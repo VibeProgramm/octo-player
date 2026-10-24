@@ -308,9 +308,7 @@ private fun RowScope.TitleValue(
             wide
         } else {
             val byWidth = ones.entries.sortedByDescending { it.value }
-            narrowValue(wide, byWidth.map { it.value }, byWidth.map { twoLines(it.key) }, ::labelHeight) { w ->
-                maxOf(labelHeight(w), valueHeight(w))
-            }
+            narrowValue(wide, byWidth.map { it.value }, byWidth.map { twoLines(it.key) }, ::labelHeight, ::valueHeight)
         }
         val shown = reading.measure(Constraints.fixedWidth(width))
         val words = label.measure(Constraints(maxWidth = room - width))
@@ -339,18 +337,21 @@ private const val ValueShare = 0.8f / 1.8f
 
 // The value width a row settles on when its value may narrow: `ones` and
 // `twos` are its answers' one-line and two-line widths, widest first, and
-// `label` and `row` give the title side's and the whole row's height at a
+// `label` and `value` give the title side's and the value's height at a
 // value width. Each step is as wide as the next answer down, the wider
 // ones wrapping to two lines; the first step that takes a line off the
 // title's side with the row no taller wins, else `wide`.
-internal fun narrowValue(wide: Int, ones: List<Int>, twos: List<Int>, label: (Int) -> Int, row: (Int) -> Int): Int {
+internal fun narrowValue(wide: Int, ones: List<Int>, twos: List<Int>, label: (Int) -> Int, value: (Int) -> Int): Int {
     val labelAtWide = label(wide)
-    val rowAtWide = row(wide)
+    val rowAtWide = maxOf(labelAtWide, value(wide))
     return (1 until ones.size).asSequence()
         .map { k -> maxOf(ones[k], twos.take(k).max()) }
         .filter { it < wide }
         .distinct()
-        .firstOrNull { step -> label(step) < labelAtWide && row(step) <= rowAtWide } ?: wide
+        .firstOrNull { step ->
+            val labelAtStep = label(step)
+            labelAtStep < labelAtWide && maxOf(labelAtStep, value(step)) <= rowAtWide
+        } ?: wide
 }
 
 // An icon tinted to its place, or a brand's mark in its own colours.
