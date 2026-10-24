@@ -27,6 +27,7 @@ import app.winters.octo.ui.family.QualityOption
 import app.winters.octo.ui.family.QUALITY_AWAY
 import app.winters.octo.ui.family.QUALITY_ON_THIS_DEVICE
 import app.winters.octo.ui.family.appPicksQuality
+import app.winters.octo.ui.family.appQualityNote
 import app.winters.octo.ui.family.awayLimit
 import app.winters.octo.ui.family.deviceModeLine
 import app.winters.octo.ui.family.deviceModeName
@@ -87,7 +88,7 @@ fun AudioQualityPage(onBack: () -> Unit, highlight: String?, vm: AudioQualityVie
     SettingsPageFrame(SettingsPage.AudioQuality.title, onBack, highlight) {
         if (familyOn && me != null) {
             val quality = me.quality
-            SettingsGroup(title = "Your account, on every app", icon = OctoIcons.Listeners) {
+            SettingsGroup(title = "Your account, on every app", icon = OctoIcons.Account) {
                 familyLimitLines(quality).forEach { NoteRow(it, color = OctoColors.SignalOrange) }
                 ChoiceRow(SettingsIndex.AccountHome, value = qualityName(quality.home), answers = qualityOptions(homeLimit(quality)).map { qualityName(it.quality) }, onClick = {
                     val options = qualityOptions(homeLimit(quality))
@@ -118,7 +119,7 @@ fun AudioQualityPage(onBack: () -> Unit, highlight: String?, vm: AudioQualityVie
         val wifiLimit = if (familyOn && me != null) homeLimit(me.quality) else 0
         val mobileLimit = if (familyOn && me != null) awayLimit(me.quality) else 0
         SettingsGroup(title = if (familyOn) "This app's quality" else "Streaming", icon = OctoIcons.Wifi) {
-            if (!applies) NoteRow("Your account's choice applies now. These apply when this phone is left to the app.")
+            if (!applies) NoteRow(appQualityNote(deviceShown = familyOn && me != null && model.deviceMode != null))
             ChoiceRow(SettingsIndex.StreamWifi, value = prefs.wifi.label, answers = qualities.map { it.label }, onClick = {
                 sheet.show(ChoiceRequest(SettingsIndex.StreamWifi.title, qualities.map { it.choice(wifiLimit) }, qualities.indexOf(prefs.wifi)) { vm.setWifi(qualities[it]) })
             })
