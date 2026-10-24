@@ -257,12 +257,20 @@ private struct RowLabel: View {
     var enabled = true
     var titleColor: Color = OctoColor.textPrimary
     var belowColor: Color = OctoColor.textMuted
+    /// Every answer's own line, when the line under the title is the chosen answer's: the room under the
+    /// title fits the tallest, so the row keeps one height and its title one place.
+    var belowAnswers: [String] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.octoBody).foregroundStyle(enabled ? titleColor : OctoColor.textMuted).fixedSize(horizontal: false, vertical: true)
             if let below {
-                Text(below).font(.octoCaption).foregroundStyle(belowColor).fixedSize(horizontal: false, vertical: true)
+                ZStack(alignment: .topLeading) {
+                    ForEach(Array(belowAnswers.enumerated()), id: \.offset) { _, line in
+                        Text(line).font(.octoCaption).fixedSize(horizontal: false, vertical: true).hidden().accessibilityHidden(true)
+                    }
+                    Text(below).font(.octoCaption).foregroundStyle(belowColor).fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -411,13 +419,20 @@ struct ChoiceRow: View {
         self.question = question
     }
 
+    /// The answers' own lines, when the line under the title is the chosen answer's.
+    private var answerLines: [String] {
+        let lines = question.answers.compactMap(\.detail)
+        guard let helper, lines.contains(helper) else { return [] }
+        return lines
+    }
+
     var body: some View {
         Menu {
             QuestionMenuItems(question: question)
         } label: {
             RowFrame(entry: entry) {
                 TitleValueLayout {
-                    RowLabel(title: title ?? entry?.title ?? "", below: helper, enabled: enabled).layoutValue(key: RowShare.self, value: 1)
+                    RowLabel(title: title ?? entry?.title ?? "", below: helper, enabled: enabled, belowAnswers: answerLines).layoutValue(key: RowShare.self, value: 1)
                     Reading(value: value, answers: question.answers.map(\.label), enabled: enabled).layoutValue(key: RowShare.self, value: 0.8)
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 13, weight: .semibold))
