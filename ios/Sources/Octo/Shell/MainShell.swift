@@ -304,6 +304,9 @@ struct MainShell: View {
                         .environment(\.tabReselects, reselects[item, default: 0])
                         .background(ScrollTopProbe(signal: reselects[item, default: 0]))
                 }
+                // An empty bar along the top: it takes no room, and it gives every page's scrolling
+                // the system's soft edge under the status bar.
+                .safeAreaBar(edge: .top, spacing: 0) { Color.clear.frame(height: 0) }
                 .environment(\.shellAwake, front && !pagesCovered)
                 .opacity(front ? 1 : 0)
                 .animation(front ? .octoTween(220, OctoEasing.standard, scale: motion, delay: 40)
