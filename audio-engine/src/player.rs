@@ -140,6 +140,8 @@ pub struct Shared {
     timeline: Timeline,
     output: Mutex<Option<Arc<OutputShared>>>,
     player: OnceLock<Thread>,
+    /// How many times the output device was opened again, since start.
+    pub device_reopens: std::sync::atomic::AtomicU64,
     /// The certificates trusted for streams, changed from the app's threads.
     pub trust: Arc<Trust>,
     // The client every stream fetches with, knowing those certificates.
@@ -170,6 +172,7 @@ impl Shared {
             output: Mutex::new(None),
             player: OnceLock::new(),
             agent: http::agent(trust.clone()),
+            device_reopens: std::sync::atomic::AtomicU64::new(0),
             trust,
             #[cfg(test)]
             planner: Mutex::new(None),
@@ -1657,6 +1660,7 @@ impl Player {
     // was heard; with no device open, since it was lost, from what was
     // heard last.
     fn reopen_output(&mut self, report: bool) {
+        self.shared.device_reopens.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let heard = self.shared.timeline.at(self.shared.heard_frame()).or(self.lost_at);
         self.driver.close();
         self.out = None;

@@ -1324,3 +1324,29 @@ fn the_player_keeps_infos_only_for_queued_songs() {
     assert!(engine.infos_len() <= 4, "infos kept {}", engine.infos_len());
     engine.shutdown();
 }
+
+#[test]
+fn device_reopens_are_counted() {
+    let dir = temp_dir();
+    let a = dir.join("a.wav");
+    write_wav(&a, RATE, 2, &sine(300.0, RATE, 2, 0, RATE as usize * 5, 0.3));
+    let (driver, pump) = NullDriver::driven(RATE, 2, None);
+    let trouble = driver.events();
+    let engine = Engine::with_driver(Box::new(move || Box::new(driver)));
+    let events = Arc::new(Recorder::default());
+    engine.set_listener(events.clone());
+    engine.load(vec![item("a", &a)], 0, 0, true).unwrap();
+    pump.play();
+    events.wait_for("start", Duration::from_secs(10), |e| matches!(e, EngineEvent::TrackStarted { .. }));
+    for _ in 0..3 {
+        trouble.lock().unwrap().push(DeviceEvent::Lost("t".into()));
+        for _ in 0..5 {
+            pump.play();
+        }
+    }
+    wait_until("three reopens", || {
+        pump.play();
+        engine.device_reopens() == 3
+    });
+    engine.shutdown();
+}

@@ -443,6 +443,12 @@ impl Engine {
         self.shared.underruns()
     }
 
+    /// How many times the output device was opened again since the engine
+    /// started: a device lost, the default moved, or an output chosen.
+    pub fn device_reopens(&self) -> u64 {
+        self.shared.device_reopens.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// Replaces the certificates trusted for streams. A server's certificate
     /// is checked the system's way first; only when that fails is it let
     /// through, and only when its host has a pin equal to its SHA-256.
