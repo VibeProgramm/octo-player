@@ -49,4 +49,17 @@ class NarrowValueTest {
     fun aOnePixelShorterTitleSideCounts() {
         assertEquals(100, narrowValue(150, listOf(150, 100), listOf(90, 80), { w -> if (w <= 100) 59 else 60 }) { 20 })
     }
+
+    // 100 and 90 both save the line; the wider one wins, so the value
+    // wraps no more than it has to.
+    @Test
+    fun takesTheWidestStepThatHelpsNotTheNarrowest() {
+        assertEquals(100, narrowValue(150, listOf(150, 140, 100, 80), listOf(90, 80, 60, 50), { w -> if (w <= 100) 40 else 60 }) { 20 })
+    }
+
+    // A narrower answer can need more room on two lines than a wider one.
+    @Test
+    fun eachStepHoldsEveryWiderAnswerOnTwoLines() {
+        assertEquals(130, narrowValue(150, listOf(150, 140, 100), listOf(70, 130, 60), { w -> if (w <= 130) 40 else 60 }) { 20 })
+    }
 }
