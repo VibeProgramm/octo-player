@@ -21,7 +21,7 @@ struct PlaybackSettingsPage: View {
                     // With Smart transitions on they pick the curve; the row says so and names
                     // the switch under it that frees the choice.
                     let curve = curveRowLook(prefs.crossfadeCurve, smartTransitions: prefs.smartTransitions)
-                    PopoverRow(SettingsIndex.crossfadeCurve, value: curve.value, helper: curve.helper, enabled: curve.choosable,
+                    PopoverRow(SettingsIndex.crossfadeCurve, value: curve.value, answers: FadeCurve.allCases.map(\.label), helper: curve.helper, enabled: curve.choosable,
                                isPresented: $curveOpen) {
                         FadeCurveCard { curveOpen = false }.frame(width: 340)
                     }
@@ -90,18 +90,21 @@ struct PlaybackSettingsPage: View {
 }
 
 /// A row like a choice row that opens its own card in a popover beside it instead of a list.
+/// `answers` names the card's answers, so the value keeps the width of the widest.
 struct PopoverRow<Card: View>: View {
     let entry: SettingEntry?
     let value: String
+    var answers: [String] = []
     var helper: String?
     var enabled = true
     @Binding var isPresented: Bool
     let card: () -> Card
 
-    init(_ entry: SettingEntry?, value: String, helper: String? = nil, enabled: Bool = true, isPresented: Binding<Bool>,
+    init(_ entry: SettingEntry?, value: String, answers: [String] = [], helper: String? = nil, enabled: Bool = true, isPresented: Binding<Bool>,
          @ViewBuilder card: @escaping () -> Card) {
         self.entry = entry
         self.value = value
+        self.answers = answers
         self.helper = helper
         self.enabled = enabled
         _isPresented = isPresented
@@ -123,12 +126,7 @@ struct PopoverRow<Card: View>: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .layoutValue(key: RowShare.self, value: 1)
-                    Text(value)
-                        .font(.octoBodySmall)
-                        .foregroundStyle(enabled ? OctoColor.textSecondary : OctoColor.textMuted)
-                        .multilineTextAlignment(.trailing)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    Reading(value: value, answers: answers, enabled: enabled)
                         .layoutValue(key: RowShare.self, value: 0.8)
                     Image(systemName: SettingsIcon.chevron)
                         .font(.system(size: 13, weight: .semibold))

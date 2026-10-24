@@ -269,14 +269,15 @@ private struct RowLabel: View {
     }
 }
 
-/// Which share of a row's spare width a part takes: the title 1, the value 0.8, and nothing set
+/// Which share of a row's spare width a part may take: the title 1, the value 0.8, and nothing set
 /// for parts that keep their own size (a chevron, a spinner).
 struct RowShare: LayoutValueKey {
     static let defaultValue: CGFloat? = nil
 }
 
-/// A row's title and value side by side, sharing the room the fixed parts leave 1 to 0.8, as
-/// the other apps divide it. Each wraps within its share, so neither is ever cut short.
+/// A row's title and value side by side in the room the fixed parts leave. The value takes only
+/// the room its words need, up to 0.8 to the title's 1, as the other apps divide it, and the title
+/// takes the rest. Each wraps within its width, so neither is ever cut short.
 struct TitleValueLayout: Layout {
     var spacing: CGFloat = 12
 
@@ -307,27 +308,42 @@ struct TitleValueLayout: Layout {
         let fixed = zip(shares, ideal).reduce(CGFloat(0)) { $0 + ($1.0 == nil ? $1.1 : 0) }
         let spare = max(0, total - fixed - spacing * CGFloat(max(subviews.count - 1, 0)))
         let whole = shares.compactMap { $0 }.reduce(0, +)
-        return zip(shares, ideal).map { share, width in
-            guard let share else { return width }
-            return whole > 0 ? spare * share / whole : 0
+        guard whole > 0 else { return zip(shares, ideal).map { $0 == nil ? $1 : 0 } }
+        // A value (a share under 1) takes what its words need, up to its share; titles share the rest.
+        let values: [CGFloat?] = zip(shares, ideal).map { share, width in
+            guard let share, share < 1 else { return nil }
+            return min(width, spare * share / whole)
+        }
+        let titleShares = zip(shares, values).reduce(CGFloat(0)) { $0 + ($1.1 == nil ? ($1.0 ?? 0) : 0) }
+        let left = spare - values.compactMap { $0 }.reduce(0, +)
+        return subviews.indices.map { index in
+            guard let share = shares[index] else { return ideal[index] }
+            return values[index] ?? (titleShares > 0 ? left * share / titleShares : 0)
         }
     }
 }
 
 /// A row's current value on its right: quieter than the title, kept to the end of the line,
-/// at most two lines, in its share of the row.
-private struct Reading: View {
+/// at most two lines, in the width its row gives it. Given `answers`, every one is laid under it
+/// unseen, so the value is as wide as the widest and the row never changes height between them.
+struct Reading: View {
     let value: String
+    var answers: [String] = []
     var enabled = true
 
     var body: some View {
-        Text(value)
-            .font(.octoBodySmall)
-            .foregroundStyle(enabled ? OctoColor.textSecondary : OctoColor.textMuted)
-            .multilineTextAlignment(.trailing)
-            .lineLimit(2)
-            .truncationMode(.tail)
-            .frame(maxWidth: .infinity, alignment: .trailing)
+        ZStack(alignment: .trailing) {
+            ForEach(Array(answers.enumerated()), id: \.offset) { _, answer in
+                Text(answer).font(.octoBodySmall).multilineTextAlignment(.trailing).lineLimit(2).hidden()
+            }
+            Text(value)
+                .font(.octoBodySmall)
+                .foregroundStyle(enabled ? OctoColor.textSecondary : OctoColor.textMuted)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+                .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
 
@@ -399,7 +415,7 @@ struct ChoiceRow: View {
             RowFrame(entry: entry) {
                 TitleValueLayout {
                     RowLabel(title: title ?? entry?.title ?? "", below: helper, enabled: enabled).layoutValue(key: RowShare.self, value: 1)
-                    Reading(value: value, enabled: enabled).layoutValue(key: RowShare.self, value: 0.8)
+                    Reading(value: value, answers: question.answers.map(\.label), enabled: enabled).layoutValue(key: RowShare.self, value: 0.8)
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 13, weight: .semibold))
                         .frame(width: 18, height: 18)
