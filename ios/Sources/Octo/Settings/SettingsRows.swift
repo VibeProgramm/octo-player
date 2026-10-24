@@ -351,22 +351,18 @@ struct TitleValueLayout: Layout {
         let answers = Array(Set(subviews[value][RowAnswers.self])).map { ($0, Self.oneLine($0, font)) }.sorted { $0.1 > $1.1 }
         let titles = shares.indices.filter { (shares[$0] ?? 0) >= 1 }
         guard answers.count >= 2, !titles.isEmpty else { return nil }
-        let others = subviews.indices.filter { !titles.contains($0) }
-        let twos = answers.map { Self.twoLines($0.0, font) }
-        let titleWide = height(wide, subviews, titles)
-        let rowWide = max(titleWide, height(wide, subviews, others))
-        for k in 1..<answers.count {
-            let narrow = max(answers[k].1, twos[..<k].max() ?? 0)
-            guard narrow < wide[value] else { continue }
+        func widths(at step: Double) -> [CGFloat] {
             var widths = wide
-            widths[value] = narrow
-            for index in titles { widths[index] += (wide[value] - narrow) / CGFloat(titles.count) }
-            let titleNarrow = height(widths, subviews, titles)
-            if titleNarrow < titleWide - 0.5, max(titleNarrow, height(widths, subviews, others)) <= rowWide + 0.5 {
-                return widths
-            }
+            widths[value] = CGFloat(step)
+            for index in titles { widths[index] += (wide[value] - CGFloat(step)) / CGFloat(titles.count) }
+            return widths
         }
-        return nil
+        guard let step = narrowValueWidth(
+            wide: Double(wide[value]), ones: answers.map { Double($0.1) }, twos: answers.map { Double(Self.twoLines($0.0, font)) },
+            title: { Double(height(widths(at: $0), subviews, titles)) },
+            row: { Double(height(widths(at: $0), subviews, Array(subviews.indices))) }
+        ) else { return nil }
+        return widths(at: step)
     }
 
     /// How tall the parts at `indices` stand at these widths.
