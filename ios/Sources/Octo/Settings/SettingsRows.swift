@@ -406,15 +406,18 @@ struct ChoiceRow: View {
     var title: String?
     let value: String
     var helper: String?
+    /// What the row can show on its right, when the menu words its answers longer; the menu's labels otherwise.
+    var values: [String]?
     var enabled = true
     let question: SettingsQuestion
 
-    init(_ entry: SettingEntry?, title: String? = nil, value: String, helper: String? = nil, enabled: Bool = true,
+    init(_ entry: SettingEntry?, title: String? = nil, value: String, helper: String? = nil, values: [String]? = nil, enabled: Bool = true,
          question: SettingsQuestion) {
         self.entry = entry
         self.title = title
         self.value = value
         self.helper = helper
+        self.values = values
         self.enabled = enabled
         self.question = question
     }
@@ -433,7 +436,7 @@ struct ChoiceRow: View {
             RowFrame(entry: entry) {
                 TitleValueLayout {
                     RowLabel(title: title ?? entry?.title ?? "", below: helper, enabled: enabled, belowAnswers: answerLines).layoutValue(key: RowShare.self, value: 1)
-                    Reading(value: value, answers: question.answers.map(\.label), enabled: enabled).layoutValue(key: RowShare.self, value: 0.8)
+                    Reading(value: value, answers: values ?? question.answers.map(\.label), enabled: enabled).layoutValue(key: RowShare.self, value: 0.8)
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 13, weight: .semibold))
                         .frame(width: 18, height: 18)
