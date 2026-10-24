@@ -127,7 +127,7 @@ fun PlaybackPage(onBack: () -> Unit, highlight: String?, vm: PlaybackViewModel =
         SettingsGroup(title = "Queue", icon = OctoIcons.Queue) {
             val sheet = LocalChoiceSheet.current
             val actions = SwipeAction.entries
-            ChoiceRow(SettingsIndex.SongSwipe, value = prefs.swipeAction.label, helper = prefs.swipeAction.detail, answers = actions.map { it.label }, onClick = {
+            ChoiceRow(SettingsIndex.SongSwipe, value = prefs.swipeAction.label, helper = prefs.swipeAction.detail, answers = actions.map { it.label }, helpers = actions.map { it.detail }, onClick = {
                 sheet.show(
                     ChoiceRequest(SettingsIndex.SongSwipe.title, actions.map { Choice(it.label, it.detail) }, actions.indexOf(prefs.swipeAction)) {
                         vm.setSwipeAction(actions[it])
@@ -220,6 +220,7 @@ private fun CurveRow(curve: FadeCurve, smart: Boolean, onPick: (FadeCurve) -> Un
         enabled = look.choosable,
         helper = look.helper,
         answers = curves.map { it.label },
+        helpers = if (look.choosable) curves.map { it.detail } else emptyList(),
         onClick = {
             sheet.show(
                 ChoiceRequest(
