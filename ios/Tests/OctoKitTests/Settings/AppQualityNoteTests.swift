@@ -6,7 +6,7 @@ import Testing
 struct AppQualityNoteTests {
     @Test func namesTheAnswerWhenThisPhoneFollowsIsShown() {
         #expect(AccountQualityWords.appQualityNote(deviceShown: true)
-            == "Your account's choice applies now. Choose \"Let this app decide\" above to use these.")
+            == "Your account's choice applies now. Choose \"Let\u{00A0}this\u{00A0}app\u{00A0}decide\" above to use these.")
     }
 
     @Test func saysOnlyWhatAppliesWhenItIsNot() {
