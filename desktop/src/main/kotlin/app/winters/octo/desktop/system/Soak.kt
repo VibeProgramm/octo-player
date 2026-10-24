@@ -45,7 +45,7 @@ import kotlin.random.Random
 //   advance=45       seconds a song plays before the next
 //   output=XG270     plays to the first output whose name holds this
 //   miniOnly=true    hands over to the mini player (the window goes away)
-//   purgeEvery=5     minutes between emptying every window's GPU cache
+//   purgeEvery=300   seconds between emptying every Direct3D window's GPU cache
 //   switchOutputs=30 seconds between moving the music to the next output
 //                    (0, never)
 //   queue=<file>     the songs picked, written by the first run and read by
@@ -87,22 +87,18 @@ suspend fun soakRun(app: AppState, plan: File) {
         app.play(songs, 0, source = "Soak")
     }
     app.player.setRepeat(RepeatMode.All)
-    // Moves the music to the next output every `switchOutputs` seconds, so
-    // the engine opens a device again and again, as sleep and wake or a
-    // headset coming and going make it.
-    // Every `purgeEvery` minutes, each window's graphics card cache is
-    // emptied (its limit set to nothing for a moment, then back), so the
-    // spares it holds go and the blocks they sat in can be let go.
+    // Every `purgeEvery` seconds, each Direct3D window's graphics card cache
+    // is emptied (its limit set to nothing, then back), so the spares it
+    // holds go and the blocks they sat in can be let go. It runs under the
+    // window's own draw lock, as skiko's drawing does, never on the window's
+    // thread: done there it raced a frame and crashed.
     val purgeEvery = wants.getProperty("purgeEvery", "0").toLong()
     if (purgeEvery > 0) CoroutineScope(Dispatchers.Default).launch {
+        var purges = 0
         while (true) {
-            delay(purgeEvery * 60_000)
-            val contexts = withContext(Dispatchers.Main) { allWindowContexts() }
-            val limits = contexts.map { it.resourceCacheLimit }
-            withContext(Dispatchers.Main) { contexts.forEach { it.resourceCacheLimit = 0 } }
-            delay(2_000)
-            withContext(Dispatchers.Main) { contexts.zip(limits).forEach { (context, limit) -> context.resourceCacheLimit = limit } }
-            note("purged ${contexts.size} windows' caches")
+            delay(purgeEvery * 1_000)
+            val trimmed = trimGpuCaches()
+            if (++purges % 10 == 1 || purgeEvery >= 60) note("purged $trimmed windows' caches ($purges)")
         }
     }
     // Hands over to the mini player, which puts the window away.
@@ -118,6 +114,9 @@ suspend fun soakRun(app: AppState, plan: File) {
         if (chosen != null) app.player.selectOutput(chosen.id)
         note("output ${chosen?.id} ${chosen?.name ?: "none matched $part"}")
     }
+    // Moves the music to the next output every `switchOutputs` seconds, so
+    // the engine opens a device again and again, as sleep and wake or a
+    // headset coming and going make it.
     val switchEvery = wants.getProperty("switchOutputs", "0").toLong()
     if (switchEvery > 0) CoroutineScope(Dispatchers.Default).launch {
         var turn = 0
@@ -169,19 +168,33 @@ suspend fun soakRun(app: AppState, plan: File) {
 // (null when its insides differ, or it draws without the card).
 private fun gpuCacheLimit(): Long? = windowContext()?.resourceCacheLimit
 
-// Every window's graphics card context, found as windowContext finds the first.
-private fun allWindowContexts(): List<org.jetbrains.skia.DirectContext> {
+// Empties the graphics card cache of every window drawn with Direct3D, each
+// under its redrawer's draw lock (skiko replays frames and disposes under it),
+// skipping one already disposed. How many it emptied. OpenGL draws in
+// whichever context is current, so its windows are left alone.
+private fun trimGpuCaches(): Int {
     fun layers(component: java.awt.Component): List<org.jetbrains.skiko.SkiaLayer> = when (component) {
         is org.jetbrains.skiko.SkiaLayer -> listOf(component)
         is java.awt.Container -> component.components.flatMap(::layers)
         else -> emptyList()
     }
-    return java.awt.Window.getWindows().flatMap(::layers).mapNotNull { layer ->
+    val layerList = runCatching { java.awt.Window.getWindows().flatMap(::layers) }.getOrDefault(emptyList())
+    return layerList.count { layer ->
         runCatching {
-            val redrawer = layer.javaClass.getMethod("getRedrawer\$skiko").invoke(layer) ?: return@runCatching null
-            val handler = redrawer.javaClass.getDeclaredField("contextHandler").apply { isAccessible = true }.get(redrawer) ?: return@runCatching null
-            Class.forName("org.jetbrains.skiko.context.ContextHandler").getDeclaredMethod("getContext").apply { isAccessible = true }.invoke(handler) as? org.jetbrains.skia.DirectContext
-        }.getOrNull()
+            val redrawer = layer.javaClass.getMethod("getRedrawer\$skiko").invoke(layer) ?: return@runCatching false
+            if (redrawer.javaClass.name != "org.jetbrains.skiko.redrawer.Direct3DRedrawer") return@runCatching false
+            val lock = redrawer.javaClass.getDeclaredField("drawLock").apply { isAccessible = true }.get(redrawer) ?: return@runCatching false
+            val awt = Class.forName("org.jetbrains.skiko.redrawer.AWTRedrawer")
+            synchronized(lock) {
+                if (awt.getDeclaredMethod("isDisposed").apply { isAccessible = true }.invoke(redrawer) == true) return@runCatching false
+                val handler = redrawer.javaClass.getDeclaredField("contextHandler").apply { isAccessible = true }.get(redrawer) ?: return@runCatching false
+                val context = Class.forName("org.jetbrains.skiko.context.ContextHandler").getDeclaredMethod("getContext").apply { isAccessible = true }.invoke(handler) as? org.jetbrains.skia.DirectContext ?: return@runCatching false
+                val limit = context.resourceCacheLimit
+                context.resourceCacheLimit = 0
+                context.resourceCacheLimit = limit
+                true
+            }
+        }.getOrDefault(false)
     }
 }
 

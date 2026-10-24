@@ -43,7 +43,8 @@
 #   -Output <name>    plays to the first output whose name holds this
 #   -MiniOnly         hands over to the mini player once playing (the window
 #                     goes away, as the mini player button does)
-#   -PurgeEvery <m>   empties every window's GPU cache every that many minutes
+#   -PurgeEvery <s>   empties every Direct3D window's GPU cache every that many
+#                     seconds (under skiko's draw lock)
 #   -SwitchOutputs <s> moves the music to the next output (Octo's own
 #                     choice, not Windows') every that many seconds
 #   -CycleResize <s>  from minute 2, switches the window between two sizes
