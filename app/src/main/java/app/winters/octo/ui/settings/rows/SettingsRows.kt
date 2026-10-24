@@ -236,8 +236,9 @@ fun ChoiceRow(
 // A row's title, with the line under it, beside its current value. The
 // value is quieter, kept to the end of the line, at most two lines, and
 // takes only the room its words need (the widest of `answers` when given),
-// up to its share of the row: 0.8 to the title's 1. The title takes all
-// the rest, so a short value never leaves the title wrapping beside an
+// up to its share of the row (0.8 to the title's 1), or up to all the room
+// the title leaves when the title fits on one line beside it. The title
+// takes the rest, so a short value never leaves it wrapping beside an
 // empty gap.
 @Composable
 private fun RowScope.TitleValue(
@@ -269,7 +270,9 @@ private fun RowScope.TitleValue(
         val room = (constraints.maxWidth - TitleValueGap.roundToPx()).coerceAtLeast(0)
         val widest = answers.maxOfOrNull { measurer.measure(it, OctoType.bodySmall, maxLines = 1, softWrap = false).size.width } ?: 0
         val need = maxOf(reading.maxIntrinsicWidth(Constraints.Infinity), widest)
-        val width = minOf(need, (room * ValueShare).roundToInt())
+        // Its share of the row, or more when the title still fits on one line beside it.
+        val most = maxOf((room * ValueShare).roundToInt(), room - label.maxIntrinsicWidth(Constraints.Infinity))
+        val width = minOf(need, most)
         val shown = reading.measure(Constraints.fixedWidth(width))
         val words = label.measure(Constraints(maxWidth = room - width))
         // As tall as the tallest answer at this width, so the row keeps one height for all of them.
