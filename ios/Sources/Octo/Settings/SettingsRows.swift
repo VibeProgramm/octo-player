@@ -360,7 +360,7 @@ struct TitleValueLayout: Layout {
         guard let step = narrowValueWidth(
             wide: Double(wide[value]), ones: answers.map { Double($0.1) }, twos: answers.map { Double(Self.twoLines($0.0, font)) },
             title: { Double(height(widths(at: $0), subviews, titles)) },
-            row: { Double(height(widths(at: $0), subviews, Array(subviews.indices))) }
+            value: { Double(height(widths(at: $0), subviews, subviews.indices.filter { !titles.contains($0) })) }
         ) else { return nil }
         return widths(at: step)
     }
