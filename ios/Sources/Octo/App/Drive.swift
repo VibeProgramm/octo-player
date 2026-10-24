@@ -157,6 +157,15 @@ enum Drive {
             }
             view = current.superview
         }
+        // A page SwiftUI fades out (a tab behind the one in front) can be see-through only in its layers.
+        var layer: CALayer? = found?.layer
+        while let current = layer {
+            if current.isHidden || current.opacity < 0.01 {
+                found = nil
+                break
+            }
+            layer = current.superlayer
+        }
         guard let scroll = found else {
             log.info("scroll: no shown scroll view under the middle of the screen")
             return
