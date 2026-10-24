@@ -117,7 +117,7 @@ struct AudioQualitySettingsPage: View {
         let mobileLimit = me?.awayLimit ?? 0
         SettingsPageFrame(title: SettingsPage.audioQuality.title, highlight: highlight) {
             if let me {
-                SettingsGroup(title: "Your account, on every app", icon: SettingsIcon.listeners) {
+                SettingsGroup(title: "Your account, on every app", icon: SettingsIcon.account) {
                     ForEach(me.limitLines, id: \.self) { NoteRow($0, color: OctoColor.signalOrange) }
                     ChoiceRow(SettingsIndex.accountHome, value: me.home.name, values: AccountQualityWords.options(limitKbps: me.homeLimit).map(\.quality.name),
                               question: accountQuestion(AccountQualityWords.atHome, me.home, limit: me.homeLimit) { quality in
@@ -138,7 +138,7 @@ struct AudioQualitySettingsPage: View {
             }
             SettingsGroup(title: familyOn ? "This app's quality" : "Streaming", icon: SettingsIcon.wifi) {
                 if !model.appPicks {
-                    NoteRow("Your account's choice applies now. These apply when this phone is left to the app.")
+                    NoteRow(AccountQualityWords.appQualityNote(deviceShown: me != nil && model.follows != nil))
                 }
                 ChoiceRow(SettingsIndex.streamWifi, value: settings.stream.wifi.label, values: StreamQuality.allCases.map(\.label),
                           question: streamQuestion(SettingsIndex.streamWifi.title, settings.stream.wifi, limit: wifiLimit, pick: settings.setStreamWifi))
