@@ -125,10 +125,11 @@ public enum AccountQualityWords {
     public static let originalLabel = "Original (as the file is, FLAC stays FLAC)"
 
     /// The note over this app's own quality while the account's choice applies. With "Quality on this device"
-    /// shown, it names the answer there that hands the choice to this app; without it there is nothing to point at.
+    /// shown, it names the answer there that hands the choice to this app, its words held together so a line never
+    /// breaks inside the name; without it there is nothing to point at.
     public static func appQualityNote(deviceShown: Bool) -> String {
         deviceShown
-            ? "Your account's choice applies now. Choose \"\(QualityFollows.app.name)\" above to use these."
+            ? "Your account's choice applies now. Choose \"\(QualityFollows.app.name.replacingOccurrences(of: " ", with: "\u{00A0}"))\" above to use these."
             : "Your account's choice applies now."
     }
 
