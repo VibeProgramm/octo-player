@@ -211,6 +211,7 @@ fun SwitchRow(
 // answers up beside the row. `answers` names every answer, so the value
 // keeps the width of the widest and the row never changes height between
 // them.
+// `helpers` names every answer's own line when the line under the title is the chosen answer's.
 @Composable
 fun ChoiceRow(
     entry: SettingEntry?,
@@ -220,10 +221,11 @@ fun ChoiceRow(
     title: String = entry?.title.orEmpty(),
     helper: String? = null,
     answers: List<String> = emptyList(),
+    helpers: List<String> = emptyList(),
 ) {
     val sheet = LocalChoiceSheet.current
     RowFrame(entry, Modifier.choiceAnchor(sheet).clickable(enabled = enabled, role = Role.Button, onClick = onClick)) {
-        TitleValue(title, helper, value, enabled, answers = answers)
+        TitleValue(title, helper, value, enabled, answers = answers, belows = helpers)
         Icon(
             painterResource(OctoIcons.Chevron),
             contentDescription = null,
@@ -248,6 +250,7 @@ private fun RowScope.TitleValue(
     enabled: Boolean = true,
     titleColor: Color = OctoColors.TextPrimary,
     answers: List<String> = emptyList(),
+    belows: List<String> = emptyList(),
 ) {
     val measurer = rememberTextMeasurer()
     Layout(
@@ -279,9 +282,15 @@ private fun RowScope.TitleValue(
         val tallest = answers.maxOfOrNull {
             measurer.measure(it, OctoType.bodySmall, overflow = TextOverflow.Ellipsis, maxLines = 2, constraints = Constraints(maxWidth = width)).size.height
         } ?: 0
-        val height = maxOf(words.height, shown.height, tallest, constraints.minHeight)
+        // Room for the tallest of `belows` under the title, the title held at the top of it, so the row
+        // keeps one height and its title one place whichever answer's line shows.
+        val lineWidth = room - width
+        val lineNow = below?.let { measurer.measure(it, OctoType.caption, constraints = Constraints(maxWidth = lineWidth)).size.height } ?: 0
+        val lineMost = belows.maxOfOrNull { measurer.measure(it, OctoType.caption, constraints = Constraints(maxWidth = lineWidth)).size.height } ?: 0
+        val labelHeight = words.height + (lineMost - lineNow).coerceAtLeast(0)
+        val height = maxOf(labelHeight, shown.height, tallest, constraints.minHeight)
         layout(constraints.maxWidth, height) {
-            words.placeRelative(0, (height - words.height) / 2)
+            words.placeRelative(0, (height - labelHeight) / 2)
             shown.placeRelative(constraints.maxWidth - shown.width, (height - shown.height) / 2)
         }
     }

@@ -72,6 +72,7 @@ fun RadioPage(onOpen: (NavKey) -> Unit, onBack: () -> Unit, highlight: String?, 
                 enabled = discovery.choosable,
                 helper = discovery.helper,
                 answers = discoveries.map { it.label },
+                helpers = if (discovery.choosable) discoveries.map { it.detail } else emptyList(),
                 onClick = {
                     sheet.show(
                         ChoiceRequest(SettingsIndex.RadioDiscovery.title, discoveries.map { Choice(it.label, it.detail) }, discoveries.indexOf(prefs.radioDiscovery)) {
@@ -81,7 +82,7 @@ fun RadioPage(onOpen: (NavKey) -> Unit, onBack: () -> Unit, highlight: String?, 
                 },
             )
             val adventures = RadioAdventure.entries
-            ChoiceRow(SettingsIndex.RadioAdventure, value = prefs.radioAdventure.label, helper = prefs.radioAdventure.detail, answers = adventures.map { it.label }, onClick = {
+            ChoiceRow(SettingsIndex.RadioAdventure, value = prefs.radioAdventure.label, helper = prefs.radioAdventure.detail, answers = adventures.map { it.label }, helpers = adventures.map { it.detail }, onClick = {
                 sheet.show(
                     ChoiceRequest(SettingsIndex.RadioAdventure.title, adventures.map { Choice(it.label, it.detail) }, adventures.indexOf(prefs.radioAdventure)) {
                         vm.setAdventure(adventures[it])
@@ -89,7 +90,7 @@ fun RadioPage(onOpen: (NavKey) -> Unit, onBack: () -> Unit, highlight: String?, 
                 )
             })
             val varieties = RadioVariety.entries
-            ChoiceRow(SettingsIndex.RadioVariety, value = prefs.radioVariety.label, helper = prefs.radioVariety.detail, answers = varieties.map { it.label }, onClick = {
+            ChoiceRow(SettingsIndex.RadioVariety, value = prefs.radioVariety.label, helper = prefs.radioVariety.detail, answers = varieties.map { it.label }, helpers = varieties.map { it.detail }, onClick = {
                 sheet.show(
                     ChoiceRequest(SettingsIndex.RadioVariety.title, varieties.map { Choice(it.label, it.detail) }, varieties.indexOf(prefs.radioVariety)) {
                         vm.setVariety(varieties[it])
