@@ -16,6 +16,7 @@ pub mod opus;
 pub mod output;
 pub mod pace;
 pub mod player;
+pub mod process_stats;
 pub mod scout;
 pub mod sound;
 pub mod source;
