@@ -37,6 +37,7 @@ import app.winters.octo.design.LocalTyping
 import app.winters.octo.design.ProvideWindowLook
 import app.winters.octo.design.TypingState
 import app.winters.octo.desktop.audio.CHECK_PLAY
+import app.winters.octo.desktop.audio.EnginePlayer
 import app.winters.octo.desktop.audio.checkSound
 import app.winters.octo.desktop.audio.openPlayer
 import app.winters.octo.desktop.library.coverLoader
@@ -54,11 +55,14 @@ import app.winters.octo.desktop.settings.systemTextScale
 import app.winters.octo.desktop.settings.textScale
 import app.winters.octo.desktop.system.AudioDropZone
 import app.winters.octo.desktop.system.LocalSystem
+import app.winters.octo.desktop.system.MemoryLog
 import app.winters.octo.desktop.system.SOAK_RUN
 import app.winters.octo.desktop.system.SingleInstance
 import app.winters.octo.desktop.system.SystemIntegration
 import app.winters.octo.desktop.system.letRunningOctoComeForward
 import app.winters.octo.desktop.system.preloadStartClasses
+import app.winters.octo.desktop.system.rendererText
+import app.winters.octo.desktop.system.startMemoryLog
 import app.winters.octo.desktop.system.soakRun
 import app.winters.octo.desktop.system.startsInTray
 import app.winters.octo.desktop.system.useAppNatives
@@ -320,6 +324,23 @@ fun main(args: Array<String>) {
                     val app = ready.app
                     val system = ready.system
                     system.watch(window)
+                    // A line every 10 minutes on the app's memory, for bug reports.
+                    val logs = if (os == DesktopOs.Windows) File(places.cache.parentFile, "logs") else File(places.cache, "logs")
+                    startMemoryLog(
+                        scope = app.scope,
+                        log = MemoryLog(logs),
+                        renderer = { rendererText(window) },
+                        state = {
+                            val where = when {
+                                system.miniPlayerOpen -> "mini"
+                                !system.windowVisible -> "tray"
+                                windowState.isMinimized -> "minimized"
+                                else -> "shown"
+                            }
+                            where to app.player.state.value.playing
+                        },
+                        reopens = { (app.player as? EnginePlayer)?.engine?.deviceReopens() },
+                    )
                     // Music the server took in is looked for now and then
                     // while Octo runs, and on coming back to it; the library
                     // decides whether a look is due.
