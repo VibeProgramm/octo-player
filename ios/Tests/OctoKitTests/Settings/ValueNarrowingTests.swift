@@ -42,4 +42,25 @@ struct ValueNarrowingTests {
                                     title: { $0 < 150 ? 59.7 : 60 }, value: { _ in 20 })
         #expect(step == nil)
     }
+
+    /// 100 and 90 both save the line; the wider one wins, so the value wraps no more than it has to.
+    @Test func takesTheWidestStepThatHelpsNotTheNarrowest() {
+        let step = narrowValueWidth(wide: 150, ones: [150, 140, 100, 80], twos: [90, 80, 60, 50],
+                                    title: { $0 <= 100 ? 40 : 60 }, value: { _ in 20 })
+        #expect(step == 100)
+    }
+
+    /// A narrower answer can need more room on two lines than a wider one.
+    @Test func eachStepHoldsEveryWiderAnswerOnTwoLines() {
+        let step = narrowValueWidth(wide: 150, ones: [150, 140, 100], twos: [70, 130, 60],
+                                    title: { $0 <= 130 ? 40 : 60 }, value: { _ in 20 })
+        #expect(step == 130)
+    }
+
+    /// A row less than half a point taller is the same height drawn.
+    @Test func aHairTallerRowStillCounts() {
+        let step = narrowValueWidth(wide: 150, ones: [150, 100], twos: [90, 80],
+                                    title: { $0 < 150 ? 40 : 60 }, value: { $0 < 150 ? 60.3 : 20 })
+        #expect(step == 100)
+    }
 }
