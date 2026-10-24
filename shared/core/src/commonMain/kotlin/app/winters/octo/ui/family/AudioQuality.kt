@@ -83,10 +83,11 @@ fun deviceModeLine(mode: DeviceQualityMode): String = when (mode) {
 
 // The note over this app's own quality while the account's choice applies.
 // With "Quality on this device" shown, it names the answer there that hands
-// the choice to this app; without it there is nothing to point at.
+// the choice to this app, its words held together so a line never breaks
+// inside the name; without it there is nothing to point at.
 fun appQualityNote(deviceShown: Boolean): String =
     if (deviceShown) {
-        "Your account's choice applies now. Choose \"${deviceModeName(DeviceQualityMode.App)}\" above to use these."
+        "Your account's choice applies now. Choose \"${deviceModeName(DeviceQualityMode.App).replace(' ', ' ')}\" above to use these."
     } else {
         "Your account's choice applies now."
     }

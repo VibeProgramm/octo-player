@@ -9,7 +9,7 @@ import org.junit.Test
 class AppQualityNoteTest {
     @Test
     fun namesTheAnswerWhenThisPhoneFollowsIsShown() {
-        assertEquals("Your account's choice applies now. Choose \"Let this app decide\" above to use these.", appQualityNote(deviceShown = true))
+        assertEquals("Your account's choice applies now. Choose \"Let this app decide\" above to use these.", appQualityNote(deviceShown = true))
     }
 
     @Test
