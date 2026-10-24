@@ -529,6 +529,12 @@ impl Engine {
         *self.shared.planner.lock().unwrap_or_else(|e| e.into_inner()) = planner;
     }
 
+    /// How many track infos the player holds.
+    #[cfg(test)]
+    pub fn infos_len(&self) -> usize {
+        self.shared.infos_len.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     fn send(&self, command: Command) -> Result<(), EngineError> {
         self.commands.send(command).map_err(|_| EngineError::Failed {
             kind: ErrorKind::Other,

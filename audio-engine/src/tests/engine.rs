@@ -1283,3 +1283,44 @@ fn a_live_stream_paused_a_long_while_starts_again_where_it_is_now() {
     assert!(engine.position().position_ms < 2_000.0, "{}", engine.position().position_ms);
     engine.shutdown();
 }
+
+#[test]
+fn the_player_keeps_infos_only_for_queued_songs() {
+    let dir = temp_dir();
+    let songs: Vec<QueueItem> = ["a", "b", "c", "d", "e", "f"]
+        .iter()
+        .map(|id| {
+            let path = dir.join(format!("{id}.wav"));
+            write_wav(&path, RATE, 2, &sine(300.0, RATE, 2, 0, RATE as usize * 3, 0.3));
+            item(id, &path)
+        })
+        .collect();
+    let (driver, pump) = NullDriver::driven(RATE, 2, None);
+    let engine = Engine::with_driver(Box::new(move || Box::new(driver)));
+    let events = Arc::new(Recorder::default());
+    engine.set_listener(events.clone());
+    engine.load(songs[..3].to_vec(), 0, 0, true).unwrap();
+    let started = |count: usize| events.starts().len() >= count;
+    for _ in 0..3_000 {
+        pump.play();
+        if started(2) {
+            break;
+        }
+    }
+    wait_until("the second start", || started(2));
+    engine.load(songs[3..].to_vec(), 0, 0, true).unwrap();
+    for _ in 0..3_000 {
+        pump.play();
+        if events.starts().iter().any(|id| id == "d") {
+            break;
+        }
+    }
+    wait_until("the start of d", || events.starts().iter().any(|id| id == "d"));
+    // About 2 s more.
+    for _ in 0..200 {
+        pump.play();
+    }
+    // Three queued and the heard one.
+    assert!(engine.infos_len() <= 4, "infos kept {}", engine.infos_len());
+    engine.shutdown();
+}
