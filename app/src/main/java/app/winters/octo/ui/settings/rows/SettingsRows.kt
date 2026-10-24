@@ -225,7 +225,7 @@ fun ChoiceRow(
 ) {
     val sheet = LocalChoiceSheet.current
     RowFrame(entry, Modifier.choiceAnchor(sheet).clickable(enabled = enabled, role = Role.Button, onClick = onClick)) {
-        TitleValue(title, helper, value, enabled, answers = answers, belows = helpers)
+        TitleValue(title, helper, value, enabled, answers = answers, belows = if (helper != null) helpers else emptyList())
         Icon(
             painterResource(OctoIcons.Chevron),
             contentDescription = null,
@@ -273,8 +273,13 @@ private fun RowScope.TitleValue(
         val room = (constraints.maxWidth - TitleValueGap.roundToPx()).coerceAtLeast(0)
         val widest = answers.maxOfOrNull { measurer.measure(it, OctoType.bodySmall, maxLines = 1, softWrap = false).size.width } ?: 0
         val need = maxOf(reading.maxIntrinsicWidth(Constraints.Infinity), widest)
-        // Its share of the row, or more when the title still fits on one line beside it.
-        val most = maxOf((room * ValueShare).roundToInt(), room - label.maxIntrinsicWidth(Constraints.Infinity))
+        // Its share of the row, or more when the title, and the widest of the answers' lines under it, still
+        // fit on one line beside it.
+        val labelWide = maxOf(
+            label.maxIntrinsicWidth(Constraints.Infinity),
+            belows.maxOfOrNull { measurer.measure(it, OctoType.caption, maxLines = 1, softWrap = false).size.width } ?: 0,
+        )
+        val most = maxOf((room * ValueShare).roundToInt(), room - labelWide)
         val width = minOf(need, most)
         val shown = reading.measure(Constraints.fixedWidth(width))
         val words = label.measure(Constraints(maxWidth = room - width))
