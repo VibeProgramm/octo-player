@@ -280,7 +280,37 @@ private fun RowScope.TitleValue(
             belows.maxOfOrNull { measurer.measure(it, OctoType.caption, maxLines = 1, softWrap = false).size.width } ?: 0,
         )
         val most = maxOf((room * ValueShare).roundToInt(), room - labelWide)
-        val width = minOf(need, most)
+        val wide = minOf(need, most)
+        // A row tall anyway beside a long line under its title may take a narrower value: as narrow as
+        // its second-widest answer on one line, the widest wrapping to two lines at a space. It is used
+        // only when the row is no taller for it, and it does not depend on the answer shown, so nothing
+        // moves between answers and no wide empty gap sits beside a short value.
+        val texts = if (value in answers) answers else answers + value
+        fun oneLine(text: String) = measurer.measure(text, OctoType.bodySmall, maxLines = 1, softWrap = false).size.width
+        fun twoLines(text: String): Int {
+            val words = text.split(" ")
+            if (words.size < 2) return oneLine(text)
+            return (1 until words.size).minOf { cut ->
+                maxOf(oneLine(words.subList(0, cut).joinToString(" ")), oneLine(words.subList(cut, words.size).joinToString(" ")))
+            }
+        }
+        fun rowHeight(w: Int): Int {
+            val lines = room - w
+            val lineShown = below?.let { measurer.measure(it, OctoType.caption, constraints = Constraints(maxWidth = lines)).size.height } ?: 0
+            val lineTallest = belows.maxOfOrNull { measurer.measure(it, OctoType.caption, constraints = Constraints(maxWidth = lines)).size.height } ?: 0
+            val labelTall = label.minIntrinsicHeight(lines) + (lineTallest - lineShown).coerceAtLeast(0)
+            val valueTall = texts.maxOf {
+                measurer.measure(it, OctoType.bodySmall, overflow = TextOverflow.Ellipsis, maxLines = 2, constraints = Constraints(maxWidth = w)).size.height
+            }
+            return maxOf(labelTall, valueTall)
+        }
+        val narrow = if (texts.size < 2) {
+            wide
+        } else {
+            val sizes = texts.map(::oneLine).sortedDescending()
+            maxOf(sizes[1], twoLines(texts.maxBy(::oneLine)))
+        }
+        val width = if (narrow < wide && rowHeight(narrow) <= rowHeight(wide)) narrow else wide
         val shown = reading.measure(Constraints.fixedWidth(width))
         val words = label.measure(Constraints(maxWidth = room - width))
         // As tall as the tallest answer at this width, so the row keeps one height for all of them.
