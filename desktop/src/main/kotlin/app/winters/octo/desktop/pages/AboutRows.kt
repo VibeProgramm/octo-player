@@ -36,8 +36,8 @@ internal fun AboutRows(app: AppState, settings: AppSettings) {
     val updates = app.updates
     val ready = updates?.ready
     AboutCard()
-    Rows {
-        if (updates != null && ready != null) {
+    if (updates != null && ready != null) {
+        Rows {
             SettingRow("Update ready: ${ready.version}", updates.installHelp(ready)) {
                 val system = LocalSystem.current
                 RowAction(updates.installAction, { updates.install(quit = { system?.quit?.invoke() }) })
