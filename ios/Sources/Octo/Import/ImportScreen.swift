@@ -275,7 +275,7 @@ struct ImportScreen: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
         if let current = trickle.current { TrackLine(track: current) }
-        ForEach(Array(trickle.next.enumerated()), id: \.offset) { _, track in
+        ForEach(Array(trickle.shownNext.enumerated()), id: \.offset) { _, track in
             TrackLine(track: track) {
                 GlazeButton("Skip", size: .extraSmall, enabled: !model.working) { model.skip(track.key) }.padding(.leading, 8)
             }

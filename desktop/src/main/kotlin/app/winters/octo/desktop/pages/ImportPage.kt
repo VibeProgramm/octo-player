@@ -61,6 +61,7 @@ import app.winters.octo.ui.imports.label
 import app.winters.octo.ui.imports.line
 import app.winters.octo.ui.imports.originLine
 import app.winters.octo.ui.imports.removeLine
+import app.winters.octo.ui.imports.shownNext
 import app.winters.octo.ui.imports.title
 
 // Import on an Octo server: get music from another service through a file
@@ -322,7 +323,7 @@ private fun TrickleSection(model: ImportModel, overview: ImportOverview) {
     trickle.current?.let { current -> Group("Now") { TrackRow(current) } }
     if (trickle.next.isNotEmpty()) {
         Group("Next") {
-            trickle.next.forEach { track -> TrackRow(track) { RowAction("Skip", { model.skip(track.key) }, enabled = !model.working) } }
+            trickle.shownNext().forEach { track -> TrackRow(track) { RowAction("Skip", { model.skip(track.key) }, enabled = !model.working) } }
         }
     }
     if (trickle.recent.isNotEmpty()) {

@@ -3,6 +3,7 @@ package app.winters.octo.ui.imports
 import app.winters.octo.subsonic.ImportListSummary
 import app.winters.octo.subsonic.ImportOverview
 import app.winters.octo.subsonic.ImportSource
+import app.winters.octo.subsonic.ImportTrack
 import app.winters.octo.subsonic.ImportTrackState
 import app.winters.octo.subsonic.TrickleState
 import app.winters.octo.subsonic.TrickleStatus
@@ -87,7 +88,7 @@ fun TrickleStatus.title(): String = when (stage) {
     TrickleState.WaitingForMusicDatabase -> "Waiting for MusicBrainz"
 }
 
-// The trickle's line under it: the pace, when the next song starts, and the counts, each count held to its word.
+// The trickle's line under it: the pace, when the next song starts, and the counts, each count held to its word and the counts kept together as one group.
 fun TrickleStatus.line(zone: ZoneId = ZoneId.systemDefault()): String {
     val parts = ArrayList<String>()
     if (stage == TrickleState.Off) parts += "Songs an hour is 0 on the server, so nothing starts."
@@ -97,10 +98,15 @@ fun TrickleStatus.line(zone: ZoneId = ZoneId.systemDefault()): String {
     if (stage == TrickleState.WaitingForSoulseek) parts += "It goes on once Soulseek is back."
     if (stage == TrickleState.WaitingForMusicDatabase) parts += "It goes on once MusicBrainz is back."
     val tally = listOf(queued to "waiting", downloading to "fetching", done to "fetched", notFound to "not found", skipped to "skipped")
-        .filter { it.first > 0 }.joinToString(", ") { "${it.first}\u00A0${it.second.replace(' ', '\u00A0')}" }
+        .filter { it.first > 0 }.joinToString(",${Char(0xA0)}") { "${it.first}\u00A0${it.second.replace(' ', '\u00A0')}" }
     if (tally.isNotEmpty()) parts += "$tally."
     return parts.joinToString(" ")
 }
+
+// The next songs as shown: while every one waits for MusicBrainz the heading says so once, so
+// their rows leave out the same words.
+fun TrickleStatus.shownNext(): List<ImportTrack> =
+    if (stage == TrickleState.WaitingForMusicDatabase) next.map { it.copy(detail = null) } else next
 
 private fun time(utc: String, zone: ZoneId): String = runCatching {
     DateTimeFormatter.ofPattern("HH:mm").format(Instant.parse(utc).atZone(zone))

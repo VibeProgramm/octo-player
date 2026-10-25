@@ -200,7 +200,7 @@ extension TrickleStatus {
         }
     }
 
-    /// The trickle's line: the pace, when the next song starts, and the counts, each count held to its word.
+    /// The trickle's line: the pace, when the next song starts, and the counts, each count held to its word and the counts kept together as one group.
     public func line(zone: TimeZone = .current) -> String {
         var parts: [String] = []
         if stage == .off {
@@ -213,9 +213,20 @@ extension TrickleStatus {
         if stage == .waitingForSoulseek { parts.append("It goes on once Soulseek is back.") }
         if stage == .waitingForMusicDatabase { parts.append("It goes on once MusicBrainz is back.") }
         let tally = [(queued, "waiting"), (downloading, "fetching"), (done, "fetched"), (notFound, "not found"), (skipped, "skipped")]
-            .filter { $0.0 > 0 }.map { "\($0.0)\u{00A0}\($0.1.replacingOccurrences(of: " ", with: "\u{00A0}"))" }.joined(separator: ", ")
+            .filter { $0.0 > 0 }.map { "\($0.0)\u{00A0}\($0.1.replacingOccurrences(of: " ", with: "\u{00A0}"))" }.joined(separator: ",\u{00A0}")
         if !tally.isEmpty { parts.append(tally + ".") }
         return parts.joined(separator: " ")
+    }
+
+    /// The next songs as shown: while every one waits for MusicBrainz the heading says so once,
+    /// so their rows leave out the same words.
+    public var shownNext: [ImportTrack] {
+        guard stage == .waitingForMusicDatabase else { return next }
+        return next.map { track in
+            var shown = track
+            shown.detail = nil
+            return shown
+        }
     }
 
     static func time(_ utc: String, _ zone: TimeZone) -> String {

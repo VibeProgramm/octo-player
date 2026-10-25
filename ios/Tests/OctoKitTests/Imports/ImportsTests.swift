@@ -167,7 +167,7 @@ final class Opened: @unchecked Sendable {
         let utc = TimeZone(identifier: "UTC")!
         let running = TrickleStatus(state: "running", nextUtc: "2026-10-04T14:05:00Z", perHour: 20, queued: 3, done: 2)
         #expect(running.title == "Waiting for the next turn")
-        #expect(running.line(zone: utc) == "Up to 20\u{00A0}songs an hour. Next song at 14:05. 3\u{00A0}waiting, 2\u{00A0}fetched.")
+        #expect(running.line(zone: utc) == "Up to 20\u{00A0}songs an hour. Next song at 14:05. 3\u{00A0}waiting,\u{00A0}2\u{00A0}fetched.")
         #expect(TrickleStatus(state: "waitingForSoulseek").title == "Waiting for Soulseek")
         #expect(TrickleStatus(state: "waitingForMusicDatabase").title == "Waiting for MusicBrainz")
         #expect(TrickleStatus(state: "waitingForMusicDatabase", perHour: 20, queued: 3).line(zone: utc)
@@ -195,6 +195,13 @@ final class Opened: @unchecked Sendable {
         #expect(one.line(zone: TimeZone(identifier: "UTC")!) == "Up to 1\u{00A0}song an hour. 1\u{00A0}not\u{00A0}found.")
         let held = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"waitingForMusicDatabase","queued":3}"#.utf8))
         #expect(held.stage == .waitingForMusicDatabase)
+    }
+
+    @Test func heldRowsLeaveTheHeadingsWordsOut() throws {
+        let held = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"waitingForMusicDatabase","next":[{"key":"s:3","title":"Roads","artist":"Portishead","state":"queued","detail":"Waiting for MusicBrainz to answer"}]}"#.utf8))
+        #expect(held.shownNext.map(\.detail) == [nil])
+        let mixed = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"running","next":[{"key":"s:3","title":"Roads","artist":"Portishead","state":"queued","detail":"Waiting for MusicBrainz to answer"}]}"#.utf8))
+        #expect(mixed.shownNext.map(\.detail) == ["Waiting for MusicBrainz to answer"])
     }
 
     @Test func theAccountLineSaysWhatToDoFirst() {

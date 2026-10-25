@@ -345,7 +345,7 @@ private fun LazyListScope.trickle(vm: ImportModel, overview: ImportOverview) {
         }
     }
     trickle.current?.let { current -> item(key = "trickle:now") { TrackLine(current) } }
-    items(trickle.next, key = { "next:${it.key}" }) { track ->
+    items(trickle.shownNext(), key = { "next:${it.key}" }) { track ->
         TrackLine(track) { GlazeButton("Skip", { vm.skip(track.key) }, size = ButtonSize.ExtraSmall, enabled = !vm.working, modifier = Modifier.padding(start = 8.dp)) }
     }
     items(trickle.recent, key = { "recent:${it.key}" }) { track ->
