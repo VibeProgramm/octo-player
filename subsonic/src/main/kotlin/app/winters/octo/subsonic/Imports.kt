@@ -181,6 +181,9 @@ enum class TrickleState(val wire: String) {
     // Someone's own downloads come first.
     Yielding("yielding"),
     WaitingForSoulseek("waitingForSoulseek"),
+
+    // MusicBrainz is not answering and every waiting song has an ISRC it has to check.
+    WaitingForMusicDatabase("waitingForMusicDatabase"),
     Unknown(""),
     ;
 
@@ -192,6 +195,8 @@ enum class TrickleState(val wire: String) {
 @Serializable
 data class TrickleStatus(
     val state: String = "",
+    // The server's own words for its state, for a state this app does not know yet.
+    val label: String? = null,
     // When the next song starts.
     val nextUtc: String? = null,
     val perHour: Int = 0,

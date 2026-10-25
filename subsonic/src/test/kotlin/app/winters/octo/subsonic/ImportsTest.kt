@@ -56,6 +56,18 @@ class ImportsTest {
     }
 
     @Test
+    fun readsTheMusicBrainzHoldAndAServersOwnWords() = runBlocking {
+        answer(ok(""""imports":{"lists":[],"trickle":{"state":"waitingForMusicDatabase","perHour":20,"queued":3}}"""))
+        assertEquals(TrickleState.WaitingForMusicDatabase, client().imports().trickle.stage)
+        server.takeRequest()
+        answer(ok(""""imports":{"lists":[],"trickle":{"state":"brandNew","label":"Tidying up","queued":1}}"""))
+        val later = client().imports().trickle
+        server.takeRequest()
+        assertEquals(TrickleState.Unknown, later.stage)
+        assertEquals("Tidying up", later.label)
+    }
+
+    @Test
     fun readsOneListsSongs() = runBlocking {
         answer(ok(""""import":{"list":{"id":"file-1","name":"Gym","source":"file"},"tracks":[
             {"key":"song:a","title":"A","artist":"B","state":"notFound","detail":"No source had it"},

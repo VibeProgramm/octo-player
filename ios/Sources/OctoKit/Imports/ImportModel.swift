@@ -180,15 +180,21 @@ extension SpotifyStatus {
 }
 
 extension TrickleStatus {
-    /// What the trickle is doing, as a heading.
+    /// What the trickle is doing, as a heading. A state this app does not know yet reads as the
+    /// server's own words, or as work while songs wait, never as nothing to fetch.
     public var title: String {
         switch stage {
-        case .idle, .unknown: "Nothing to fetch"
+        case .idle: "Nothing to fetch"
+        case .unknown:
+            if let label, !label.trimmingCharacters(in: .whitespaces).isEmpty { label }
+            else if queued > 0 || downloading > 0 { "Working on it" }
+            else { "Nothing to fetch" }
         case .running: downloading > 0 ? "Fetching" : "Waiting for the next turn"
         case .paused: "Paused"
         case .off: "Off"
         case .yielding: "Waiting for other downloads"
         case .waitingForSoulseek: "Waiting for Soulseek"
+        case .waitingForMusicDatabase: "Waiting for MusicBrainz"
         }
     }
 
@@ -203,6 +209,7 @@ extension TrickleStatus {
         if stage == .running, downloading == 0, let nextUtc { parts.append("Next song at \(Self.time(nextUtc, zone)).") }
         if stage == .yielding { parts.append("Someone's own downloads come first.") }
         if stage == .waitingForSoulseek { parts.append("It goes on once Soulseek is back.") }
+        if stage == .waitingForMusicDatabase { parts.append("It goes on once MusicBrainz is back.") }
         let tally = [(queued, "waiting"), (downloading, "fetching"), (done, "fetched"), (notFound, "not found"), (skipped, "skipped")]
             .filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }.joined(separator: ", ")
         if !tally.isEmpty { parts.append(tally + ".") }

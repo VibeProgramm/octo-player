@@ -49,8 +49,22 @@ class ImportWordsTest {
         assertEquals("Waiting for the next turn", running.title())
         assertEquals("Up to 20 songs an hour. Next song at 14:05. 3 waiting, 2 fetched.", running.line(ZoneOffset.UTC))
         assertEquals("Waiting for Soulseek", TrickleStatus(state = "waitingForSoulseek").title())
+        val held = TrickleStatus(state = "waitingForMusicDatabase", perHour = 20, queued = 3)
+        assertEquals("Waiting for MusicBrainz", held.title())
+        assertEquals("Up to 20 songs an hour. It goes on once MusicBrainz is back. 3 waiting.", held.line(ZoneOffset.UTC))
         assertEquals("Songs an hour is 0 on the server, so nothing starts.", TrickleStatus(state = "off").line(ZoneOffset.UTC))
         assertEquals("Nothing to fetch", TrickleStatus(state = "idle").title())
+    }
+
+    @Test
+    fun aStateThisAppDoesNotKnowNeverSaysNothingToFetch() {
+        assertEquals("Working on it", TrickleStatus(state = "somethingNew", queued = 2).title())
+        assertEquals("Working on it", TrickleStatus(state = "somethingNew", downloading = 1).title())
+        assertEquals("Tidying up", TrickleStatus(state = "somethingNew", label = "Tidying up", queued = 2).title())
+        assertEquals("Tidying up", TrickleStatus(state = "somethingNew", label = "Tidying up").title())
+        assertEquals("Working on it", TrickleStatus(state = "somethingNew", label = " ", queued = 2).title())
+        assertEquals("Nothing to fetch", TrickleStatus(state = "somethingNew").title())
+        assertEquals("Up to 20 songs an hour. 2 waiting.", TrickleStatus(state = "somethingNew", perHour = 20, queued = 2).line(ZoneOffset.UTC))
     }
 
     @Test

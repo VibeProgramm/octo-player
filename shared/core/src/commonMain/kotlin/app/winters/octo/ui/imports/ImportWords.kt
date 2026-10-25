@@ -71,14 +71,19 @@ fun ImportListSummary.removeLine(): String = buildString {
     append(".")
 }
 
-// What the trickle is doing, as a heading.
+// What the trickle is doing, as a heading. A state this app does not know yet
+// reads as the server's own words, or as work while songs wait, never as
+// nothing to fetch.
 fun TrickleStatus.title(): String = when (stage) {
-    TrickleState.Idle, TrickleState.Unknown -> "Nothing to fetch"
+    TrickleState.Idle -> "Nothing to fetch"
+    TrickleState.Unknown -> label?.takeIf { it.isNotBlank() }
+        ?: if (queued > 0 || downloading > 0) "Working on it" else "Nothing to fetch"
     TrickleState.Running -> if (downloading > 0) "Fetching" else "Waiting for the next turn"
     TrickleState.Paused -> "Paused"
     TrickleState.Off -> "Off"
     TrickleState.Yielding -> "Waiting for other downloads"
     TrickleState.WaitingForSoulseek -> "Waiting for Soulseek"
+    TrickleState.WaitingForMusicDatabase -> "Waiting for MusicBrainz"
 }
 
 // The trickle's line under it: the pace, when the next song starts, and the counts.
@@ -89,6 +94,7 @@ fun TrickleStatus.line(zone: ZoneId = ZoneId.systemDefault()): String {
     if (stage == TrickleState.Running && downloading == 0) nextUtc?.let { parts += "Next song at ${time(it, zone)}." }
     if (stage == TrickleState.Yielding) parts += "Someone's own downloads come first."
     if (stage == TrickleState.WaitingForSoulseek) parts += "It goes on once Soulseek is back."
+    if (stage == TrickleState.WaitingForMusicDatabase) parts += "It goes on once MusicBrainz is back."
     val tally = listOf(queued to "waiting", downloading to "fetching", done to "fetched", notFound to "not found", skipped to "skipped")
         .filter { it.first > 0 }.joinToString(", ") { "${it.first} ${it.second}" }
     if (tally.isNotEmpty()) parts += "$tally."

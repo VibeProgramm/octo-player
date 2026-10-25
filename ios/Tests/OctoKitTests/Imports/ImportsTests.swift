@@ -169,8 +169,26 @@ final class Opened: @unchecked Sendable {
         #expect(running.title == "Waiting for the next turn")
         #expect(running.line(zone: utc) == "Up to 20 songs an hour. Next song at 14:05. 3 waiting, 2 fetched.")
         #expect(TrickleStatus(state: "waitingForSoulseek").title == "Waiting for Soulseek")
+        #expect(TrickleStatus(state: "waitingForMusicDatabase").title == "Waiting for MusicBrainz")
+        #expect(TrickleStatus(state: "waitingForMusicDatabase", perHour: 20, queued: 3).line(zone: utc)
+            == "Up to 20 songs an hour. It goes on once MusicBrainz is back. 3 waiting.")
         #expect(TrickleStatus(state: "off").line(zone: utc) == "Songs an hour is 0 on the server, so nothing starts.")
         #expect(TrickleStatus(state: "idle").title == "Nothing to fetch")
+    }
+
+    @Test func aStateThisAppDoesNotKnowNeverSaysNothingToFetch() throws {
+        #expect(TrickleStatus(state: "somethingNew", queued: 2).title == "Working on it")
+        #expect(TrickleStatus(state: "somethingNew").title == "Nothing to fetch")
+        var labelled = TrickleStatus(state: "somethingNew", queued: 2)
+        labelled.label = "Tidying up"
+        #expect(labelled.title == "Tidying up")
+        labelled.label = " "
+        #expect(labelled.title == "Working on it")
+        let read = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"brandNew","label":"Tidying up","downloading":1}"#.utf8))
+        #expect(read.stage == .unknown)
+        #expect(read.title == "Tidying up")
+        let held = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"waitingForMusicDatabase","queued":3}"#.utf8))
+        #expect(held.stage == .waitingForMusicDatabase)
     }
 
     @Test func theAccountLineSaysWhatToDoFirst() {
