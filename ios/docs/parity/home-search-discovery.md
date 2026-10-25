@@ -284,7 +284,7 @@ Path prefixes used in the citations:
 
 ## 23. Charts page
 
-- [x] Line 1: the back button and the big title "Charts", alone on their line; the back swipe still works. (app/ui/charts/ChartsScreen.kt) (iPhone: the glazed back button inline, on the middle of the title's capitals, in place of the floating one; `detailPage(ownBack:)`)
+- [x] Line 1: the back button and the big title "Charts", alone on their line; the back swipe still works. (app/ui/charts/ChartsScreen.kt) (iPhone: the system bar's Liquid Glass back button, the title's capitals on its middle; `detailPage(ownBack:)`)
 - [x] Chips: the charts the server's country has (getCharts), each chip the server's `label`; selected is the chart in view; default "34" (overall). 8dp between chips, 20dp sides, 4dp top and 12dp bottom padding. With no choices the chips leave the control line and the rest of it stays. (app/ui/charts/ChartsScreen.kt:45-58, app/ui/charts/ChartsViewModel.kt:28)
 - [x] Choices are kept a day per server; a chart's songs an hour per server and chart; asks for a server no longer in use are dropped. (app/discovery/ChartLists.kt:17-18, 51-77)
 - [x] A chart asks getTopChart with count 100 for "new" and "trending", 50 for every other chart, plus the chart id. (core/discovery/TopSongs.kt:72, app/discovery/ChartLists.kt:71)
