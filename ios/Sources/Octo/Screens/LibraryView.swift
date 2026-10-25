@@ -174,8 +174,8 @@ private struct LetterRailPlace: ViewModifier {
 
     /// 8 under the system bar: the overlay starts at the content's top, which may sit inside the bar.
     private var railTop: CGFloat {
-        guard let top, let bottom = top.barBottom else { return 8 }
-        return max(8, bottom - top.contentTop + 8)
+        guard let top else { return 8 }
+        return max(8, top.barBottom - top.contentTop + 8)
     }
 }
 

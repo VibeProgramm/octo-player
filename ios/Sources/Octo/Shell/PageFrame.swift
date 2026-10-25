@@ -40,14 +40,15 @@ struct ScreenTitle: View {
             .accessibilityLabel(text)
             .accessibilityAddTraits(.isHeader)
             .onChange(of: text, initial: true) { _, now in top?.titleName = now }
-            .onChange(of: drawn, initial: true) { _, now in top?.titleSize = now }
+            // Only a measured size is passed on: a title being built again keeps the last one.
+            .onChange(of: drawn, initial: true) { _, now in if let now { top?.titleSize = now } }
     }
 }
 
-/// Reports where a page's big title's capitals start on screen (`inset` below the view's top),
-/// for the bar to name the page once they reach the status bar. A title a lazy list has dropped
-/// counts as gone; shown again (the page back in front), it reports its last place until it is
-/// measured anew.
+/// Reports where a page's big title's capitals start in the page (`inset` below the view's top),
+/// for the bar to name the page once they reach the status bar. Only a title that left above the
+/// status bar (a lazy list dropping it) counts as gone; one covered by another page or built
+/// again in place keeps its last place, and brings it back when it shows again.
 struct TitleTopReport: ViewModifier {
     var inset: CGFloat = 0
     @Environment(PageTop.self) private var top: PageTop?
@@ -55,12 +56,14 @@ struct TitleTopReport: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { y in
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageTop.space)).minY } action: { y in
                 last = y + inset
                 top?.titleTop = y + inset
             }
             .onAppear { if let last { top?.titleTop = last } }
-            .onDisappear { top?.titleTop = -.greatestFiniteMagnitude }
+            .onDisappear {
+                if let last, let top, last < top.status { top.titleTop = -.greatestFiniteMagnitude }
+            }
     }
 }
 
@@ -123,9 +126,8 @@ extension View {
     /// A pushed page under the system bar: the bar's glass back button at its top left, the
     /// system's edge effect over whatever scrolls under the bar, and the page's name in the bar
     /// once its big title's capitals reach the status bar. A page with `ownBack` has its title on
-    /// the button's line: its `PageHeader` leaves the button's room, and the page starts just high
-    /// enough for the title's capitals to sit on the button's middle. Other pages start under the
-    /// status bar.
+    /// the button's line: its scrolling content starts just under the bar, and its `PageHeader`
+    /// lifts that line onto the button's middle. Other pages start under the status bar.
     func detailPage(ownBack: Bool = false) -> some View {
         modifier(PageBar(back: true, titleBesideBack: ownBack))
     }
@@ -183,45 +185,81 @@ private struct BackActionSetter: ViewModifier {
     }
 }
 
-/// Where a page's top parts are, so its title line can sit on the system back button's middle
-/// and the bar can name the page once the big title's capitals reach the status bar. Places read
-/// on screen are turned into the page's own points first, since a tab switch scales a whole tab.
+/// Where the system bar puts its back button's middle, from the bar's top left corner, and how
+/// tall the bar is: the same on every page of a phone. Read from a bar shown at full size and held
+/// steady for a moment, and kept for later launches.
+@MainActor
+@Observable
+final class BarMetrics {
+    static let shared = BarMetrics()
+    private(set) var back: CGPoint
+    private(set) var height: CGFloat
+    private static let key = "barMetrics"
+
+    private init() {
+        if let saved = UserDefaults.standard.array(forKey: Self.key) as? [Double], saved.count == 3 {
+            back = CGPoint(x: saved[0], y: saved[1])
+            height = saved[2]
+        } else {
+            back = CGPoint(x: 38, y: 21.7)
+            height = 54
+        }
+    }
+
+    /// A reading from a bar at full size, kept when it differs from what is held.
+    func take(_ reading: BarReading) {
+        guard abs(reading.back.x - back.x) > 0.5 || abs(reading.back.y - back.y) > 0.5
+            || abs(reading.height - height) > 0.5 else { return }
+        back = reading.back
+        height = reading.height
+        UserDefaults.standard.set([Double(back.x), Double(back.y), Double(height)], forKey: Self.key)
+    }
+}
+
+/// The back button's middle from the bar's top left corner, and the bar's height.
+struct BarReading: Equatable {
+    let back: CGPoint
+    let height: CGFloat
+}
+
+/// Where a page's top parts are, in the page's own space (its top left corner on the screen's,
+/// whatever moves the page as a whole, like a push or a tab switch), so its title line can sit on
+/// the system back button's middle and the bar can name the page once the big title's capitals
+/// reach the status bar.
 @MainActor
 @Observable
 final class PageTop {
+    /// The name of the page's own coordinate space.
+    nonisolated static let space = "page"
     /// Whether the page's title line sits beside the back button.
     let titleBesideBack: Bool
-    /// The page on screen, and its own size.
-    var screenFrame: CGRect = .zero
-    var ownSize: CGSize = .zero
-    /// The system back button's middle, in the page's points; until measured, the last page's.
-    var back: CGPoint? = PageTop.lastBack
     /// The status bar's height.
-    var status: CGFloat = PageTop.windowTop()
-    /// The system bar's bottom on screen.
-    var barBottomOnScreen: CGFloat?
-    /// The middle of the title line below the top of the page's `PageHeader`, the same line on
-    /// screen, and the header's top on screen.
-    var lineInHeader: CGFloat?
-    var lineOnScreen: CGFloat?
-    var headerTopOnScreen: CGFloat? { didSet { measureGap() } }
-    /// The header's top below the content's top, measured once with the page at rest (a list may
-    /// add room of its own above it).
+    var status: CGFloat = PageTop.windowTop() {
+        didSet {
+            measureGap()
+            updateGone()
+        }
+    }
+    /// Where the page's layout puts its `PageHeader`, before the header lifts its line.
+    var headerSlot: CGFloat? { didSet { measureGap() } }
+    /// The header's slot below the content's top, taken once with the page at rest.
     var headerGap: CGFloat?
+    /// The title line's middle below the top of the line, and where it is drawn in the page.
+    var lineInHeader: CGFloat?
+    var lineDrawn: CGFloat?
     /// The page's name for the bar: its own, from `inlineTitle`, else its big title's.
     var name: String?
     var titleName: String?
     /// The size the big title is drawn at, once its width is known.
     var titleSize: CGFloat?
-    /// Where the big title's capitals start on screen.
-    var titleTop: CGFloat = .greatestFiniteMagnitude
+    /// Where the big title's capitals start in the page.
+    var titleTop: CGFloat = .greatestFiniteMagnitude { didSet { updateGone() } }
+    /// The big title's capitals have reached the status bar.
+    private(set) var gone = false
     /// The page showed before it was measured, after waiting too long.
     var waited = false
-    /// How many times the content's top moved while the page was showing.
+    /// How many times the header's lift changed while the page was showing.
     var moves = 0
-
-    /// The last back button measured, in a page's points, for the next page to start with.
-    static var lastBack: CGPoint?
 
     init(titleBesideBack: Bool) { self.titleBesideBack = titleBesideBack }
 
@@ -230,41 +268,27 @@ final class PageTop {
         UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets.top ?? 0
     }
 
-    /// A height read on screen, in the page's own points.
-    func own(_ y: CGFloat) -> CGFloat {
-        guard screenFrame.height > 0, ownSize.height > 0 else { return y }
-        return (y - screenFrame.minY) * ownSize.height / screenFrame.height
-    }
+    /// The system back button's middle.
+    var back: CGPoint { CGPoint(x: BarMetrics.shared.back.x, y: status + BarMetrics.shared.back.y) }
 
-    /// A point read on screen, in the page's own points.
-    func own(_ point: CGPoint) -> CGPoint {
-        guard screenFrame.width > 0, ownSize.width > 0 else { return point }
-        return CGPoint(x: (point.x - screenFrame.minX) * ownSize.width / screenFrame.width, y: own(point.y))
-    }
+    /// The system bar's bottom.
+    var barBottom: CGFloat { status + BarMetrics.shared.height }
 
-    /// The system bar's bottom, in the page's points.
-    var barBottom: CGFloat? { barBottomOnScreen.map { own($0) } }
+    /// Where the page's scrolling content starts: 8 under the bar on a page whose title shares
+    /// the back button's line (its header lifts that line onto the button), so a jump, a pull or a
+    /// scroll to the top lands clear of the bar; else under the status bar.
+    var contentTop: CGFloat { titleBesideBack ? barBottom + 8 : status }
 
-    /// The middle of the title line below the content's top.
-    var line: CGFloat? {
-        guard let headerGap, let lineInHeader else { return nil }
-        return headerGap + lineInHeader
-    }
-
-    /// Where the page's content starts: with its title beside the back button, high enough for
-    /// the title's capitals to sit on the button's middle; else under the status bar.
-    var contentTop: CGFloat {
-        guard titleBesideBack, let back, let line else { return status }
-        return back.y - line
+    /// How far the page's header lifts its line for the title's capitals to sit on the button's middle.
+    var lift: CGFloat? {
+        guard titleBesideBack, let headerGap, let lineInHeader else { return nil }
+        return contentTop + headerGap + lineInHeader - back.y
     }
 
     /// Whether the page can be shown where it belongs.
     var settled: Bool {
-        status > 0 && (!titleBesideBack || (back != nil && line != nil && titleSize != nil) || waited)
+        waited || (status > 0 && (!titleBesideBack || (lift != nil && titleSize != nil)))
     }
-
-    /// The big title's capitals have reached the status bar.
-    var gone: Bool { own(titleTop) < status }
 
     /// What the bar's title shows: the page's name once the big title's capitals reach the status
     /// bar, and nothing before, since a named bar softens everything under it, line one too.
@@ -273,43 +297,37 @@ final class PageTop {
     /// The largest big title whose capitals, on the button's middle, stay 4 points under the
     /// status bar.
     var titleRoom: CGFloat? {
-        guard titleBesideBack, let back, status > 0 else { return nil }
+        guard titleBesideBack, status > 0 else { return nil }
         let capShare = UIFont.systemFont(ofSize: 100, weight: .black).capHeight / 100
         return 2 * (back.y - status - 4) / capShare
     }
 
-    /// The page's frame changed: a gap waiting on it can be taken now.
-    func framed(screen: CGRect, own size: CGSize) {
-        screenFrame = screen
-        ownSize = size
-        measureGap()
-    }
-
-    /// Takes the header's gap the first time the header is seen: the page is at rest then, and
-    /// until the gap is known its content starts under the status bar.
+    /// Takes the header's gap the first time the header is seen with the status bar known: the
+    /// page is at rest then.
     private func measureGap() {
-        guard headerGap == nil, let headerTopOnScreen, ownSize.height > 0 else { return }
-        headerGap = own(headerTopOnScreen) - status
+        guard headerGap == nil, let headerSlot, status > 0 else { return }
+        headerGap = headerSlot - contentTop
     }
-}
 
-/// The page on screen and its own size.
-private struct PageGeometry: Equatable {
-    let screen: CGRect
-    let own: CGSize
+    private func updateGone() {
+        let now = titleTop < status
+        if now != gone { gone = now }
+    }
 }
 
 /// A page under the system bar: the bar holds the back button on a pushed page and the page's
 /// name once its big title's capitals reach the status bar; the page runs under the bar, where
 /// the system softens whatever scrolls there. The page waits unseen until it can be drawn where
-/// it belongs (a fraction of a second at most).
+/// it belongs (a fraction of a second at most), and once shown it stays shown.
 private struct PageBar: ViewModifier {
     let back: Bool
     var showsBar = true
     @Environment(\.dismiss) private var dismiss
     @State private var handler: BackHandler?
     @State private var top: PageTop
-    @State private var shownTop: CGFloat?
+    @State private var shown = false
+    @State private var backOnScreen: CGPoint?
+    @State private var barOnScreen: ProbeReading?
 
     init(back: Bool, titleBesideBack: Bool, showsBar: Bool = true) {
         self.back = back
@@ -322,17 +340,16 @@ private struct PageBar: ViewModifier {
             .environment(top)
             .safeAreaPadding(.top, top.contentTop)
             .ignoresSafeArea(.container, edges: .top)
-            .opacity(top.settled ? 1 : 0)
-            .onGeometryChange(for: PageGeometry.self) { PageGeometry(screen: $0.frame(in: .global), own: $0.size) } action: { page in
-                top.framed(screen: page.screen, own: page.own)
-            }
+            .coordinateSpace(.named(PageTop.space))
+            .opacity(shown || top.settled ? 1 : 0)
             .background {
-                BarFrameProbe { bottom in
-                    if top.barBottomOnScreen != bottom { top.barBottomOnScreen = bottom }
+                BarFrameProbe { reading in
+                    if top.status == 0, reading.windowTop > 0 { top.status = reading.windowTop }
+                    if barOnScreen != reading { barOnScreen = reading }
                 }
             }
             #if DEBUG
-            .overlay(alignment: .bottom) { if PageBarReadout.on { PageBarReadout(top: top) } }
+            .overlay(alignment: .bottom) { if PageBarReadout.shown.on { PageBarReadout(top: top) } }
             #endif
             .navigationBarBackButtonHidden(true)
             .navigationTitle(top.barTitle)
@@ -343,25 +360,23 @@ private struct PageBar: ViewModifier {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(action: goBack) { IconView(.back, size: 20, color: .white) }
                             .accessibilityLabel("Back")
-                            .onGeometryChange(for: CGPoint.self) { CGPoint(x: $0.frame(in: .global).midX, y: $0.frame(in: .global).midY) } action: { middle in
-                                let own = top.own(middle)
-                                top.back = own
-                                PageTop.lastBack = own
-                            }
+                            .onGeometryChange(for: CGPoint.self) { CGPoint(x: $0.frame(in: .global).midX, y: $0.frame(in: .global).midY) } action: { backOnScreen = $0 }
                     }
                 }
             }
-            .onChange(of: top.settled, initial: true) { _, settled in
-                if settled, shownTop == nil { shownTop = top.contentTop }
+            .task(id: reading) {
+                // A reading held steady for a moment, from a bar at full size, becomes the phone's.
+                guard let reading else { return }
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                BarMetrics.shared.take(reading)
             }
-            .onChange(of: top.contentTop) { _, now in
-                guard let shown = shownTop, shown != now else { return }
-                top.moves += 1
-                shownTop = now
-            }
+            .onChange(of: top.settled, initial: true) { _, settled in if settled { shown = true } }
+            .onChange(of: top.lift) { before, _ in if shown, before != nil { top.moves += 1 } }
             .onAppear { if top.status == 0 { top.status = PageTop.windowTop() } }
             .task {
                 try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
                 if !top.settled { top.waited = true }
             }
             .onPreferenceChange(BackHandlerKey.self) { value in
@@ -374,14 +389,29 @@ private struct PageBar: ViewModifier {
             .onDisappear { if back, BackHandler.current === handler { BackHandler.current = nil } }
     }
 
+    /// The back button's place in the bar, read while the bar is at full size (a tab switch
+    /// scales it).
+    private var reading: BarReading? {
+        guard let backOnScreen, let barOnScreen, abs(barOnScreen.bar.width - barOnScreen.windowWidth) < 0.5 else { return nil }
+        return BarReading(back: CGPoint(x: backOnScreen.x - barOnScreen.bar.minX, y: backOnScreen.y - barOnScreen.bar.minY),
+                          height: barOnScreen.bar.height)
+    }
+
     private func goBack() {
         if let handler { handler.run() } else { dismiss() }
     }
 }
 
-/// Reads the bottom of the system bar on screen, from the navigation controller showing the page.
+/// The system bar's frame on screen, the window's width and the window's top safe area.
+struct ProbeReading: Equatable {
+    let bar: CGRect
+    let windowWidth: CGFloat
+    let windowTop: CGFloat
+}
+
+/// Reads the system bar's frame on screen, from the navigation controller showing the page.
 private struct BarFrameProbe: UIViewRepresentable {
-    let report: (CGFloat) -> Void
+    let report: (ProbeReading) -> Void
 
     func makeUIView(context: Context) -> ProbeView { ProbeView(report: report) }
 
@@ -391,10 +421,10 @@ private struct BarFrameProbe: UIViewRepresentable {
     }
 
     final class ProbeView: UIView {
-        var report: (CGFloat) -> Void
-        private var last: CGFloat?
+        var report: (ProbeReading) -> Void
+        private var last: ProbeReading?
 
-        init(report: @escaping (CGFloat) -> Void) {
+        init(report: @escaping (ProbeReading) -> Void) {
             self.report = report
             super.init(frame: .zero)
             isUserInteractionEnabled = false
@@ -417,11 +447,12 @@ private struct BarFrameProbe: UIViewRepresentable {
             var next: UIResponder? = self
             while let responder = next {
                 if let bar = (responder as? UIViewController)?.navigationController?.navigationBar {
-                    let bottom = bar.convert(bar.bounds, to: window).maxY
-                    guard bottom != last else { return }
-                    last = bottom
+                    let reading = ProbeReading(bar: bar.convert(bar.bounds, to: window), windowWidth: window.bounds.width,
+                                               windowTop: window.safeAreaInsets.top)
+                    guard reading != last else { return }
+                    last = reading
                     let report = report
-                    DispatchQueue.main.async { report(bottom) }
+                    DispatchQueue.main.async { report(reading) }
                     return
                 }
                 next = responder.next

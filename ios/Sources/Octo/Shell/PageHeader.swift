@@ -8,12 +8,14 @@ let pageTopGap: CGFloat = 8
 /// Line one of a page: on a pushed page the room the bar's back button sits over, then the big
 /// title, alone on its line, the button on the middle of the title's capitals. `count`, when
 /// given, follows the title in muted words only while both fit on the line; otherwise the title
-/// stands alone.
+/// stands alone. The page's content starts under the bar, and the header lifts its line onto the
+/// button.
 struct PageHeader: View {
     let title: String
     var count: String?
     var back = true
     @Environment(PageTop.self) private var top: PageTop?
+    @State private var width: CGFloat = 0
     @ScaledMetric(relativeTo: .largeTitle) private var size: CGFloat = 32
 
     init(_ title: String, count: String? = nil, back: Bool = true) {
@@ -23,46 +25,62 @@ struct PageHeader: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Where the page's layout puts the header, before it lifts its line.
+            Color.clear
+                .frame(height: 0)
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageTop.space)).minY } action: { top?.headerSlot = $0 }
+            line
+                .padding(.top, -(top?.lift ?? 0))
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+
+    private var line: some View {
         HStack(alignment: .pageTitleLine, spacing: 0) {
             if back {
                 // The bar's back button sits over this room, its middle on the title's capitals.
                 Color.clear
                     .frame(width: barButtonSide, height: barButtonSide)
                     .alignmentGuide(.pageTitleLine) { d in d[VerticalAlignment.center] }
-                    .padding(.leading, max(0, (top?.back?.x ?? 38) - barButtonSide / 2))
+                    .padding(.leading, roomLead)
                     .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageHeader.space)).midY } action: { top?.lineInHeader = $0 }
-                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).midY } action: { top?.lineOnScreen = $0 }
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageTop.space)).midY } action: { top?.lineDrawn = $0 }
                     .accessibilityHidden(true)
             }
-            if let count {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                        titleText.fixedSize(horizontal: true, vertical: false)
-                        Text(count)
-                            .font(.octoBodySmall)
-                            .foregroundStyle(OctoColor.textMuted)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .padding(.leading, -8)
-                            .padding(.trailing, 20)
-                        Spacer(minLength: 0)
-                    }
-                    titleText
-                }
+            ScreenTitle(title, maxSize: top?.titleRoom)
+                .padding(.leading, back ? -8 : 0)
+                .fixedSize(horizontal: showsCount, vertical: false)
                 .alignmentGuide(.pageTitleLine) { d in d[.firstTextBaseline] - capHeight / 2 }
-            } else {
-                titleText
+            if showsCount, let count {
+                Text(count)
+                    .font(.octoBodySmall)
+                    .foregroundStyle(OctoColor.textMuted)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .padding(.leading, -8)
+                    .padding(.trailing, 20)
                     .alignmentGuide(.pageTitleLine) { d in d[.firstTextBaseline] - capHeight / 2 }
+                Spacer(minLength: 0)
             }
         }
         .coordinateSpace(.named(PageHeader.space))
-        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top?.headerTopOnScreen = $0 }
     }
 
     nonisolated private static let space = "pageHeader"
 
-    private var titleText: some View {
-        ScreenTitle(title, maxSize: top?.titleRoom).padding(.leading, back ? -8 : 0)
+    /// The room before the button's place, so the button's middle sits where the bar puts it.
+    private var roomLead: CGFloat { max(0, BarMetrics.shared.back.x - barButtonSide / 2) }
+
+    /// Whether the count fits on the title's line beside the whole title.
+    private var showsCount: Bool {
+        guard let count, width > 0 else { return false }
+        let titleFont = UIFont.systemFont(ofSize: min(size, top?.titleRoom ?? size), weight: .black)
+        let titleWidth = (breakableText(title) as NSString).size(withAttributes: [.font: titleFont, .kern: octoDisplayTracking]).width
+        let countFont = UIFontMetrics(forTextStyle: .subheadline).scaledFont(for: .systemFont(ofSize: 14, weight: .regular))
+        let countWidth = (count as NSString).size(withAttributes: [.font: countFont]).width
+        let lead = back ? roomLead + barButtonSide - 8 : 0
+        return lead + 20 + ceil(titleWidth) + 20 - 8 + ceil(countWidth) + 20 <= width
     }
 
     /// The title's cap height at the size it is drawn, for the button to sit on the middle of its

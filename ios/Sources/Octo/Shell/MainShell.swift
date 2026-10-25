@@ -513,9 +513,9 @@ extension View {
                 case .liveRadioNear: LiveRadioPage()
                 }
             }
-            .background { PageBackdrop(page: route.ambientPage, route: route) }
             // Pages without artwork at the top have their title on the back button's line.
             .detailPage(ownBack: route.ownsBack)
+            .background { PageBackdrop(page: route.ambientPage, route: route) }
         }
     }
 }
