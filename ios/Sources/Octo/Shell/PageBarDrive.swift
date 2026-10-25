@@ -8,13 +8,15 @@ import UIKit
 ///   how far its title line sits from the back button's middle, how often its top moved while it
 ///   showed, whether it showed before it was measured, and what the bar names
 /// - `refresh` shows the front page's pull-to-refresh spinner as a pull would
+/// - `barmetrics:reset` forgets this phone's bar measures, as on a first launch
 @MainActor
 enum PageBarDrive {
     static func install() {
-        Drive.steps.append { name, _ in
+        Drive.steps.append { name, value in
             switch name {
             case "readout": PageBarReadout.shown.on = true
             case "refresh": showRefresh()
+            case "barmetrics": if value == "reset" { BarMetrics.shared.forget() }
             default: return false
             }
             return true
