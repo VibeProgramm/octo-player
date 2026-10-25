@@ -40,7 +40,7 @@ struct PageHeader: View {
             if back && !holdsHeight {
                 line
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { top?.lineHeight = $0 }
-                    .frame(height: 0, alignment: .bottomLeading)
+                    .padding(.top, -(top?.lineHeight ?? 0))
             } else {
                 line
             }
