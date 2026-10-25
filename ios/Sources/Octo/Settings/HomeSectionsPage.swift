@@ -48,6 +48,8 @@ struct HomeSectionsPage: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        // The header row takes no height of its own; the other rows set theirs.
+        .environment(\.defaultMinListRowHeight, 0)
         .scrollIndicators(.hidden)
         .environment(\.editMode, .constant(.active))
         .tint(OctoColor.accent)

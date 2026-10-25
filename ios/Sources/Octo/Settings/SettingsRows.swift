@@ -125,7 +125,6 @@ struct SettingsPageFrame<Content: View>: View {
             }
             .scrollIndicators(.hidden)
             .barClearance()
-            .background { PageBackdrop(page: .settingsPage, route: nil) }
             .environment(\.settingsHighlight, SettingsHighlight(
                 id: shown ? nil : highlight,
                 onShown: { shown = true },
@@ -133,6 +132,7 @@ struct SettingsPageFrame<Content: View>: View {
             ))
         }
         .detailPage(ownBack: true)
+        .background { PageBackdrop(page: .settingsPage, route: nil) }
     }
 }
 

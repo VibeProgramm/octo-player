@@ -58,15 +58,16 @@ struct PageBarReadout: View {
     @MainActor static let shown = ReadoutSwitch()
     let top: PageTop
 
+    private func number(_ value: CGFloat?) -> String { value.map { String(format: "%.1f", $0) } ?? "-" }
+
     var body: some View {
         let metrics = BarMetrics.shared
-        let align = top.lineDrawn.map { $0 - top.back.y }
-        let numbers = String(format: "top %.1f gap %@ lift %@ align %@ moves %d waited %@",
-                             top.contentTop, top.headerGap.map { String(format: "%.1f", $0) } ?? "-",
-                             top.lift.map { String(format: "%.1f", $0) } ?? "-",
-                             align.map { String(format: "%.1f", $0) } ?? "-", top.moves, top.waited ? "yes" : "no")
-        let bar = String(format: "bar %@ back %.1f,%.1f height %.1f", top.barTitle.isEmpty ? "-" : top.barTitle,
-                         metrics.back.x, metrics.back.y, metrics.height)
+        let dx = top.roomOnScreen.map { $0.x - top.back.x }
+        let dy = top.roomOnScreen.map { $0.y - top.back.y }
+        let numbers = "top \(number(top.contentTop)) gap \(number(top.headerGap)) line \(number(top.lineInHeader))/\(number(top.lineHeight)) "
+            + "align \(number(dx)),\(number(dy)) moves \(top.moves) waited \(top.waited ? "yes" : "no")"
+        let bar = "bar \(top.barTitle.isEmpty ? "-" : top.barTitle) back \(number(metrics.back.x)),\(number(metrics.back.y)) "
+            + "height \(number(metrics.height)) status \(number(top.status))"
         VStack(spacing: 2) {
             Text(numbers)
             Text(bar)
