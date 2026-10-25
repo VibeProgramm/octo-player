@@ -61,10 +61,10 @@ import app.winters.octo.subsonic.Album
 // A playlist: its songs in the playlist's own order, edited in place. The
 // listener's own playlist is renamed by clicking its name and described by
 // clicking the line under it; its songs move and come out from their menu.
-// Changes show at once and go back if the server refuses them. The bar under
-// the heading filters the songs; moves and removals still go by the
-// playlist's own places. A family playlist can be renamed (Octo decides for a
-// non-manager) but neither reordered nor described.
+// Changes show at once and go back if the server refuses them. The filters
+// on the heading's control line narrow the songs; moves and removals still
+// go by the playlist's own places. A family playlist can be renamed (Octo
+// decides for a non-manager) but neither reordered nor described.
 @Composable
 fun PlaylistPage(app: AppState, visit: Visit, id: String) {
     val connection = app.connection ?: return
@@ -124,7 +124,6 @@ fun PlaylistPage(app: AppState, visit: Visit, id: String) {
         ) {
             item(key = "head") {
                 ListHeader(
-                    "Playlist",
                     playlist.name,
                     playlist.coverArt,
                     if (query.filters) {
@@ -146,9 +145,9 @@ fun PlaylistPage(app: AppState, visit: Visit, id: String) {
                         if (access.describe || comment.isNotBlank()) {
                             EditInPlace(comment, "Add a description", access.describe, "Edit the description", TitleFieldWidth, { app.setPlaylistComment(id, it) }) { modifier ->
                                 if (comment.isBlank()) {
-                                    Txt("Add a description", DesktopType.table, OctoColors.TextMuted, modifier)
+                                    Txt("Add a description", DesktopType.meta, OctoColors.TextMuted, modifier)
                                 } else {
-                                    CutTxt(comment, DesktopType.table, OctoColors.TextSecondary, modifier, maxLines = 2)
+                                    CutTxt(comment, DesktopType.meta, OctoColors.TextSecondary, modifier)
                                 }
                             }
                         }
@@ -156,9 +155,9 @@ fun PlaylistPage(app: AppState, visit: Visit, id: String) {
                     extras = {
                         MoreButton(app, "More for this playlist") { close -> PlaylistMenu(app, menuPlaylist, close) }
                     },
+                    control = if (all.isEmpty()) null else ({ FilterBar(app, query, filter, all, oneLine = true) }),
                 )
             }
-            if (all.isNotEmpty()) item(key = "filters") { FilterBar(app, query, filter, all) }
         }
     }
 }

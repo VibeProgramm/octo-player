@@ -501,7 +501,7 @@ fun askForCopy(popups: PopupHost, app: AppState, id: String, title: String) {
                 { picked = choice.quality },
                 enabled = choice.enabled,
                 detail = choice.detail,
-                checked = picked == choice.quality,
+                selected = picked == choice.quality,
             )
         }
         PopupPadding {

@@ -42,6 +42,7 @@ import app.winters.octo.design.PopupPadding
 import app.winters.octo.design.RowHeight
 import app.winters.octo.design.SeparatorColor
 import app.winters.octo.design.Space
+import app.winters.octo.design.TextAction
 import app.winters.octo.design.Txt
 import app.winters.octo.design.hoverLift
 import app.winters.octo.desktop.AppState
@@ -64,8 +65,8 @@ import sh.calvin.reorderable.ReorderableColumn
 // dragging it to a new place and its switch showing or hiding it on Home.
 // Every change is saved and reaches Home at once. Only the shelves this app
 // draws are listed; the others keep their places in the saved order, which
-// the phone shares. A button under them puts the usual order back, after
-// asking.
+// the phone shares. A quiet word on the group's line puts the usual order
+// back, after asking.
 @Composable
 internal fun HomeSectionsGroup(app: AppState, stored: String?) {
     val entries = remember(stored) { homeSectionOrder(stored) }
@@ -73,7 +74,24 @@ internal fun HomeSectionsGroup(app: AppState, stored: String?) {
     fun save(next: List<HomeSectionEntry>) = app.settings.update { it.copy(appearance = it.appearance.copy(homeSections = encodeHomeSections(next))) }
     val popups = LocalPopups.current
     Column(Modifier.fillMaxWidth()) {
-        Group("Home") {
+        val changed = entries != DefaultHomeSections
+        Group("Home", action = {
+            TextAction(RESET_HOME_SECTIONS, {
+                popups.showCentred { close ->
+                    MenuTitle(RESET_HOME_SECTIONS_ASK)
+                    PopupPadding {
+                        Txt(RESET_HOME_SECTIONS_DETAIL, DesktopType.body, OctoColors.TextPrimary, maxLines = 3)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.M, Alignment.End)) {
+                            GlazeCapsule(null, "Cancel", close)
+                            GlazeCapsule(null, "Reset", {
+                                close()
+                                app.settings.update { it.copy(appearance = it.appearance.copy(homeSections = null)) }
+                            }, lit = true)
+                        }
+                    }
+                }
+            }, enabled = changed)
+        }) {
             SettingRow(HOME_SECTIONS_TITLE, homeSectionsSummary(entries))
             ReorderableColumn(
                 list = listed,
@@ -92,24 +110,6 @@ internal fun HomeSectionsGroup(app: AppState, stored: String?) {
             }
         }
         Txt(HOME_SECTIONS_NOTE, DesktopType.meta, OctoColors.TextMuted, Modifier.padding(start = RowInset, end = RowInset, top = Space.S), maxLines = 3)
-        val changed = entries != DefaultHomeSections
-        Row(Modifier.fillMaxWidth().padding(top = Space.M), horizontalArrangement = Arrangement.End) {
-            GlazeCapsule(null, RESET_HOME_SECTIONS, {
-                popups.showCentred { close ->
-                    MenuTitle(RESET_HOME_SECTIONS_ASK)
-                    PopupPadding {
-                        Txt(RESET_HOME_SECTIONS_DETAIL, DesktopType.body, OctoColors.TextPrimary, maxLines = 3)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.M, Alignment.End)) {
-                            GlazeCapsule(null, "Cancel", close)
-                            GlazeCapsule(null, "Reset", {
-                                close()
-                                app.settings.update { it.copy(appearance = it.appearance.copy(homeSections = null)) }
-                            }, lit = true)
-                        }
-                    }
-                }
-            }, enabled = changed)
-        }
     }
 }
 

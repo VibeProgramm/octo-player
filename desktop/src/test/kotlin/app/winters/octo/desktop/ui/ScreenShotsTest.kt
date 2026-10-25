@@ -24,6 +24,7 @@ import app.winters.octo.desktop.home.AlbumShelf
 import app.winters.octo.desktop.listening.LoggedPlay
 import app.winters.octo.desktop.listening.logged
 import app.winters.octo.desktop.nav.Page
+import app.winters.octo.desktop.pages.showSection
 import app.winters.octo.desktop.nav.ScrollSpot
 import app.winters.octo.desktop.secrets.SessionOnlySecrets
 import app.winters.octo.desktop.server.Accounts
@@ -241,6 +242,18 @@ class ScreenShotsTest {
                 }
                 SwingUtilities.invokeAndWait { on.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, androidx.compose.ui.geometry.Offset(1270f, 600f)) }
             }
+            // A click on whatever shows these words, or is described by them.
+            fun press(words: String, on: ImageComposeScene = scene) {
+                SwingUtilities.invokeAndWait {
+                    on.semanticsOwners.firstNotNullOfOrNull { findText(it.unmergedRootSemanticsNode, words) }?.let { node ->
+                        val spot = node.boundsInRoot.center
+                        on.sendPointerEvent(PointerEventType.Enter, spot)
+                        on.sendPointerEvent(PointerEventType.Press, spot, buttons = PointerButtons(isPrimaryPressed = true))
+                        on.render()
+                        on.sendPointerEvent(PointerEventType.Release, spot)
+                    }
+                }
+            }
             // The sign-in, filled in; then asking about a certificate; then
             // with Advanced open.
             SwingUtilities.invokeAndWait {
@@ -310,6 +323,9 @@ class ScreenShotsTest {
                 showAddFilter(app, androidx.compose.ui.unit.IntRect(760, 142, 850, 170), app.navigator.filterOf(visit), { app.navigator.keepFilter(visit, it) }, app.library!!.index!!.songs)
             }
             shot("filters-menu")
+            // An inner page of it, named on its way back.
+            press("Rating")
+            shot("filters-menu-rating")
             SwingUtilities.invokeAndWait { app.popups.close() }
             SwingUtilities.invokeAndWait {
                 app.navigator.keepFilter(app.navigator.current, LibraryQuery(listOf(FilterPresets.NeverPlayed), text = "karma"))
@@ -394,6 +410,9 @@ class ScreenShotsTest {
             // parents, and the list started at the song.
             SwingUtilities.invokeAndWait { app.navigator.go(Page.Folder("d-a1", "", focus = "ok21")) }
             shot("folder", 2_500)
+            // The same folder from its top: its name, the way up and Play and Shuffle.
+            SwingUtilities.invokeAndWait { app.navigator.go(Page.Folder("d-a1", "")) }
+            shot("folder-top", 2_500)
             // A server that will not list its folders says so, with a way on.
             SwingUtilities.invokeAndWait { app.navigator.go(Page.Folders) }
             shot("folders-error")
@@ -402,6 +421,8 @@ class ScreenShotsTest {
                 app.navigator.go(Page.Albums)
             }
             shot("albums")
+            SwingUtilities.invokeAndWait { app.navigator.go(Page.Favourites) }
+            shot("favorites", 2_000)
             SwingUtilities.invokeAndWait {
                 app.updateFrame { it.copy(sidebarRail = true) }
                 app.navigator.go(Page.RecentlyAdded)
@@ -498,6 +519,9 @@ class ScreenShotsTest {
             // to and marked.
             tap(400f, 278f)
             shot("settings-jump")
+            // About starts with its card; on a narrow window too.
+            SwingUtilities.invokeAndWait { showSection("Settings", "about") }
+            shot("settings-about")
             SwingUtilities.invokeAndWait {
                 app.navigator.go(Page.Sound)
                 app.sound?.update { withPreset(it, EqPresets.first { preset -> preset.name == "Bass Boost" }).copy(eqEnabled = true, replayGain = ReplayGainMode.Smart) }
@@ -516,12 +540,24 @@ class ScreenShotsTest {
                 CompositionLocalProvider(LocalTyping provides TypingState()) { Shell(app, null) {} }
             }
             shot("sound-wide", on = wideSettings)
+            // The equalizer's switch on the title's line, with no heading over its cards.
+            SwingUtilities.invokeAndWait { showSection("Sound", "eq") }
+            shot("sound-wide-eq", on = wideSettings)
+            SwingUtilities.invokeAndWait { showSection("Sound", "output") }
             wheel(60, wideSettings)
             shot("sound-wide-bottom", on = wideSettings)
             SwingUtilities.invokeAndWait { app.navigator.go(Page.Settings) }
             shot("settings-wide", on = wideSettings)
             wheel(8, wideSettings)
             shot("settings-wide-middle", on = wideSettings)
+            SwingUtilities.invokeAndWait { showSection("Settings", "about") }
+            shot("settings-wide-about", on = wideSettings)
+            // Appearance's Home group, with its Reset on the group's line.
+            SwingUtilities.invokeAndWait { showSection("Settings", "look") }
+            shot(null, 600, wideSettings)
+            wheel(60, wideSettings)
+            shot("settings-wide-home-sections", on = wideSettings)
+            SwingUtilities.invokeAndWait { showSection("Settings", "servers") }
             wideSettings.close()
             // The narrowest window: the list of sections is left out.
             val narrow = ImageComposeScene(960, 640, Density(1f)) {
@@ -579,7 +615,7 @@ class ScreenShotsTest {
             click(1250f, 463f, right = true)
             shot("queue-menu")
             SwingUtilities.invokeAndWait { app.popups.close() }
-            click(1418f, 107f)
+            press("Queue options")
             shot("queue-options")
             // Taking a song out: the notice line, with Undo.
             SwingUtilities.invokeAndWait {
@@ -786,9 +822,11 @@ class ScreenShotsTest {
         return surface.makeImageSnapshot().encodeToData(EncodedImageFormat.PNG)!!.bytes
     }
 
-    // The node showing exactly this text, for clicking it in a shot.
+    // The node showing exactly this text, or described by it, for clicking
+    // it in a shot.
     private fun findText(node: SemanticsNode, text: String): SemanticsNode? {
         if (node.config.getOrNull(SemanticsProperties.Text)?.joinToString { it.text } == text) return node
+        if (node.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString() == text) return node
         return node.children.firstNotNullOfOrNull { findText(it, text) }
     }
 }

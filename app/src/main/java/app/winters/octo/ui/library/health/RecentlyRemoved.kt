@@ -1,5 +1,6 @@
 package app.winters.octo.ui.library.health
 
+import app.winters.octo.ui.common.PageHeader
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -44,9 +45,6 @@ import app.winters.octo.health.goneText
 import app.winters.octo.subsonic.LibraryTrash
 import app.winters.octo.subsonic.SubsonicException
 import app.winters.octo.subsonic.TrashedSong
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
-import app.winters.octo.ui.common.ScreenTitle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.OffsetDateTime
 import javax.inject.Inject
@@ -129,9 +127,8 @@ fun RecentlyRemovedScreen(onBack: () -> Unit, vm: RecentlyRemovedViewModel = hil
     val canRestore = actions?.canRestore == true
     val now = remember { System.currentTimeMillis() }
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Spacer(Modifier.height(DetailTopGap))
-            ScreenTitle(RECENTLY_REMOVED)
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
+            PageHeader(RECENTLY_REMOVED, onBack)
             val trash = vm.trash
             val problem = vm.problem
             when {
@@ -154,7 +151,6 @@ fun RecentlyRemovedScreen(onBack: () -> Unit, vm: RecentlyRemovedViewModel = hil
                 }
             }
         }
-        BackButton(onBack)
     }
 }
 

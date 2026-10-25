@@ -57,15 +57,16 @@ import app.winters.octo.liveradio.PlaceSource
 import app.winters.octo.liveradio.placeSourceLine
 import app.winters.octo.liveradio.radiusChoices
 import app.winters.octo.liveradio.radiusLabel
-import app.winters.octo.ui.common.BackButton
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.LocalChoiceSheet
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.Segmented
+import app.winters.octo.ui.common.COUNTRY_SEARCH_HINT
+import app.winters.octo.ui.common.NO_COUNTRY_MATCHES
 import app.winters.octo.ui.common.choiceAnchor
+import app.winters.octo.ui.common.countryChoiceMatches
 import app.winters.octo.ui.common.screenPadding
 
 private val SortWords = listOf("Nearest", "Most played")
@@ -102,7 +103,17 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
         // The phone's own country first, then every other by name.
         val here = countries.filter { it.first == vm.country }
         val ordered = here + countries.filterNot { it.first == vm.country }
-        sheet.show(ChoiceRequest("Country", ordered.map { Choice(it.second) }, selected = if (here.isEmpty()) -1 else 0) { vm.country = ordered[it].first })
+        sheet.show(
+            ChoiceRequest(
+                "Country",
+                ordered.map { Choice(it.second, key = it.first) },
+                selected = if (here.isEmpty()) -1 else 0,
+                onPick = { vm.country = ordered[it].first },
+                searchHint = COUNTRY_SEARCH_HINT,
+                match = ::countryChoiceMatches,
+                emptyText = NO_COUNTRY_MATCHES,
+            ),
+        )
     }
     val menu: (LiveStation) -> Unit = { station ->
         val actions = vm.actions(station)
@@ -112,8 +123,8 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
     val place = search?.place
     val miles = vm.miles
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-            item(key = "title") { ScreenTitle(LIVE_NEAR_TITLE) }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+            item(key = "title") { PageHeader(LIVE_NEAR_TITLE, onBack) }
             if (search != null) {
                 if (place == null || vm.choosing) {
                     item(key = "chooser") {
@@ -186,7 +197,6 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
                 }
             }
         }
-        BackButton(onBack)
     }
 }
 

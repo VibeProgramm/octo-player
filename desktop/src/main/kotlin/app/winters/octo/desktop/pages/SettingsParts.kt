@@ -32,18 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.SubcomposeLayout
@@ -58,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import app.winters.octo.design.CardEdge
 import app.winters.octo.design.scrollbar
+import app.winters.octo.design.topFade
 import app.winters.octo.design.CardFill
 import app.winters.octo.design.Corner
 import app.winters.octo.design.DesktopType
@@ -81,14 +77,17 @@ import app.winters.octo.desktop.AppState
 import app.winters.octo.desktop.nav.Visit
 import app.winters.octo.desktop.ui.LocalBottomRoom
 import app.winters.octo.desktop.ui.PageSide
+import app.winters.octo.design.FitOrElse
+import app.winters.octo.desktop.ui.ChoiceButton
+import app.winters.octo.desktop.ui.PageTitle
 
 // The parts the Settings and Sound pages are made of: the list of sections
 // beside the page, one section at a time, its settings in cards, and one
 // kind of row for every setting.
 
 // One section of a page: its name and icon, which the list beside the page
-// shows too, a line under the name, and something beside it (the
-// equalizer's switch). A brand's own mark keeps its own colours.
+// shows, a line about it, and something for the title's line while it is
+// shown (the equalizer's switch). A brand's own mark keeps its own colours.
 class PageSection(
     val key: String,
     val name: String,
@@ -119,10 +118,14 @@ internal fun shownSection(keys: List<String>, remembered: String?): Int =
     keys.indexOf(remembered).takeIf { it >= 0 } ?: 0
 
 // A page of settings: its title, the list of its sections on the left, and
-// the section picked, alone, in a column beside it. On a narrow window the
-// list becomes a row of tabs over the section.
+// the section picked, alone, in a column beside it. The highlighted name in
+// the list is the section's heading: the column starts with the section's
+// cards, its switch sits at the end of the title's line and its line about
+// it goes under the cards. On a narrow window the list becomes a button
+// over the section, naming it and opening the others.
+// `detail` is a quiet word after the title (the output Sound is for).
 @Composable
-internal fun SectionedPage(app: AppState, visit: Visit, title: String, sections: List<PageSection>) {
+internal fun SectionedPage(app: AppState, visit: Visit, title: String, sections: List<PageSection>, detail: String? = null) {
     val index = shownSection(sections.map { it.key }, shownSections[title])
     val section = sections.getOrNull(index) ?: return
     fun pick(at: Int) {
@@ -134,14 +137,22 @@ internal fun SectionedPage(app: AppState, visit: Visit, title: String, sections:
         // centred in the page; without it, the column starts at the margin.
         val side = if (withList) groupSide(maxWidth) else PageSide
         Column(Modifier.fillMaxSize()) {
-            WholeTxt(title, DesktopType.pageTitle, modifier = Modifier.padding(start = side, end = PageSide, top = Space.Xxl, bottom = Space.Xs))
+            PageTitle(
+                title,
+                Modifier.padding(start = side, end = if (withList) side else PageSide, top = Space.Xxl),
+                detail = detail,
+                bottom = Space.Xs,
+                trailing = section.trailing,
+            )
             if (withList) {
                 Row(Modifier.fillMaxSize()) {
                     SectionList(sections, index, ::pick, Modifier.padding(start = side - Space.M))
                     SectionColumn(section, Modifier.weight(1f), start = Space.Wide - Space.M, end = side - Space.M)
                 }
             } else {
-                SectionTabs(sections, index, ::pick, Modifier.padding(horizontal = PageSide - Space.M))
+                Box(Modifier.padding(start = PageSide, end = PageSide, top = Space.S)) {
+                    ChoiceButton(sections.indices.toList(), index, { sections[it].name }, ::pick, title = title, icon = section.icon.takeIf { !section.brand })
+                }
                 SectionColumn(section, Modifier.weight(1f), start = PageSide - Space.M, end = PageSide - Space.M)
             }
         }
@@ -162,17 +173,6 @@ private fun SectionList(sections: List<PageSection>, current: Int, onPick: (Int)
         sections.forEachIndexed { index, section ->
             SectionPick(section, index == current, { onPick(index) }, Modifier.fillMaxWidth())
         }
-    }
-}
-
-// The same, as a row of tabs over the section on a narrow window.
-@Composable
-private fun SectionTabs(sections: List<PageSection>, current: Int, onPick: (Int) -> Unit, modifier: Modifier) {
-    Row(
-        modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = Space.L),
-        horizontalArrangement = Arrangement.spacedBy(Space.Xxs),
-    ) {
-        sections.forEachIndexed { index, section -> SectionPick(section, index == current, { onPick(index) }) }
     }
 }
 
@@ -228,56 +228,36 @@ private fun SectionColumn(section: PageSection, modifier: Modifier, start: Dp, e
     }
 }
 
-// The top edge fades out, so words scrolled up melt away under the title
-// rather than being cut off. At rest nothing sits in it.
-private fun Modifier.topFade(height: Dp): Modifier = this
-    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-    .drawWithContent {
-        drawContent()
-        val edge = height.toPx()
-        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = 0f, endY = edge), size = Size(size.width, edge), blendMode = BlendMode.DstIn)
-    }
-
-// A section: its icon on a tile, its name and line, then its cards.
+// A section: its cards, and its line about it under them.
 @Composable
 private fun ColumnScope.Section(section: PageSection) {
-    Row(
-        Modifier.fillMaxWidth().padding(bottom = Space.Xl),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Space.L),
-    ) {
-        section.icon?.let { icon ->
-            Box(
-                Modifier.size(SettingsSize.SectionIcon).clip(Corner.ControlShape).background(CardFill),
-                contentAlignment = Alignment.Center,
-            ) { SectionIcon(icon, section.brand, IconSize.Transport, OctoColors.TextPrimary) }
-        }
-        Column(Modifier.weight(1f)) {
-            Txt(section.name, DesktopType.section, modifier = Modifier.semantics { heading() })
-            section.detail?.let { Txt(it, DesktopType.meta, OctoColors.TextMuted, Modifier.padding(top = Space.Xxs), maxLines = 2) }
-        }
-        section.trailing?.invoke()
-    }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.Xl)) {
         section.content(this)
     }
+    section.detail?.let {
+        Txt(it, DesktopType.meta, OctoColors.TextMuted, Modifier.padding(start = RowInset, end = RowInset, top = Space.L), maxLines = 3)
+    }
 }
 
-// A group of rows, in a card, with its name above when it has one, and a
-// line on what the group is under it when it has one.
+// A group of rows, in a card, with its name above when it has one (and
+// `action`, a quiet word for the whole group, at the end of that line), and
+// a line on what the group is under it when it has one.
 @Composable
-internal fun Group(name: String? = null, footer: String? = null, content: @Composable () -> Unit) {
+internal fun Group(name: String? = null, footer: String? = null, action: (@Composable () -> Unit)? = null, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         if (name != null) {
-            Txt(
-                name.uppercase(),
-                DesktopType.label,
-                OctoColors.TextMuted,
-                Modifier.padding(start = RowInset, bottom = Space.S).semantics {
-                    heading()
-                    contentDescription = name
-                },
-            )
+            Row(Modifier.fillMaxWidth().padding(bottom = if (action != null) Space.None else Space.S), verticalAlignment = Alignment.CenterVertically) {
+                Txt(
+                    name.uppercase(),
+                    DesktopType.label,
+                    OctoColors.TextMuted,
+                    Modifier.weight(1f).padding(start = RowInset).semantics {
+                        heading()
+                        contentDescription = name
+                    },
+                )
+                action?.invoke()
+            }
         }
         Rows(content)
         if (footer != null) Txt(footer, DesktopType.meta, OctoColors.TextMuted, Modifier.padding(start = RowInset, end = RowInset, top = Space.S), maxLines = 3)
@@ -365,13 +345,25 @@ internal fun SwitchRow(title: String, caption: String?, on: Boolean, change: (Bo
     }
 }
 
-// A setting with a few choices, the chosen one on the darker pill.
+// A setting with a few choices, the chosen one on the darker pill. When
+// the pills would take more than their share of the row and crowd its
+// words, the choices are one button that opens them instead.
 @Composable
 internal fun <T> ChoiceRow(title: String, caption: String?, options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
-    SettingRow(title, caption) {
-        GlazeSegments(options, selected, label, onSelect)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val room = maxWidth * ChoiceShare
+        SettingRow(title, caption) {
+            FitOrElse(
+                { GlazeSegments(options, selected, label, onSelect) },
+                { ChoiceButton(options, selected, label, onSelect, title = title) },
+                Modifier.widthIn(max = room),
+            )
+        }
     }
 }
+
+// The most of a row its choices may take beside its words.
+private const val ChoiceShare = 0.6f
 
 // A value along a line of a fixed width, with what it reads right beside
 // it. `live` sends the value while dragging; `onRelease` hears when a

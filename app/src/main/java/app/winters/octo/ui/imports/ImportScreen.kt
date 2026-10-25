@@ -58,9 +58,7 @@ import app.winters.octo.subsonic.ImportOverview
 import app.winters.octo.subsonic.ImportTrack
 import app.winters.octo.subsonic.ImportTrackState
 import app.winters.octo.subsonic.TrickleState
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
-import app.winters.octo.ui.common.ScreenTitle
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.screenPadding
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -151,8 +149,8 @@ fun ImportScreen(onBack: () -> Unit, owner: ImportViewModel = hiltViewModel()) {
         }
     }
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-            item(key = "title") { ScreenTitle(IMPORT) }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+            item(key = "title") { PageHeader(IMPORT, onBack) }
             val overview = vm.overview
             if (overview == null) {
                 item(key = "waiting") { Line(vm.problem ?: "Asking the server about your lists.") }
@@ -172,7 +170,6 @@ fun ImportScreen(onBack: () -> Unit, owner: ImportViewModel = hiltViewModel()) {
                 trickle(vm, overview)
             }
         }
-        BackButton(onBack)
         PasteSheet(pasting, onDismiss = { pasting = false }) { text, name ->
             pasting = false
             vm.sendText(text, name)

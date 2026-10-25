@@ -72,9 +72,7 @@ import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.subsonic.LibraryActions
 import app.winters.octo.subsonic.SongLookup
 import app.winters.octo.subsonic.SubsonicException
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
-import app.winters.octo.ui.common.ScreenTitle
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.SongRow
 import app.winters.octo.ui.nav.HealthCheckRoute
 import app.winters.octo.ui.nav.HealthTrashRoute
@@ -290,9 +288,8 @@ fun LibraryHealthScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: Health
     val lastUndo by vm.lastUndo.collectAsStateWithLifecycle()
     val canUndo = actions.canRunAll(lastUndo)
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Spacer(Modifier.height(DetailTopGap))
-            ScreenTitle("Library health")
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
+            PageHeader("Library health", onBack)
             val shown = health
             if (shown == null) {
                 Loading()
@@ -327,7 +324,6 @@ fun LibraryHealthScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: Health
                 }
             }
         }
-        BackButton(onBack)
         HealthSheetHost(vm)
     }
 }
@@ -342,9 +338,8 @@ fun HealthCheckScreen(checkName: String, onBack: () -> Unit, vm: HealthViewModel
     val serverIds by vm.serverIds.collectAsStateWithLifecycle()
     val check = HealthCheck.entries.firstOrNull { it.name == checkName }
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Spacer(Modifier.height(DetailTopGap))
-            ScreenTitle(check?.title() ?: "Library health")
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
+            PageHeader(check?.title() ?: "Library health", onBack)
             val shown = health
             when {
                 check == null -> Words("This check is not in this version of the app.", muted = true)
@@ -417,7 +412,6 @@ fun HealthCheckScreen(checkName: String, onBack: () -> Unit, vm: HealthViewModel
                 }
             }
         }
-        BackButton(onBack)
         HealthSheetHost(vm)
     }
 }

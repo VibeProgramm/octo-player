@@ -37,6 +37,7 @@ import app.winters.octo.design.GlassField
 import app.winters.octo.design.GlazeCapsule
 import app.winters.octo.design.Glyph
 import app.winters.octo.design.IconSize
+import app.winters.octo.design.MenuBack
 import app.winters.octo.design.MenuRow
 import app.winters.octo.design.MenuSeparator
 import app.winters.octo.design.MenuTitle
@@ -233,8 +234,7 @@ fun ColumnScope.SongMenu(
 @Composable
 private fun ColumnScope.MoveMenu(app: AppState, place: SongPlace.Playlist, close: () -> Unit, back: () -> Unit) {
     val count = app.playlistView(place.id)?.entry?.size ?: app.playlists.firstOrNull { it.id == place.id }?.songCount ?: 0
-    MenuRow("Back", back, OctoIcons.Back)
-    MenuSeparator()
+    MenuBack("Move", back)
     PlaylistMove.entries.forEach { move ->
         val icon = when (move) {
             PlaylistMove.Top, PlaylistMove.Up -> OctoIcons.Ascending
@@ -249,13 +249,12 @@ private fun ColumnScope.MoveMenu(app: AppState, place: SongPlace.Playlist, close
 // up, just as it does for the phone's.
 @Composable
 private fun ColumnScope.RateMenu(current: Int?, rate: (Int) -> Unit, back: () -> Unit) {
-    MenuRow("Back", back, OctoIcons.Back)
-    MenuSeparator()
+    MenuBack("Rating", back)
     for (stars in 5 downTo 1) {
-        MenuRow(starsLabel(stars)!!, { rate(stars) }, leading = { Stars(stars) }, checked = current == stars)
+        MenuRow(starsLabel(stars)!!, { rate(stars) }, leading = { Stars(stars) }, selected = current == stars)
     }
     MenuSeparator()
-    MenuRow("No rating", { rate(0) }, leading = { Stars(0) }, checked = current == 0)
+    MenuRow("No rating", { rate(0) }, leading = { Stars(0) }, selected = current == 0)
 }
 
 // A rating as five stars, `lit` of them filled.
@@ -526,8 +525,7 @@ fun ColumnScope.PlaylistChooser(app: AppState, songs: suspend () -> List<Song>, 
         AddAgainMenu(app, question, close) { asking = null }
         return
     }
-    MenuRow("Back", back, OctoIcons.Back)
-    MenuSeparator()
+    MenuBack("Add to playlist", back)
     adding?.let {
         MenuRow("Adding to ${it.name}", {}, OctoIcons.AddToPlaylist, enabled = false)
         return
@@ -560,10 +558,7 @@ fun ColumnScope.PlaylistChooser(app: AppState, songs: suspend () -> List<Song>, 
 // the chooser's own page, and the menu a drop on a playlist opens.
 @Composable
 fun ColumnScope.AddAgainMenu(app: AppState, question: AddQuestion, close: () -> Unit, back: (() -> Unit)? = null) {
-    if (back != null) {
-        MenuRow("Back", back, OctoIcons.Back)
-        MenuSeparator()
-    }
+    if (back != null) MenuBack(question.playlist.name, back)
     Question(question.words)
     if (question.plan.offersNewOnly) MenuRow(ADD_NEW_ONES, { app.addSongsToPlaylist(question.playlist, question.fresh); close() }, OctoIcons.AddToPlaylist)
     MenuRow(addAgainChoice(question.plan), { app.addSongsToPlaylist(question.playlist, question.all); close() }, OctoIcons.AddToPlaylist)

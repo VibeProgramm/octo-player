@@ -56,12 +56,10 @@ import app.winters.octo.liveradio.radioId
 import app.winters.octo.server.ServerControls
 import app.winters.octo.subsonic.RadioStationDetails
 import app.winters.octo.subsonic.SubsonicException
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.LoadState
 import app.winters.octo.ui.common.LocalHaze
 import app.winters.octo.ui.common.rememberLast
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.screenPadding
 import app.winters.octo.ui.liveradio.FindNearRow
 import app.winters.octo.ui.settings.SettingsIndex
@@ -224,8 +222,8 @@ fun RadioStationsScreen(onBack: () -> Unit, onOpen: (NavKey) -> Unit, vm: RadioS
     val admin by vm.admin.collectAsStateWithLifecycle()
     val readOnly by vm.readOnly.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-            item(key = "title") { ScreenTitle(SettingsIndex.RadioStations.title) }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+            item(key = "title") { PageHeader(SettingsIndex.RadioStations.title, onBack) }
             item(key = "near") { FindNearRow(onClick = { onOpen(LiveRadioNearRoute) }, modifier = Modifier.padding(bottom = 8.dp)) }
             if (admin) {
                 item(key = "add") {
@@ -257,7 +255,6 @@ fun RadioStationsScreen(onBack: () -> Unit, onOpen: (NavKey) -> Unit, vm: RadioS
                 }
             }
         }
-        BackButton(onBack)
         // A glass panel in the middle, since it holds a form; it rises above
         // the keyboard while one is typed.
         GlassPopup(

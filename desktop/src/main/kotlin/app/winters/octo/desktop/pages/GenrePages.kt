@@ -183,7 +183,6 @@ private fun GenreBody(
             val page = PageItems(this, spots)
             page.item("head") {
                 EntityHeader(
-                    "Genre",
                     name,
                     picture = { Mosaic(covers, it) },
                     facts = listOf(
@@ -191,20 +190,21 @@ private fun GenreBody(
                         Fact(if (contents.artists.size == 1) "1 artist" else "${contents.artists.size} artists"),
                         Fact(totalLengthText(songs.sumOf { it.duration })),
                     ),
+                    control = if (contents.songs.isEmpty()) null else ({
+                        JumpLinks(
+                            app,
+                            listOfNotNull(
+                                ("Artists" to { jump("artists") }).takeIf { contents.artists.isNotEmpty() },
+                                ("Albums" to { jump("albums") }).takeIf { contents.albums.isNotEmpty() },
+                                "Songs" to { jump("songs") },
+                            ),
+                        )
+                    }),
                 ) {
                     PlayAndShuffle({ app.play(songs) }, { app.play(songs, shuffle = true) }, enabled = songs.isNotEmpty())
                 }
             }
             if (contents.songs.isEmpty()) return@SongTable
-            page.item("jump") {
-                JumpLinks(
-                    listOfNotNull(
-                        ("Artists" to { jump("artists") }).takeIf { contents.artists.isNotEmpty() },
-                        ("Albums" to { jump("albums") }).takeIf { contents.albums.isNotEmpty() },
-                        "Songs" to { jump("songs") },
-                    ),
-                )
-            }
             if (contents.artists.isNotEmpty()) {
                 page.item("artists") {
                     GroupTitle(

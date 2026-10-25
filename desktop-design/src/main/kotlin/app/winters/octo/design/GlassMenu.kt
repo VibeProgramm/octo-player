@@ -71,6 +71,7 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -158,13 +159,15 @@ class PopupHost {
         private set
 
     // Opens at a point in the window, like where a right click landed.
-    fun showAt(point: IntOffset, width: Dp? = 260.dp, content: @Composable ColumnScope.(close: () -> Unit) -> Unit) {
-        request = PopupRequest(point, null, width, content)
+    // Content that `scrollsItself` keeps a part in place (a search field)
+    // while the rest scrolls.
+    fun showAt(point: IntOffset, width: Dp? = 260.dp, scrollsItself: Boolean = false, content: @Composable ColumnScope.(close: () -> Unit) -> Unit) {
+        request = PopupRequest(point, null, width, content, scrollsItself = scrollsItself)
     }
 
     // Opens under (or over) a control, given its bounds in the window.
-    fun showUnder(anchor: IntRect, width: Dp? = 260.dp, content: @Composable ColumnScope.(close: () -> Unit) -> Unit) {
-        request = PopupRequest(null, anchor, width, content)
+    fun showUnder(anchor: IntRect, width: Dp? = 260.dp, scrollsItself: Boolean = false, content: @Composable ColumnScope.(close: () -> Unit) -> Unit) {
+        request = PopupRequest(null, anchor, width, content, scrollsItself = scrollsItself)
     }
 
     // Opens in the middle of the window, for a small form. A taller form
@@ -362,7 +365,9 @@ private val MenuRowShape = RoundedCornerShape(8.dp)
 // Under the pointer it sits in a quiet accent-tinted pill, at once. A
 // `destructive` one (deleting, removing) says so in soft red words; its
 // icon stays white like every other. `leading` draws something wider than
-// an icon in its place (a row of stars); `checked` ticks the choice in use.
+// an icon in its place (a row of stars); `checked` ticks a switch that is on
+// or one of several picked. `selected` marks the one choice in use in a
+// menu of choices with the accent pill and a heavier word; it is ticked too.
 @Composable
 fun MenuRow(
     text: String,
@@ -375,6 +380,7 @@ fun MenuRow(
     interactionSource: MutableInteractionSource? = null,
     leading: (@Composable () -> Unit)? = null,
     checked: Boolean = false,
+    selected: Boolean = false,
 ) {
     val interaction = interactionSource ?: remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -384,6 +390,7 @@ fun MenuRow(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 6.dp)
+            .then(if (selected) Modifier.background(OctoColors.AccentSelected, MenuRowShape) else Modifier)
             .menuRowPress(MenuRowShape) { if ((hovered || pressed || focused) && enabled) 1f else 0f }
             .hoverable(interaction, enabled = enabled)
             .pointerHoverIcon(if (enabled) PointerIcon.Hand else PointerIcon.Default)
@@ -395,7 +402,7 @@ fun MenuRow(
                 onClick = onClick,
             )
             .semantics {
-                if (checked) selected = true
+                if (checked || selected) this.selected = true
                 if (more) stateDescription = "Opens more"
             }
             .height(MenuRowHeight.Pointer)
@@ -406,7 +413,7 @@ fun MenuRow(
         if (leading != null) leading() else if (icon != null) Glyph(icon, size = 16.dp, tint = if (enabled) Color.White else OctoColors.TextMuted)
         Txt(
             text,
-            OctoType.bodySmall,
+            if (selected) OctoType.bodySmall.copy(fontWeight = FontWeight.Medium) else OctoType.bodySmall,
             when {
                 !enabled -> OctoColors.TextMuted
                 destructive -> OctoColors.Destructive
@@ -415,7 +422,7 @@ fun MenuRow(
             Modifier.weight(1f),
         )
         if (detail != null) Txt(detail, OctoType.caption, OctoColors.TextMuted)
-        if (checked) Glyph(OctoIcons.Check, size = 16.dp, tint = OctoColors.TextPrimary)
+        if (checked || selected) Glyph(OctoIcons.Check, size = 16.dp, tint = OctoColors.TextPrimary)
         if (more) Glyph(OctoIcons.Chevron, size = 16.dp, tint = OctoColors.TextMuted)
     }
 }
@@ -424,6 +431,24 @@ fun MenuRow(
 @Composable
 fun MenuTitle(text: String, modifier: Modifier = Modifier) {
     Txt(text, OctoType.label, OctoColors.TextSecondary, modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { heading() })
+}
+
+// A heading with a quiet line of its own after it on the same baseline
+// (what the pop-up is about, or what to do in it), rather than under it.
+@Composable
+fun MenuTitle(text: String, detail: String, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Txt(text, OctoType.label, OctoColors.TextSecondary, Modifier.alignByBaseline().semantics { heading() })
+        Txt(detail, OctoType.caption, OctoColors.TextMuted, Modifier.weight(1f, fill = false).alignByBaseline(), maxLines = 2)
+    }
+}
+
+// The top of a menu's inner page: its name after a back arrow ("‹ Rating"),
+// going back to the page it opened from, then a hairline.
+@Composable
+fun MenuBack(title: String, onBack: () -> Unit) {
+    MenuRow(title, onBack, OctoIcons.Back)
+    MenuSeparator()
 }
 
 // The hairline between groups of menu rows.

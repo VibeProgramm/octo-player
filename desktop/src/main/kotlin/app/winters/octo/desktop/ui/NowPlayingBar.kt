@@ -77,6 +77,7 @@ import app.winters.octo.design.IslandSaturation
 import app.winters.octo.design.LineSlider
 import app.winters.octo.design.MenuFilm
 import app.winters.octo.design.MenuFrost
+import app.winters.octo.design.MenuBack
 import app.winters.octo.design.MenuRow
 import app.winters.octo.design.MenuSeparator
 import app.winters.octo.design.MenuShape
@@ -405,8 +406,7 @@ private fun ColumnScope.MoreMenu(app: AppState, close: () -> Unit, compact: Bool
 // few songs; and while one runs, more time or off.
 @Composable
 private fun ColumnScope.SleepMenu(app: AppState, sleep: SleepState, back: () -> Unit, close: () -> Unit) {
-    MenuRow("Back", back, OctoIcons.Back)
-    MenuSeparator()
+    MenuBack("Sleep timer", back)
     if (sleep != SleepState.Off) {
         MenuTitle("Stopping: ${sleepSummary(sleep)}")
         if (sleep is SleepState.Counting) {
@@ -500,9 +500,7 @@ fun PlayBadge(size: Dp, label: String, onClick: () -> Unit) {
 @Composable
 private fun ColumnScope.OutputMenu(app: AppState, back: () -> Unit, close: () -> Unit) {
     val now by app.player.state.collectAsState()
-    MenuRow("Back", back, OctoIcons.Back)
-    MenuSeparator()
-    MenuTitle("Play on")
+    MenuBack("Play on", back)
     now.outputs.forEachIndexed { index, device ->
         if (index == 1) MenuSeparator()
         MenuRow(

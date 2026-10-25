@@ -71,7 +71,7 @@ import app.winters.octo.desktop.search.SearchState
 import app.winters.octo.desktop.ui.FailedLine
 import app.winters.octo.desktop.ui.LoadingLine
 import app.winters.octo.desktop.ui.LocalBottomRoom
-import app.winters.octo.desktop.ui.PageTitle
+import app.winters.octo.desktop.ui.PageHeader
 import app.winters.octo.desktop.ui.SectionTitle
 import app.winters.octo.desktop.ui.ShelfCardWidth
 import app.winters.octo.desktop.ui.SongTable
@@ -108,10 +108,7 @@ fun SearchPage(app: AppState, visit: Visit) {
     ) {
         // The field itself is at the top of the sidebar, on every page.
         item(key = "filters") {
-            Column(verticalArrangement = Arrangement.spacedBy(Space.L)) {
-                PageTitle("Search", detail = model.text.takeIf(String::isNotBlank)?.let { "Results for \"$it\"" })
-                GlazeSegments(SearchFilter.entries, model.filter, { it.label }, model::pick)
-            }
+            PageHeader("Search", control = { GlazeSegments(SearchFilter.entries, model.filter, { it.label }, model::pick) })
         }
         when (state) {
             SearchState.Idle -> {

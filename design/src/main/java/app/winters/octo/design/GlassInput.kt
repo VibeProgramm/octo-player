@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 private val InputShape = RoundedCornerShape(12.dp)
@@ -37,7 +38,8 @@ private val InputShape = RoundedCornerShape(12.dp)
 // a faint highlight from the bottom right, both deeper while typing. Its
 // accent fill strengthens from a tenth to 15% while typing, and a thin
 // accent ring fades in round it. `leading` sits before the words, such as
-// an icon naming the field.
+// an icon naming the field. `height` is the field's, 48dp unless it sits
+// among rows of another height.
 @Composable
 fun GlassInput(
     value: String,
@@ -50,6 +52,7 @@ fun GlassInput(
     contentType: ContentType? = null,
     trailing: (@Composable () -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
+    height: Dp = 48.dp,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -76,7 +79,7 @@ fun GlassInput(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(height)
                     .focusRing(InputShape, { depth.coerceIn(0f, 1f) }, width = 1.5.dp, color = OctoColors.Accent.copy(alpha = 0.60f))
                     .clip(InputShape)
                     .drawBehind { drawRect(OctoColors.Accent.copy(alpha = 0.10f + 0.05f * depth.coerceIn(0f, 1f))) }

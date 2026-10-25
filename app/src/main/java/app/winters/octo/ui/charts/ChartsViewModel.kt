@@ -6,21 +6,34 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.winters.octo.discovery.ChartList
+import app.winters.octo.discovery.CHART_SAVE_FAILED
+import app.winters.octo.discovery.ChartAnswer
+import app.winters.octo.discovery.ChoicesAnswer
+import app.winters.octo.discovery.chartRefusal
 import app.winters.octo.discovery.ChartLists
+import app.winters.octo.discovery.CountryAction
 import app.winters.octo.playback.PlaybackConnection
+import app.winters.octo.subsonic.CHART_COUNTRY_AUTO
 import app.winters.octo.subsonic.CHART_OVERALL
 import app.winters.octo.subsonic.ChartChoice
+import app.winters.octo.subsonic.ChartChoices
+import app.winters.octo.subsonic.SubsonicException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import javax.inject.Provider
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-// The Charts page: the charts the server's country has, as chips, and the
-// chosen chart's songs.
+// The Charts page: the charts a country has, as chips, and the chosen
+// chart's songs. The country is the listener's own until another is
+// picked; on a server that saves it, a country picked can be only looked
+// at on this page, made the listener's chart country, or have its charts
+// as playlists too. A country only looked at is forgotten with the page.
 @HiltViewModel
 class ChartsViewModel @Inject constructor(
     private val charts: ChartLists,
-    private val playback: PlaybackConnection,
+    // Taken only to play, so the page works without the player connected.
+    private val playback: Provider<PlaybackConnection>,
 ) : ViewModel() {
     var choices by mutableStateOf<List<ChartChoice>>(emptyList())
         private set
@@ -36,14 +49,78 @@ class ChartsViewModel @Inject constructor(
     var none by mutableStateOf(false)
         private set
 
+    // What the server says of the listener's own charts: their country,
+    // pins and every country there is. Null on a server that shows only its
+    // own country.
+    var own by mutableStateOf<ChartChoices?>(null)
+        private set
+
+    // The country in view when it is not the listener's own.
+    var browsing by mutableStateOf<String?>(null)
+        private set
+
+    var saving by mutableStateOf(false)
+        private set
+
+    // Why the last save did not happen, until the next one, and the country
+    // it was for, so its choice can be asked again with the reason.
+    var problem by mutableStateOf<String?>(null)
+        private set
+    var problemFor by mutableStateOf<CountryAsked?>(null)
+        private set
+
+    // The server's own words when it refused the country in view (too many
+    // countries in an hour, say), shown in place of its chart.
+    var refusal by mutableStateOf<String?>(null)
+        private set
+
     private var loading: Job? = null
+    private var choosing: Job? = null
+
+    // Whether the page offers other countries.
+    val canPickCountry: Boolean get() = own?.countries?.isNotEmpty() == true
+
+    // The country the charts are for: the one looked at, else the listener's own.
+    val country: String? get() = browsing ?: own?.country
+
+    val pinned: List<String> get() = own?.pinned.orEmpty()
+
+    val maxPinned: Int get() = own?.maxPinned ?: 0
+
 
     init {
+        // The listener's own choices may have changed on another device, so
+        // a server that saves them is asked again each time the page opens;
+        // what was kept shows until it answers.
         viewModelScope.launch {
-            choices = charts.choices()?.chart.orEmpty()
+            val countries = charts.countriesOffered()
+            charts.keptChoices()?.let { showOwn(it, countries) }
+            charts.choices(fresh = countries)?.let { showOwn(it, countries) }
             if (choices.isEmpty() && !charts.offered()) none = true
         }
         load()
+    }
+
+    // The listener's own charts as the server says them. The chart in view
+    // is asked for again when it changed with them, or when it was read for
+    // a country that is no longer the listener's own; a country looked at
+    // that became their own is shown as their own.
+    private fun showOwn(got: ChartChoices, countries: Boolean) {
+        if (countries) {
+            own = got
+            if (browsing != null && browsing.equals(got.country, ignoreCase = true)) {
+                backToOwn(got)
+                return
+            }
+        }
+        if (browsing == null) {
+            val before = selected
+            choices = got.chart
+            keepSelected()
+            // A chart still on its way may be the old country's: asked again too.
+            val stale = list?.country?.let { shown -> got.country != null && !shown.equals(got.country, ignoreCase = true) } ?: (list == null)
+            if (selected != before || stale) load()
+        }
     }
 
     fun pick(chart: String) {
@@ -52,19 +129,116 @@ class ChartsViewModel @Inject constructor(
         load()
     }
 
+    // Looks at a country's charts; the listener's own country stops looking
+    // at another. Picking the same country again asks again when its charts
+    // did not come.
+    fun pickCountry(code: String) {
+        if (saving) return
+        val target = code.takeIf { it != own?.country }
+        if (target == browsing && (choices.isNotEmpty() && refusal == null)) return
+        browsing = target
+        problem = null
+        refusal = null
+        loading?.cancel()
+        list = null
+        choosing?.cancel()
+        choosing = viewModelScope.launch {
+            val got = if (target == null) {
+                ChoicesAnswer(charts.keptChoices() ?: charts.choices())
+            } else {
+                charts.choicesAnswer(target)
+            }
+            if (target != browsing) return@launch
+            choices = got.choices?.chart.orEmpty()
+            refusal = got.refusal
+            keepSelected()
+            load()
+        }
+    }
+
+    // Back to the listener's own charts.
+    fun backToYours() {
+        own?.country?.let(::pickCountry)
+    }
+
+    // Does what was chosen for a picked country: only look at it here, make
+    // it the listener's chart country (or follow the server's again), or add
+    // or remove its playlists and look at it.
+    fun choose(asked: CountryAsked, action: CountryAction) {
+        val code = asked.code
+        when (action) {
+            CountryAction.Look -> pickCountry(code)
+            CountryAction.UseForMine -> save(asked, { charts.saveCountry(code) }) { got -> backToOwn(got) }
+            CountryAction.FollowServer -> save(asked, { charts.saveCountry(CHART_COUNTRY_AUTO) }) { got -> backToOwn(got) }
+            CountryAction.AddPlaylists -> save(asked, { charts.pin(code, true) }) { pickCountry(code) }
+            CountryAction.RemovePlaylists -> save(asked, { charts.pin(code, false) }) { pickCountry(code) }
+        }
+    }
+
+    // A reason shown, put away.
+    fun problemSeen() {
+        problem = null
+        problemFor = null
+    }
+
+    private fun backToOwn(got: ChartChoices) {
+        choosing?.cancel()
+        loading?.cancel()
+        browsing = null
+        refusal = null
+        choices = got.chart
+        keepSelected()
+        load()
+    }
+
+    // A refusal shows the server's own words; anything else the plain line.
+    private fun save(asked: CountryAsked, call: suspend () -> Result<ChartChoices>, then: (ChartChoices) -> Unit) {
+        if (saving) return
+        saving = true
+        problemSeen()
+        viewModelScope.launch {
+            val answer = call()
+            saving = false
+            val got = answer.getOrElse { e ->
+                problem = (e as? SubsonicException)?.let(::chartRefusal) ?: CHART_SAVE_FAILED
+                problemFor = asked
+                return@launch
+            }
+            own = got
+            then(got)
+        }
+    }
+
+    // The chart in view stays when the new charts have it.
+    private fun keepSelected() {
+        if (choices.isNotEmpty() && choices.none { it.id == selected }) selected = CHART_OVERALL
+    }
+
     private fun load() {
         loading?.cancel()
         list = null
         val chart = selected
+        val country = browsing
         loading = viewModelScope.launch {
-            val got = charts.chart(chart)
-            if (chart != selected) return@launch
-            list = got ?: ChartList(chart, null, "", null, emptyList())
+            val answer = charts.answer(chart, country)
+            if (chart != selected || country != browsing) return@launch
+            if (answer is ChartAnswer.Failed && answer.refusal != null) refusal = answer.refusal
+            list = (answer as? ChartAnswer.Got)?.list ?: ChartList(chart, null, "", country, emptyList())
         }
     }
 
     fun play(index: Int) {
         val songs = list?.songs ?: return
-        playback.playTracks(songs.map { it.track.id }, index.coerceAtLeast(0))
+        playback.get().playTracks(songs.map { it.track.id }, index.coerceAtLeast(0))
+    }
+
+    // The chart's songs in a shuffled order, from the same list Play plays.
+    fun shuffle() {
+        val songs = list?.songs?.takeIf { it.isNotEmpty() } ?: return
+        playback.get().playTracks(songs.map { it.track.id }, shuffle = true)
     }
 }
+
+// A country picked in the menu whose choice is asked: its code, and whether
+// it was picked as the server's own country.
+data class CountryAsked(val code: String, val server: Boolean = false)

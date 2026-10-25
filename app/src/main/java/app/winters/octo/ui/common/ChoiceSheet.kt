@@ -1,19 +1,31 @@
 package app.winters.octo.ui.common
 
 import android.os.SystemClock
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -24,34 +36,67 @@ import androidx.compose.ui.node.GlobalPositionAwareModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.PointerInputModifierNode
 import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.roundToIntRect
+import app.winters.octo.design.GlassInput
 import app.winters.octo.design.GlassPopup
+import app.winters.octo.design.MenuRowHeight
+import app.winters.octo.design.OctoColors
+import app.winters.octo.design.OctoIcons
+import app.winters.octo.discovery.countryMatches
 import app.winters.octo.sort.SortOption
 import app.winters.octo.sort.SortOrder
 
 // One answer to a choice: its name, and a line about it.
 // `enabled` false shows the answer dimmed, with its detail saying why, and
 // it cannot be picked. `leading` draws a small picture of it before its name.
+// `key` is more for a search to match, such as a country's code.
 data class Choice(
     val label: String,
     val detail: String? = null,
     val enabled: Boolean = true,
     val leading: (@Composable () -> Unit)? = null,
+    val key: String? = null,
 )
 
 // What the sheet can ask.
 sealed interface SheetRequest
 
-// A question with a few answers, and what to do with the one picked.
+// A question with a few answers, and what to do with the one picked. With
+// a `searchHint`, a field above the answers narrows them as words are
+// typed: `match` says whether an answer is still one (by default, the words
+// are inside its name), and `emptyText` is the line when none is.
 class ChoiceRequest(
     val title: String,
     val choices: List<Choice>,
     val selected: Int,
+    val searchHint: String? = null,
+    val match: ((Choice, String) -> Boolean)? = null,
+    val emptyText: String = "Nothing matches.",
     val onPick: (Int) -> Unit,
 ) : SheetRequest
+
+// A country picker's search: its hint, its line when nothing is left, and
+// its rule, the words inside a country's name, accents aside, or its whole
+// two-letter code (the answer's `key`).
+const val COUNTRY_SEARCH_HINT = "Search countries"
+const val NO_COUNTRY_MATCHES = "No countries match."
+
+fun countryChoiceMatches(choice: Choice, typed: String): Boolean = countryMatches(choice.label, choice.key.orEmpty(), typed)
+
+// The answers left after what was typed, as their places in the full list,
+// in its order.
+internal fun shownChoices(request: ChoiceRequest, typed: String): List<Int> {
+    if (request.searchHint == null || typed.isBlank()) return request.choices.indices.toList()
+    val match = request.match ?: { choice, words -> choice.label.contains(words.trim(), ignoreCase = true) }
+    return request.choices.indices.filter { match(request.choices[it], typed) }
+}
 
 // How to order a list: the options it offers, the order it is in, and what
 // to do with a new one.
@@ -163,20 +208,60 @@ fun ChoiceSheetHost(sheet: ChoiceSheet) {
 }
 
 // The answers under the question, the current one in the darker pill.
-// Picking one closes the list.
+// Picking one closes the list. A question with a search field keeps one
+// width, so the list does not change size as it narrows, and the field
+// stays put while the answers under it scroll. What was typed is gone the
+// next time the question is asked.
 @Composable
 private fun Choices(request: ChoiceRequest, close: () -> Unit) {
-    Column(Modifier.widthIn(min = 220.dp, max = 320.dp).width(IntrinsicSize.Max).padding(6.dp)) {
+    var typed by remember(request) { mutableStateOf("") }
+    val shown = remember(request, typed) { shownChoices(request, typed) }
+    val size = if (request.searchHint != null) Modifier.width(MenuWidth) else Modifier.widthIn(min = 220.dp, max = 320.dp).width(IntrinsicSize.Max)
+    Column(size.padding(6.dp)) {
         GlassMenuTitle(request.title)
+        request.searchHint?.let { hint -> ChoiceSearch(typed, { typed = it }, hint) }
+        if (shown.isEmpty()) GlassMenuNote(request.emptyText)
         // Scrolls when the answers are taller than the list may be.
         GlassMenuOptions(
-            request.choices,
-            request.selected,
+            shown.map { request.choices[it] },
+            shown.indexOf(request.selected),
+            // Closed first, so a pick may ask another question in its place.
             onPick = { index ->
-                request.onPick(index)
                 close()
+                request.onPick(shown[index])
             },
             modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+            pickable = request.selected >= 0,
         )
     }
+}
+
+// The field that narrows a question's answers: as tall as an answer, its
+// words where the answers' words start. Search only puts the keyboard
+// away, since the answers narrow as the words are typed.
+@Composable
+private fun ChoiceSearch(typed: String, onChange: (String) -> Unit, hint: String) {
+    val focus = LocalFocusManager.current
+    GlassInput(
+        value = typed,
+        onValueChange = onChange,
+        placeholder = hint,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+        height = MenuRowHeight.Touch,
+        trailing = {
+            if (typed.isEmpty()) {
+                Icon(painterResource(OctoIcons.Search), contentDescription = null, tint = OctoColors.TextMuted, modifier = Modifier.size(20.dp))
+            } else {
+                // A finger-sized target round the small icon, reaching past the field's inside edge.
+                Box(
+                    Modifier.offset(x = 10.dp).size(40.dp).clip(CircleShape).clickable(role = Role.Button, onClickLabel = "Clear search") { onChange("") },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(painterResource(OctoIcons.Close), contentDescription = "Clear search", tint = OctoColors.TextMuted, modifier = Modifier.size(20.dp))
+                }
+            }
+        },
+    )
 }
