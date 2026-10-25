@@ -188,7 +188,7 @@ extension TrickleStatus {
         switch stage {
         case .idle: "Nothing to fetch"
         case .unknown:
-            if let label, !label.trimmingCharacters(in: .whitespaces).isEmpty { label }
+            if let label, !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { label }
             else if queued > 0 || downloading > 0 { "Working on it" }
             else { "Nothing to fetch" }
         case .running: downloading > 0 ? "Fetching" : "Waiting for the next turn"

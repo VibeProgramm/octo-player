@@ -179,14 +179,20 @@ final class Opened: @unchecked Sendable {
     @Test func aStateThisAppDoesNotKnowNeverSaysNothingToFetch() throws {
         #expect(TrickleStatus(state: "somethingNew", queued: 2).title == "Working on it")
         #expect(TrickleStatus(state: "somethingNew").title == "Nothing to fetch")
-        var labelled = TrickleStatus(state: "somethingNew", queued: 2)
-        labelled.label = "Tidying up"
-        #expect(labelled.title == "Tidying up")
-        labelled.label = " "
-        #expect(labelled.title == "Working on it")
+        var labeled = TrickleStatus(state: "somethingNew", queued: 2)
+        labeled.label = "Tidying up"
+        #expect(labeled.title == "Tidying up")
+        labeled.label = " "
+        #expect(labeled.title == "Working on it")
+        labeled.label = " \n"
+        #expect(labeled.title == "Working on it")
         let read = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"brandNew","label":"Tidying up","downloading":1}"#.utf8))
         #expect(read.stage == .unknown)
         #expect(read.title == "Tidying up")
+        let fetching = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"brandNew","downloading":1}"#.utf8))
+        #expect(fetching.title == "Working on it")
+        let one = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"running","perHour":1,"notFound":1}"#.utf8))
+        #expect(one.line(zone: TimeZone(identifier: "UTC")!) == "Up to 1\u{00A0}song an hour. 1\u{00A0}not\u{00A0}found.")
         let held = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"waitingForMusicDatabase","queued":3}"#.utf8))
         #expect(held.stage == .waitingForMusicDatabase)
     }
