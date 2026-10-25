@@ -76,6 +76,8 @@ struct PageHeader: View {
                     .padding(.leading, -8)
                     .padding(.trailing, 20)
                     .alignmentGuide(.pageTitleLine) { d in d[.firstTextBaseline] - capHeight / 2 }
+                    // It leaves with the title as the bar's name arrives.
+                    .opacity(Double(top?.titleShown ?? 1))
                 Spacer(minLength: 0)
             }
         }
