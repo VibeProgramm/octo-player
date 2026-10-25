@@ -64,7 +64,10 @@ class ImportHoldShotsTest {
                     ),
                     "unknown-state" to overview(
                         "$road,$liked",
-                        """{"state":"somethingNew","perHour":20,"queued":3,"done":2,"recent":[$fetched]}""",
+                        """{"state":"somethingNew","perHour":20,"queued":3,"done":2,"recent":[$fetched],"next":[
+                        ${track("s:3", "Roads", "Portishead", "Dummy", "queued")},
+                        ${track("s:4", "Linger", "The Cranberries", "Everybody Else Is Doing It", "queued")},
+                        ${track("s:5", "No Surprises", "Radiohead", "OK Computer", "queued")}]}""",
                     ),
                 )
                 rig.signIn()

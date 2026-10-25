@@ -155,7 +155,7 @@ final class Opened: @unchecked Sendable {
     @Test func aListSaysWhereItIsFromAndWhatTheLibraryHas() {
         let list = ImportListSummary(source: "spotifyPlaylist", by: "Spotify", total: 10, have: 6, missing: 2, queued: 1, downloading: 1, notFound: 1)
         #expect(list.originLine == "Spotify · by Spotify")
-        #expect(list.countsLine == "6 of 10 · 2 missing · 2 coming · 1 not found")
+        #expect(list.countsLine == "6\u{00A0}of\u{00A0}10 · 2\u{00A0}missing · 2\u{00A0}coming · 1\u{00A0}not\u{00A0}found")
         #expect(ImportListSummary(source: "file").originLine == "File")
         #expect(trackStateLabel(.done) == "Fetched")
         #expect(ImportListSummary(name: "Road trip").removeLine == "Octo forgets Road trip. Songs already in your library stay.")
@@ -167,11 +167,11 @@ final class Opened: @unchecked Sendable {
         let utc = TimeZone(identifier: "UTC")!
         let running = TrickleStatus(state: "running", nextUtc: "2026-10-04T14:05:00Z", perHour: 20, queued: 3, done: 2)
         #expect(running.title == "Waiting for the next turn")
-        #expect(running.line(zone: utc) == "Up to 20 songs an hour. Next song at 14:05. 3 waiting, 2 fetched.")
+        #expect(running.line(zone: utc) == "Up to 20\u{00A0}songs an hour. Next song at 14:05. 3\u{00A0}waiting, 2\u{00A0}fetched.")
         #expect(TrickleStatus(state: "waitingForSoulseek").title == "Waiting for Soulseek")
         #expect(TrickleStatus(state: "waitingForMusicDatabase").title == "Waiting for MusicBrainz")
         #expect(TrickleStatus(state: "waitingForMusicDatabase", perHour: 20, queued: 3).line(zone: utc)
-            == "Up to 20 songs an hour. It goes on once MusicBrainz is back. 3 waiting.")
+            == "Up to 20\u{00A0}songs an hour. It goes on once MusicBrainz is back. 3\u{00A0}waiting.")
         #expect(TrickleStatus(state: "off").line(zone: utc) == "Songs an hour is 0 on the server, so nothing starts.")
         #expect(TrickleStatus(state: "idle").title == "Nothing to fetch")
     }

@@ -136,8 +136,10 @@ extension ImportListSummary {
 
     /// "6 of 10 · 2 missing · 1 coming · 1 not found".
     public var countsLine: String {
-        ["\(have) of \(total)", missing > 0 ? "\(missing) missing" : nil, coming > 0 ? "\(coming) coming" : nil,
-         notFound > 0 ? "\(notFound) not found" : nil].compactMap { $0 }.joined(separator: " · ")
+        // Each count is held to its words with no-break spaces, so a line never breaks inside one.
+        ["\(have)\u{00A0}of\u{00A0}\(total)", missing > 0 ? "\(missing)\u{00A0}missing" : nil,
+         coming > 0 ? "\(coming)\u{00A0}coming" : nil,
+         notFound > 0 ? "\(notFound)\u{00A0}not\u{00A0}found" : nil].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// What goes and what stays when the list is removed.
@@ -198,20 +200,20 @@ extension TrickleStatus {
         }
     }
 
-    /// The trickle's line: the pace, when the next song starts, and the counts.
+    /// The trickle's line: the pace, when the next song starts, and the counts, each count held to its word.
     public func line(zone: TimeZone = .current) -> String {
         var parts: [String] = []
         if stage == .off {
             parts.append("Songs an hour is 0 on the server, so nothing starts.")
         } else {
-            parts.append("Up to \(perHour == 1 ? "1 song" : "\(perHour) songs") an hour.")
+            parts.append("Up to \(perHour == 1 ? "1\u{00A0}song" : "\(perHour)\u{00A0}songs") an hour.")
         }
         if stage == .running, downloading == 0, let nextUtc { parts.append("Next song at \(Self.time(nextUtc, zone)).") }
         if stage == .yielding { parts.append("Someone's own downloads come first.") }
         if stage == .waitingForSoulseek { parts.append("It goes on once Soulseek is back.") }
         if stage == .waitingForMusicDatabase { parts.append("It goes on once MusicBrainz is back.") }
         let tally = [(queued, "waiting"), (downloading, "fetching"), (done, "fetched"), (notFound, "not found"), (skipped, "skipped")]
-            .filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }.joined(separator: ", ")
+            .filter { $0.0 > 0 }.map { "\($0.0)\u{00A0}\($0.1.replacingOccurrences(of: " ", with: "\u{00A0}"))" }.joined(separator: ", ")
         if !tally.isEmpty { parts.append(tally + ".") }
         return parts.joined(separator: " ")
     }
