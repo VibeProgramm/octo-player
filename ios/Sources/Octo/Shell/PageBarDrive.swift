@@ -67,10 +67,11 @@ struct PageBarReadout: View {
         let numbers = "top \(number(top.contentTop)) gap \(number(top.headerGap)) line \(number(top.lineInHeader))/\(number(top.lineHeight)) "
             + "align \(number(dx)),\(number(dy)) moves \(top.moves) waited \(top.waited ? "yes" : "no")"
         let bar = "bar \(top.barTitle.isEmpty ? "-" : top.barTitle) back \(number(metrics.back.x)),\(number(metrics.back.y)) "
-            + "height \(number(metrics.height)) status \(number(top.status))"
+            + "height \(number(metrics.height)) page \(number(top.page?.screen.minY)),\(number(top.page?.size.height))"
         VStack(spacing: 2) {
             Text(numbers)
             Text(bar)
+            if !top.lastMove.isEmpty { Text("moved: \(top.lastMove)") }
         }
         .font(.system(size: 11, weight: .semibold, design: .monospaced))
         .foregroundStyle(.yellow)

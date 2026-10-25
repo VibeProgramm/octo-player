@@ -45,7 +45,7 @@ struct ScreenTitle: View {
     }
 }
 
-/// Reports where a page's big title's capitals start in the page (`inset` below the view's top),
+/// Reports where a page's big title's capitals start on screen (`inset` below the view's top),
 /// for the bar to name the page once they reach the status bar. Only a title that left above the
 /// status bar (a lazy list dropping it) counts as gone; one covered by another page or built
 /// again in place keeps its last place, and brings it back when it shows again.
@@ -56,13 +56,13 @@ struct TitleTopReport: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageTop.space)).minY } action: { y in
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { y in
                 last = y + inset
                 top?.titleTop = y + inset
             }
             .onAppear { if let last { top?.titleTop = last } }
             .onDisappear {
-                if let last, let top, last < top.status { top.titleTop = -.greatestFiniteMagnitude }
+                if let last, let top, top.own(last) < top.status { top.titleTop = -.greatestFiniteMagnitude }
             }
     }
 }
@@ -228,15 +228,19 @@ struct BarReading: Equatable {
     let height: CGFloat
 }
 
-/// Where a page's top parts are, in the page's own space (its top left corner on the screen's,
-/// whatever moves the page as a whole, like a push or a tab switch), so its title line can sit on
-/// the system back button's middle and the bar can name the page once the big title's capitals
-/// reach the status bar.
+/// The page content's frame on screen, and its own size.
+struct PageFrame: Equatable {
+    let screen: CGRect
+    let size: CGSize
+}
+
+/// Where a page's top parts are, so its title line can sit on the system back button's middle
+/// and the bar can name the page once the big title's capitals reach the status bar. Places are
+/// read on screen and turned into the page's own points with the page content's frame on screen,
+/// which starts at the screen's top; a tab switch scales a whole tab, and a push moves the page.
 @MainActor
 @Observable
 final class PageTop {
-    /// The name of the page's own coordinate space.
-    nonisolated static let space = "page"
     /// Whether the page's title line sits beside the back button.
     let titleBesideBack: Bool
     /// The status bar's height.
@@ -246,12 +250,23 @@ final class PageTop {
             updateGone()
         }
     }
+    /// The page content on screen.
+    var page: PageFrame? {
+        didSet {
+            measureGap()
+            updateGone()
+        }
+    }
     /// Whether the system bar is at its full size, so nothing scales the page while it is read.
     var barFullSize = false { didSet { measureGap() } }
-    /// Where the page's layout puts its `PageHeader`, and the header's place below the content's
-    /// top, taken once with the page at rest and at full size.
+    /// Where the page's layout puts its `PageHeader` on screen, and the header's place below the
+    /// content's top, taken once with the page at rest and at full size.
     var headerSlot: CGFloat? { didSet { measureGap() } }
     var headerGap: CGFloat?
+    /// The header's left edge in the page (a list may inset its rows).
+    var headerLeft: CGFloat = 0
+    /// Whether the header keeps its line's height (in a list whose rows clip what overflows them).
+    var headerHoldsHeight = false
     /// The title line's height, and the middle of the title's capitals below the line's top.
     var lineHeight: CGFloat?
     var lineInHeader: CGFloat?
@@ -262,20 +277,33 @@ final class PageTop {
     var titleName: String?
     /// The size the big title is drawn at, once its width is known.
     var titleSize: CGFloat?
-    /// Where the big title's capitals start in the page.
+    /// Where the big title's capitals start on screen.
     var titleTop: CGFloat = .greatestFiniteMagnitude { didSet { updateGone() } }
     /// The big title's capitals have reached the status bar.
     private(set) var gone = false
     /// The page showed before it was measured, after waiting too long.
     var waited = false
-    /// How many times the content's top moved while the page was showing.
+    /// How many times the content's top moved while the page was showing, and what moved last.
     var moves = 0
+    var lastMove = ""
 
     init(titleBesideBack: Bool) { self.titleBesideBack = titleBesideBack }
 
     /// The status bar's height from the window, known before anything is laid out.
     static func windowTop() -> CGFloat {
         UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets.top ?? 0
+    }
+
+    /// A height read on screen, in the page's own points.
+    func own(_ y: CGFloat) -> CGFloat {
+        guard let page, page.screen.height > 0, page.size.height > 0 else { return y }
+        return (y - page.screen.minY) * page.size.height / page.screen.height
+    }
+
+    /// A left edge read on screen, in the page's own points.
+    func ownX(_ x: CGFloat) -> CGFloat {
+        guard let page, page.screen.width > 0, page.size.width > 0 else { return x }
+        return (x - page.screen.minX) * page.size.width / page.screen.width
     }
 
     /// The system back button's middle.
@@ -285,19 +313,21 @@ final class PageTop {
     var barBottom: CGFloat { status + BarMetrics.shared.height }
 
     /// Where the page's scrolling content starts. A page whose title shares the back button's
-    /// line draws that line just above its header's place, so its content starts where that puts
-    /// the title's capitals on the button's middle (until measured, 8 under the bar); a jump, a
-    /// pull or a scroll to the top lands just under the line. Other pages start under the status bar.
+    /// line draws that line just above its header's place (or, holding the line's height, at its
+    /// place), so its content starts where that puts the title's capitals on the button's middle
+    /// (until measured, 8 under the bar). Other pages start under the status bar. Above the
+    /// screen's top it is reached by moving the page up.
     var contentTop: CGFloat {
         guard titleBesideBack else { return status }
-        guard let headerGap, let lineHeight, let lineInHeader else { return barBottom + 8 }
-        return back.y - lineInHeader + lineHeight - headerGap
+        guard let headerGap, let lineInHeader, headerHoldsHeight || lineHeight != nil else { return barBottom + 8 }
+        return back.y - lineInHeader + (headerHoldsHeight ? 0 : lineHeight ?? 0) - headerGap
     }
 
     /// Whether the page can be shown where it belongs.
     var settled: Bool {
         waited || (status > 0 && (!titleBesideBack
-            || (BarMetrics.shared.measured && headerGap != nil && lineHeight != nil && lineInHeader != nil && titleSize != nil)))
+            || (BarMetrics.shared.measured && headerGap != nil && lineInHeader != nil
+                && (headerHoldsHeight || lineHeight != nil) && titleSize != nil)))
     }
 
     /// What the bar's title shows: the page's name once the big title's capitals reach the status
@@ -312,15 +342,22 @@ final class PageTop {
         return 2 * (back.y - status - 4) / capShare
     }
 
-    /// Takes the header's gap the first time the header is seen with the status bar known and
-    /// the bar at full size: the page is at rest then, and its content starts 8 under the bar.
+    /// The things the content's top follows (DEBUG readout).
+    var inputs: String {
+        func text(_ value: CGFloat?) -> String { value.map { String(format: "%.1f", $0) } ?? "-" }
+        return "gap \(text(headerGap)) line \(text(lineInHeader))/\(text(lineHeight)) status \(text(status)) back \(text(back.y))"
+    }
+
+    /// Takes the header's gap the first time the header is seen with the page measured, the
+    /// status bar known and the bar at full size: the page is at rest then, and its content
+    /// starts 8 under the bar.
     private func measureGap() {
-        guard headerGap == nil, let headerSlot, status > 0, barFullSize else { return }
-        headerGap = headerSlot - (barBottom + 8)
+        guard headerGap == nil, let headerSlot, page != nil, status > 0, barFullSize else { return }
+        headerGap = own(headerSlot) - (barBottom + 8)
     }
 
     private func updateGone() {
-        let now = titleTop < status
+        let now = own(titleTop) < status
         if now != gone { gone = now }
     }
 }
@@ -336,6 +373,7 @@ private struct PageBar: ViewModifier {
     @State private var handler: BackHandler?
     @State private var top: PageTop
     @State private var shown = false
+    @State private var movedFrom = ""
     @State private var backOnScreen: CGPoint?
     @State private var barOnScreen: ProbeReading?
 
@@ -347,11 +385,14 @@ private struct PageBar: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // Named on the page itself, whose frame starts at the screen's top; the view that
-            // lets it run under the bar keeps the bar's bottom as its own top.
-            .coordinateSpace(.named(PageTop.space))
+            // The page itself, whose frame starts at the screen's top; the view that lets it run
+            // under the bar keeps the bar's bottom as its own top.
+            .onGeometryChange(for: PageFrame.self) { PageFrame(screen: $0.frame(in: .global), size: $0.size) } action: { frame in
+                top.page = frame
+            }
             .environment(top)
-            .safeAreaPadding(.top, top.contentTop)
+            .safeAreaPadding(.top, max(0, top.contentTop))
+            .offset(y: min(0, top.contentTop))
             .ignoresSafeArea(.container, edges: .top)
             .opacity(shown || top.settled ? 1 : 0)
             .background {
@@ -391,7 +432,14 @@ private struct PageBar: ViewModifier {
                 BarMetrics.shared.take(reading)
             }
             .onChange(of: top.settled, initial: true) { _, settled in if settled { shown = true } }
-            .onChange(of: top.contentTop) { _, _ in if shown { top.moves += 1 } }
+            .onChange(of: top.contentTop) { _, _ in
+                if shown {
+                    top.moves += 1
+                    top.lastMove = "\(movedFrom) -> \(top.inputs)"
+                }
+                movedFrom = top.inputs
+            }
+            .onChange(of: top.settled, initial: true) { _, _ in movedFrom = top.inputs }
             .onAppear { if top.status == 0 { top.status = PageTop.windowTop() } }
             .task {
                 try? await Task.sleep(for: .milliseconds(300))
