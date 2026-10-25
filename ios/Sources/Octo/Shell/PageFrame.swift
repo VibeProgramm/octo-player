@@ -419,7 +419,9 @@ private struct PageBar: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(top)
+            // While the title shares the button's line it sits where the band would soften it.
             .scrollEdgeEffectStyle(.soft, for: .top)
+            .scrollEdgeEffectHidden(top.titleBesideBack && !top.gone, for: .top)
             .safeAreaPadding(.top, max(0, top.contentTop))
             // A start above the screen's top is reached by moving the page up, the page made as
             // much taller so it still reaches the screen's bottom.
