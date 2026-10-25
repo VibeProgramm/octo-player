@@ -106,7 +106,7 @@ fun ImportPage(app: AppState, visit: Visit) {
                 "trickle",
                 "Trickle",
                 OctoIcons.Downloading,
-                detail = trickle.title(),
+                detail = "Getting your missing songs",
                 trailing = if (trickle.stage == TrickleState.Idle && trickle.queued == 0) null else {
                     { PauseSwitch(model, trickle.stage == TrickleState.Paused) }
                 },

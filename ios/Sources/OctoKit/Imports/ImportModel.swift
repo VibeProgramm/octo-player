@@ -113,7 +113,7 @@ public func trackStateLabel(_ state: ImportTrackState) -> String {
     switch state {
     case .have: "In your library"
     case .missing: "Missing"
-    case .queued: "Queued"
+    case .queued: "Waiting"
     case .downloading: "Fetching"
     case .done: "Fetched"
     case .notFound: "Not found"
@@ -200,18 +200,18 @@ extension TrickleStatus {
         }
     }
 
-    /// The trickle's line: the pace, when the next song starts, and the counts, each count held to its word and the counts kept together as one group.
+    /// The trickle's line: why it waits (when it does), the pace, when the next song starts, and the counts, each count held to its word and the counts kept together as one group.
     public func line(zone: TimeZone = .current) -> String {
         var parts: [String] = []
+        if stage == .yielding { parts.append("Someone's own downloads come first.") }
+        if stage == .waitingForSoulseek { parts.append("It goes on once Soulseek is back.") }
+        if stage == .waitingForMusicDatabase { parts.append("It goes on once MusicBrainz is back.") }
         if stage == .off {
             parts.append("Songs an hour is 0 on the server, so nothing starts.")
         } else {
             parts.append("Up to \(perHour == 1 ? "1\u{00A0}song" : "\(perHour)\u{00A0}songs") an hour.")
         }
         if stage == .running, downloading == 0, let nextUtc { parts.append("Next song at \(Self.time(nextUtc, zone)).") }
-        if stage == .yielding { parts.append("Someone's own downloads come first.") }
-        if stage == .waitingForSoulseek { parts.append("It goes on once Soulseek is back.") }
-        if stage == .waitingForMusicDatabase { parts.append("It goes on once MusicBrainz is back.") }
         let tally = [(queued, "waiting"), (downloading, "fetching"), (done, "fetched"), (notFound, "not found"), (skipped, "skipped")]
             .filter { $0.0 > 0 }.map { "\($0.0)\u{00A0}\($0.1.replacingOccurrences(of: " ", with: "\u{00A0}"))" }.joined(separator: ",\u{00A0}")
         if !tally.isEmpty { parts.append(tally + ".") }

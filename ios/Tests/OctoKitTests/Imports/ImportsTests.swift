@@ -171,7 +171,9 @@ final class Opened: @unchecked Sendable {
         #expect(TrickleStatus(state: "waitingForSoulseek").title == "Waiting for Soulseek")
         #expect(TrickleStatus(state: "waitingForMusicDatabase").title == "Waiting for MusicBrainz")
         #expect(TrickleStatus(state: "waitingForMusicDatabase", perHour: 20, queued: 3).line(zone: utc)
-            == "Up to 20\u{00A0}songs an hour. It goes on once MusicBrainz is back. 3\u{00A0}waiting.")
+            == "It goes on once MusicBrainz is back. Up to 20\u{00A0}songs an hour. 3\u{00A0}waiting.")
+        #expect(TrickleStatus(state: "yielding", perHour: 20, queued: 1).line(zone: utc) == "Someone's own downloads come first. Up to 20\u{00A0}songs an hour. 1\u{00A0}waiting.")
+        #expect(TrickleStatus(state: "waitingForSoulseek", perHour: 20, queued: 1).line(zone: utc) == "It goes on once Soulseek is back. Up to 20\u{00A0}songs an hour. 1\u{00A0}waiting.")
         #expect(TrickleStatus(state: "off").line(zone: utc) == "Songs an hour is 0 on the server, so nothing starts.")
         #expect(TrickleStatus(state: "idle").title == "Nothing to fetch")
     }

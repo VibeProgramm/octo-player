@@ -24,6 +24,7 @@ class ImportWordsTest {
         assertEquals("File", ImportListSummary(source = "file").originLine())
         assertEquals("", ImportListSummary(source = "textList").originLine())
         assertEquals("Fetched", ImportTrackState.Done.label())
+        assertEquals("Waiting", ImportTrackState.Queued.label())
     }
 
     @Test
@@ -55,9 +56,11 @@ class ImportWordsTest {
         assertEquals("Waiting for Soulseek", TrickleStatus(state = "waitingForSoulseek").title())
         val held = TrickleStatus(state = "waitingForMusicDatabase", perHour = 20, queued = 3)
         assertEquals("Waiting for MusicBrainz", held.title())
-        assertEquals(nb("Up to 20~songs an hour. It goes on once MusicBrainz is back. 3~waiting."), held.line(ZoneOffset.UTC))
+        assertEquals(nb("It goes on once MusicBrainz is back. Up to 20~songs an hour. 3~waiting."), held.line(ZoneOffset.UTC))
         assertEquals("Songs an hour is 0 on the server, so nothing starts.", TrickleStatus(state = "off").line(ZoneOffset.UTC))
         assertEquals("Nothing to fetch", TrickleStatus(state = "idle").title())
+        assertEquals(nb("Someone's own downloads come first. Up to 20~songs an hour. 1~waiting."), TrickleStatus(state = "yielding", perHour = 20, queued = 1).line(ZoneOffset.UTC))
+        assertEquals(nb("It goes on once Soulseek is back. Up to 20~songs an hour. 1~waiting."), TrickleStatus(state = "waitingForSoulseek", perHour = 20, queued = 1).line(ZoneOffset.UTC))
     }
 
     @Test

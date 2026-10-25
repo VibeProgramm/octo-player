@@ -31,7 +31,7 @@ const val GET_MISSING_SONGS = "Get missing songs"
 fun ImportTrackState.label(): String = when (this) {
     ImportTrackState.Have -> "In your library"
     ImportTrackState.Missing -> "Missing"
-    ImportTrackState.Queued -> "Queued"
+    ImportTrackState.Queued -> "Waiting"
     ImportTrackState.Downloading -> "Fetching"
     ImportTrackState.Done -> "Fetched"
     ImportTrackState.NotFound -> "Not found"
@@ -88,15 +88,15 @@ fun TrickleStatus.title(): String = when (stage) {
     TrickleState.WaitingForMusicDatabase -> "Waiting for MusicBrainz"
 }
 
-// The trickle's line under it: the pace, when the next song starts, and the counts, each count held to its word and the counts kept together as one group.
+// The trickle's line under it: why it waits (when it does), the pace, when the next song starts, and the counts, each count held to its word and the counts kept together as one group.
 fun TrickleStatus.line(zone: ZoneId = ZoneId.systemDefault()): String {
     val parts = ArrayList<String>()
-    if (stage == TrickleState.Off) parts += "Songs an hour is 0 on the server, so nothing starts."
-    else parts += "Up to ${songsText(perHour).replace(' ', '\u00A0')} an hour."
-    if (stage == TrickleState.Running && downloading == 0) nextUtc?.let { parts += "Next song at ${time(it, zone)}." }
     if (stage == TrickleState.Yielding) parts += "Someone's own downloads come first."
     if (stage == TrickleState.WaitingForSoulseek) parts += "It goes on once Soulseek is back."
     if (stage == TrickleState.WaitingForMusicDatabase) parts += "It goes on once MusicBrainz is back."
+    if (stage == TrickleState.Off) parts += "Songs an hour is 0 on the server, so nothing starts."
+    else parts += "Up to ${songsText(perHour).replace(' ', '\u00A0')} an hour."
+    if (stage == TrickleState.Running && downloading == 0) nextUtc?.let { parts += "Next song at ${time(it, zone)}." }
     val tally = listOf(queued to "waiting", downloading to "fetching", done to "fetched", notFound to "not found", skipped to "skipped")
         .filter { it.first > 0 }.joinToString(",${Char(0xA0)}") { "${it.first}\u00A0${it.second.replace(' ', '\u00A0')}" }
     if (tally.isNotEmpty()) parts += "$tally."
