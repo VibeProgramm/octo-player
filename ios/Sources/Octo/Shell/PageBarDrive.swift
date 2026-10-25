@@ -13,7 +13,7 @@ enum PageBarDrive {
     static func install() {
         Drive.steps.append { name, _ in
             switch name {
-            case "readout": PageBarReadout.on = true
+            case "readout": PageBarReadout.shown.on = true
             case "refresh": showRefresh()
             default: return false
             }
@@ -46,22 +46,37 @@ enum PageBarDrive {
     }
 }
 
+/// Whether pages draw their top measures, for screenshots.
+@MainActor
+@Observable
+final class ReadoutSwitch {
+    var on = false
+}
+
 /// A page's top measures, drawn over it for screenshots.
 struct PageBarReadout: View {
-    @MainActor static var on = false
+    @MainActor static let shown = ReadoutSwitch()
     let top: PageTop
 
     var body: some View {
-        let align = top.lineOnScreen.flatMap { line in top.back.map { top.own(line) - $0.y } }
-        Text(String(format: "top %.1f  align %@  moves %d  waited %@  bar %@",
-                    top.contentTop, align.map { String(format: "%.1f", $0) } ?? "-", top.moves,
-                    top.waited ? "yes" : "no", top.barTitle.isEmpty ? "-" : top.barTitle))
-            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-            .foregroundStyle(.yellow)
-            .padding(6)
-            .background(.black.opacity(0.8))
-            .padding(.bottom, 140)
-            .allowsHitTesting(false)
+        let metrics = BarMetrics.shared
+        let align = top.lineDrawn.map { $0 - top.back.y }
+        let numbers = String(format: "top %.1f gap %@ lift %@ align %@ moves %d waited %@",
+                             top.contentTop, top.headerGap.map { String(format: "%.1f", $0) } ?? "-",
+                             top.lift.map { String(format: "%.1f", $0) } ?? "-",
+                             align.map { String(format: "%.1f", $0) } ?? "-", top.moves, top.waited ? "yes" : "no")
+        let bar = String(format: "bar %@ back %.1f,%.1f height %.1f", top.barTitle.isEmpty ? "-" : top.barTitle,
+                         metrics.back.x, metrics.back.y, metrics.height)
+        VStack(spacing: 2) {
+            Text(numbers)
+            Text(bar)
+        }
+        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        .foregroundStyle(.yellow)
+        .padding(6)
+        .background(.black.opacity(0.8))
+        .padding(.bottom, 140)
+        .allowsHitTesting(false)
     }
 }
 #endif
