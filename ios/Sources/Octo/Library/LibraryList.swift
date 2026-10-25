@@ -110,7 +110,7 @@ private struct TopOnNewOrder<Order: Equatable>: ViewModifier {
                 guard let now else { return }
                 defer { shown = now }
                 guard let before = shown, before != now else { return }
-                if watch.y <= (top?.contentTop ?? 0) + 1 { scroll() }
+                if (top?.own(watch.y) ?? watch.y) <= (top?.contentTop ?? 0) + 1 { scroll() }
             }
     }
 }
@@ -123,7 +123,7 @@ struct FirstRowMark: View {
     var body: some View {
         Color.clear
             .frame(height: 0)
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageTop.space)).minY } action: { watch?.y = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { watch?.y = $0 }
             .onDisappear { watch?.y = -.greatestFiniteMagnitude }
             .accessibilityHidden(true)
     }

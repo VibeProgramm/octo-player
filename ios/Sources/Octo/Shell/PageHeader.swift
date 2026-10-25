@@ -13,14 +13,18 @@ struct PageHeader: View {
     let title: String
     var count: String?
     var back = true
+    /// Keeps the line's height, for a list whose rows clip what overflows them (an inset-grouped
+    /// one): the page then starts high enough for the line to sit on the button.
+    var holdsHeight = false
     @Environment(PageTop.self) private var top: PageTop?
     @State private var width: CGFloat = 0
     @ScaledMetric(relativeTo: .largeTitle) private var size: CGFloat = 32
 
-    init(_ title: String, count: String? = nil, back: Bool = true) {
+    init(_ title: String, count: String? = nil, back: Bool = true, holdsHeight: Bool = false) {
         self.title = title
         self.count = count
         self.back = back
+        self.holdsHeight = holdsHeight
     }
 
     var body: some View {
@@ -29,16 +33,20 @@ struct PageHeader: View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear
                 .frame(height: 0)
-                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageTop.space)).minY } action: { top?.headerSlot = $0 }
-            if back {
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { place in
+                    top?.headerSlot = place.minY
+                    if let top { top.headerLeft = top.ownX(place.minX) }
+                }
+            if back && !holdsHeight {
                 line
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { top?.lineHeight = $0 }
-                    .frame(height: 0, alignment: .bottom)
+                    .frame(height: 0, alignment: .bottomLeading)
             } else {
                 line
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onChange(of: holdsHeight, initial: true) { _, holds in top?.headerHoldsHeight = holds }
     }
 
     private var line: some View {
@@ -75,7 +83,7 @@ struct PageHeader: View {
     nonisolated private static let space = "pageHeader"
 
     /// The room before the button's place, so the button's middle sits where the bar puts it.
-    private var roomLead: CGFloat { max(0, BarMetrics.shared.back.x - barButtonSide / 2) }
+    private var roomLead: CGFloat { max(0, BarMetrics.shared.back.x - barButtonSide / 2 - (top?.headerLeft ?? 0)) }
 
     /// Whether the count fits on the title's line beside the whole title.
     private var showsCount: Bool {
