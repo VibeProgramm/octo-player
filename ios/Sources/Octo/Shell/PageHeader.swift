@@ -2,19 +2,17 @@ import OctoKit
 import SwiftUI
 import UIKit
 
-/// The top a page whose back button sits on its title's line leaves above that line.
+/// The top a page whose title sits on the back button's line leaves above that line.
 let pageTopGap: CGFloat = 8
 
-/// Line one of a page: on a pushed page the back button, then the big title, alone on its line,
-/// the button on the middle of the title's capitals. `count`, when given, follows the title in
-/// muted words only while both fit on the line; otherwise the title stands alone. The edge swipe
-/// goes back as the button does, and a page busy with something (a selection, a search) closes
-/// that first.
+/// Line one of a page: on a pushed page the room the bar's back button sits over, then the big
+/// title, alone on its line, the button on the middle of the title's capitals. `count`, when
+/// given, follows the title in muted words only while both fit on the line; otherwise the title
+/// stands alone.
 struct PageHeader: View {
     let title: String
     var count: String?
     var back = true
-    @Environment(\.dismiss) private var dismiss
     @Environment(PageTop.self) private var top: PageTop?
     @ScaledMetric(relativeTo: .largeTitle) private var size: CGFloat = 32
 
@@ -27,13 +25,14 @@ struct PageHeader: View {
     var body: some View {
         HStack(alignment: .pageTitleLine, spacing: 0) {
             if back {
-                GlazedIconButton(.back, label: "Back", size: 40) { goBack() }
+                // The bar's back button sits over this room, its middle on the title's capitals.
+                Color.clear
+                    .frame(width: barButtonSide, height: barButtonSide)
                     .alignmentGuide(.pageTitleLine) { d in d[VerticalAlignment.center] }
-                    .padding(.leading, 16)
-                    // Once it scrolls away, the page's floating back button stands in for it.
-                    .onScrollVisibilityChange(threshold: 0.5) { shown in top?.gone = !shown }
-                    .onAppear { top?.gone = false }
-                    .onDisappear { top?.gone = true }
+                    .padding(.leading, max(0, (top?.back?.x ?? 38) - barButtonSide / 2))
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageHeader.space)).midY } action: { top?.lineInHeader = $0 }
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).midY } action: { top?.lineOnScreen = $0 }
+                    .accessibilityHidden(true)
             }
             if let count {
                 ViewThatFits(in: .horizontal) {
@@ -56,19 +55,25 @@ struct PageHeader: View {
                     .alignmentGuide(.pageTitleLine) { d in d[.firstTextBaseline] - capHeight / 2 }
             }
         }
+        .coordinateSpace(.named(PageHeader.space))
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top?.headerTopOnScreen = $0 }
     }
+
+    nonisolated private static let space = "pageHeader"
 
     private var titleText: some View {
-        ScreenTitle(title).padding(.leading, back ? -8 : 0)
+        ScreenTitle(title, maxSize: top?.titleRoom).padding(.leading, back ? -8 : 0)
     }
 
-    /// The title's cap height, for the back button to sit on the middle of its capitals.
-    private var capHeight: CGFloat { UIFont.systemFont(ofSize: size, weight: .black).capHeight }
-
-    private func goBack() {
-        if let handler = BackHandler.current { handler.run() } else { dismiss() }
+    /// The title's cap height at the size it is drawn, for the button to sit on the middle of its
+    /// capitals.
+    private var capHeight: CGFloat {
+        UIFont.systemFont(ofSize: top?.titleSize ?? min(size, top?.titleRoom ?? size), weight: .black).capHeight
     }
 }
+
+/// The side of the system bar's round glass buttons.
+private let barButtonSide: CGFloat = 44
 
 extension VerticalAlignment {
     private enum PageTitleLine: AlignmentID {

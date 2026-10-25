@@ -52,7 +52,7 @@ struct FoldersPage: View {
                     PageHeader("Folders").padding(.top, pageTopGap)
                     LibrarySpinner()
                 } else if !hasPhone && !hasServer {
-                    PageHeader("Folders").padding(.top, pageTopGap).bigTitle()
+                    PageHeader("Folders").padding(.top, pageTopGap)
                     EmptyLibraryNote(text: "Folders show here once there is music on this phone or a server is signed in.")
                 } else {
                     folderHeader
@@ -134,7 +134,7 @@ struct FoldersPage: View {
     private var folderHeader: some View {
         let shown = shownNames
         return VStack(alignment: .leading, spacing: 0) {
-            PageHeader(shown.last ?? "Folders", count: levelCount).bigTitle()
+            PageHeader(shown.last ?? "Folders", count: levelCount)
             ControlLine(overflow: crumbsOverflow(shown)) {
                 switch path.last {
                 case .phone, .phoneFolder:

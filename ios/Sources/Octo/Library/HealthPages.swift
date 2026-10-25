@@ -14,7 +14,7 @@ struct HealthPage: View {
         let offers = model.offers
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                PageHeader("Library health").padding(.top, pageTopGap).bigTitle()
+                PageHeader("Library health").padding(.top, pageTopGap)
                 if let health = model.health {
                     let report = health.report
                     HealthWords(report.overview, muted: true)
@@ -92,7 +92,6 @@ struct HealthCheckPage: View {
                     }
                 }
                 .padding(.top, pageTopGap)
-                .bigTitle()
                 if let found {
                     if let health = model.health {
                         content(found, health)
@@ -230,7 +229,6 @@ struct RecentlyRemovedPage: View {
                     }
                 }
                 .padding(.top, pageTopGap)
-                .bigTitle()
                 if let trash {
                     HealthWords(keepsFor(trash.keepDays), muted: true)
                     if trash.songs.isEmpty {

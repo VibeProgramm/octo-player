@@ -51,6 +51,7 @@ struct OnlineAlbumView: View {
             .barClearance()
         }
         .pageArtwork(.onlineAlbum(id: id, name: name), coverId(of: page.value?.album.artwork))
+        .inlineTitle(page.value?.album.title ?? name)
         .task { if page.value == nil { await reload() } }
         .task(id: page.value?.album.id) { await markHighlight() }
         .onChange(of: downloads.arrived) { _, _ in
@@ -87,6 +88,7 @@ struct OnlineAlbumView: View {
                     .font(.octoTitle)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
+                    .bigTitle()
                     .padding(.top, 20)
                 if let artistId {
                     NavigationLink(value: Route.onlineArtist(id: artistId, name: album.artist)) {
@@ -198,6 +200,7 @@ struct OnlineArtistView: View {
                         .font(.octoTitle)
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
+                        .bigTitle()
                         .padding(.top, 16)
                     Text("\(found.albums.count == 1 ? "1 album" : "\(found.albums.count) albums") • \(notInLibraryText)")
                         .font(.octoCaption)
@@ -218,6 +221,7 @@ struct OnlineArtistView: View {
             .barClearance()
         }
         .pageArtwork(.onlineArtist(id: id, name: name), coverId(of: page.value?.artist.artwork))
+        .inlineTitle(page.value?.artist.name ?? name)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .task { if page.value == nil { await reload() } }
     }
