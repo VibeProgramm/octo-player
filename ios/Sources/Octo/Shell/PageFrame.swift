@@ -228,7 +228,7 @@ struct BarReading: Equatable {
     let height: CGFloat
 }
 
-/// The page content's frame on screen, and its own size.
+/// The page's whole extent on screen, and its own size.
 struct PageFrame: Equatable {
     let screen: CGRect
     let size: CGSize
@@ -374,6 +374,8 @@ private struct PageBar: ViewModifier {
     @State private var top: PageTop
     @State private var shown = false
     @State private var movedFrom = ""
+    /// The content's top when the page settled, to count later moves against.
+    @State private var settledTop: CGFloat?
     @State private var backOnScreen: CGPoint?
     @State private var barOnScreen: ProbeReading?
 
@@ -385,16 +387,20 @@ private struct PageBar: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // The page itself, whose frame starts at the screen's top; the view that lets it run
-            // under the bar keeps the bar's bottom as its own top.
-            .onGeometryChange(for: PageFrame.self) { PageFrame(screen: $0.frame(in: .global), size: $0.size) } action: { frame in
-                top.page = frame
-            }
             .environment(top)
             .safeAreaPadding(.top, max(0, top.contentTop))
             .offset(y: min(0, top.contentTop))
             .ignoresSafeArea(.container, edges: .top)
             .opacity(shown || top.settled ? 1 : 0)
+            .background {
+                // The page's whole extent on screen: a leaf that fills the screen, moved by a push
+                // and scaled by a tab switch with the page.
+                Color.clear
+                    .onGeometryChange(for: PageFrame.self) { PageFrame(screen: $0.frame(in: .global), size: $0.size) } action: { frame in
+                        top.page = frame
+                    }
+                    .ignoresSafeArea()
+            }
             .background {
                 BarFrameProbe { reading in
                     if top.status == 0, reading.windowTop > 0 { top.status = reading.windowTop }
@@ -432,14 +438,18 @@ private struct PageBar: ViewModifier {
                 BarMetrics.shared.take(reading)
             }
             .onChange(of: top.settled, initial: true) { _, settled in if settled { shown = true } }
-            .onChange(of: top.contentTop) { _, _ in
-                if shown {
-                    top.moves += 1
-                    top.lastMove = "\(movedFrom) -> \(top.inputs)"
-                }
+            .onChange(of: top.contentTop) { _, now in
+                guard let settledTop, now != settledTop else { return }
+                top.moves += 1
+                top.lastMove = "\(movedFrom) -> \(top.inputs)"
+                self.settledTop = now
                 movedFrom = top.inputs
             }
-            .onChange(of: top.settled, initial: true) { _, _ in movedFrom = top.inputs }
+            .onChange(of: top.settled, initial: true) { _, settled in
+                guard settled, settledTop == nil else { return }
+                settledTop = top.contentTop
+                movedFrom = top.inputs
+            }
             .onAppear { if top.status == 0 { top.status = PageTop.windowTop() } }
             .task {
                 try? await Task.sleep(for: .milliseconds(300))
