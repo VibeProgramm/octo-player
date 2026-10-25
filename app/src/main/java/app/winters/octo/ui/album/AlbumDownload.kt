@@ -10,7 +10,7 @@ import app.winters.octo.design.OctoIcons
 import app.winters.octo.offline.DownloadEntity
 import app.winters.octo.offline.DownloadStatus
 import app.winters.octo.offline.OfflineDownloads
-import app.winters.octo.ui.common.QuietAction
+import app.winters.octo.ui.common.MoreItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
@@ -29,23 +29,23 @@ fun albumDownloadLabel(songs: Int, held: Int, done: Int): String = when {
     else -> "Downloaded"
 }
 
-// "Download album", a quiet action under an album's buttons, for an album
-// with songs only on a server. Each such song is downloaded to the phone.
+// "Download album" in an album's More menu, for an album with songs only
+// on a server: each such song is downloaded to the phone. Nothing when
+// every song is already on it.
 @Composable
-fun AlbumDownloadButton(tracks: List<TrackEntity>, vm: AlbumDownloadViewModel = hiltViewModel()) {
+fun albumDownloadItem(tracks: List<TrackEntity>, vm: AlbumDownloadViewModel = hiltViewModel()): MoreItem? {
     val kept by vm.kept.collectAsStateWithLifecycle()
     val serverOnly = tracks.filter { !it.onPhone }
-    if (serverOnly.isEmpty()) return
+    if (serverOnly.isEmpty()) return null
     val held = serverOnly.count { it.id in kept }
     val done = serverOnly.count { kept[it.id]?.state == DownloadStatus.Done }
-    QuietAction(
-        icon = when {
+    return MoreItem(
+        albumDownloadLabel(serverOnly.size, held, done),
+        when {
             held < serverOnly.size -> OctoIcons.Download
             done < serverOnly.size -> OctoIcons.Downloading
             else -> OctoIcons.Downloaded
         },
-        text = albumDownloadLabel(serverOnly.size, held, done),
-        onClick = { vm.download(serverOnly.map { it.id }) },
         enabled = held < serverOnly.size,
-    )
+    ) { vm.download(serverOnly.map { it.id }) }
 }

@@ -27,11 +27,9 @@ import app.winters.octo.catalog.CatalogDao
 import app.winters.octo.catalog.GenreSummary
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoType
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Artwork
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.Refreshable
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.screenPadding
 import app.winters.octo.ui.common.songs
 import app.winters.octo.ui.nav.GenreRoute
@@ -54,8 +52,8 @@ fun GenresScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: GenresViewMod
     val genres by vm.genres.collectAsStateWithLifecycle()
 
     Refreshable {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-            item(key = "title") { ScreenTitle("Genres") }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+            item(key = "title") { PageHeader("Genres", onBack) }
             genres?.let { list ->
                 if (list.isEmpty()) {
                     item(key = "empty") {
@@ -72,7 +70,6 @@ fun GenresScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: GenresViewMod
                 }
             }
         }
-        BackButton(onBack)
     }
 }
 

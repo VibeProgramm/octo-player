@@ -113,20 +113,13 @@ fun LiveListScreen(
                             onPlay = { vm.play(0) },
                             onShuffle = vm::shuffle,
                             onMore = { sheets.show(PlaylistSheet.LiveOptions(list.id, list.name)) },
+                            // The rules that pick the songs join the size and length.
+                            facts = listOf(liveListSummary(list.query, null)),
                         ) { modifier, shape ->
                             PlaylistArtwork(list.id, list.name, current.covers, 240.dp, modifier, shape, line = LIVE_LIST_COVER_LINE) {
                                 if (current.covers.isEmpty()) LiveMarkTile(240.dp, modifier, shape) else PlaylistCover(current.covers, 240.dp, modifier, shape)
                             }
                         }
-                    }
-                    item(key = "rules") {
-                        Text(
-                            liveListSummary(list.query, null),
-                            style = OctoType.caption,
-                            color = OctoColors.TextSecondary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp).padding(bottom = 12.dp),
-                        )
                     }
                     if (songs.isEmpty()) {
                         item(key = "empty") { EmptyNote(NO_MATCHES_NOTE) }

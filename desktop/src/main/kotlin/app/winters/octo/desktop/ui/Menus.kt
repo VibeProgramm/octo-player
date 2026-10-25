@@ -251,10 +251,10 @@ private fun ColumnScope.RateMenu(current: Int?, rate: (Int) -> Unit, back: () ->
     MenuRow("Back", back, OctoIcons.Back)
     MenuSeparator()
     for (stars in 5 downTo 1) {
-        MenuRow(starsLabel(stars)!!, { rate(stars) }, leading = { Stars(stars) }, checked = current == stars)
+        MenuRow(starsLabel(stars)!!, { rate(stars) }, leading = { Stars(stars) }, selected = current == stars)
     }
     MenuSeparator()
-    MenuRow("No rating", { rate(0) }, leading = { Stars(0) }, checked = current == 0)
+    MenuRow("No rating", { rate(0) }, leading = { Stars(0) }, selected = current == 0)
 }
 
 // A rating as five stars, `lit` of them filled.

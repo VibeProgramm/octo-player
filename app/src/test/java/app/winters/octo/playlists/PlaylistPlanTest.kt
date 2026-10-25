@@ -340,8 +340,8 @@ class PlaylistPlanTest {
 
     @Test
     fun thePhoneOnlyLineCountsSongs() {
-        assertEquals("1 song is only on this phone and is not in the server's copy", phoneOnlyNote(1))
-        assertEquals("3 songs are only on this phone and are not in the server's copy", phoneOnlyNote(3))
+        assertEquals("1 song only on this phone, not in the server's copy", phoneOnlyNote(1))
+        assertEquals("3 songs only on this phone, not in the server's copy", phoneOnlyNote(3))
     }
 
     // Brandon: a playlist that no longer exists should not be shown. The

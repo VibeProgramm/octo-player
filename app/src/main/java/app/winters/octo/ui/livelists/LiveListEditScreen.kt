@@ -1,5 +1,10 @@
 package app.winters.octo.ui.livelists
 
+import app.winters.octo.ui.common.rememberOpenedBeside
+import app.winters.octo.ui.common.PopupQuestion
+import app.winters.octo.ui.common.LocalHaze
+import app.winters.octo.design.GlassPopup
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -26,8 +31,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import app.winters.octo.catalog.TrackEntity
 import app.winters.octo.design.AccentButton
+import app.winters.octo.design.ButtonSize
 import app.winters.octo.design.GlassInput
-import app.winters.octo.design.GlazeButton
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoType
 import app.winters.octo.livelists.LiveList
@@ -54,13 +59,11 @@ import app.winters.octo.query.decadesIn
 import app.winters.octo.query.genresIn
 import app.winters.octo.query.label
 import app.winters.octo.sort.SortOrder
-import app.winters.octo.ui.common.BackButton
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.LocalChoiceSheet
 import app.winters.octo.ui.common.QuietButton
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.SongRow
 import app.winters.octo.ui.common.SortRequest
@@ -93,6 +96,12 @@ class LiveListEditViewModel @AssistedInject constructor(
     private val _draft = MutableStateFlow(editorStart(null, start))
     val draft: StateFlow<LiveListDraft> = _draft
 
+    // What the editor started from, to tell whether leaving loses anything.
+    private var started = _draft.value
+
+    // Whether the draft has changes not saved yet.
+    val unsaved: Boolean get() = unsavedChanges(started, _draft.value)
+
     // Whether to offer the starters, worked out once.
     private val _starters = MutableStateFlow(false)
     val starters: StateFlow<Boolean> = _starters
@@ -108,7 +117,10 @@ class LiveListEditViewModel @AssistedInject constructor(
 
     init {
         viewModelScope.launch {
-            if (id != null) store.byId(id)?.let { _draft.value = editorStart(it, null) }
+            if (id != null) store.byId(id)?.let {
+                started = editorStart(it, null)
+                _draft.value = started
+            }
             _starters.value = offersStarters(store.lists.first(), id, start)
         }
     }
@@ -173,6 +185,10 @@ fun LiveListEditScreen(
     val sheet = LocalChoiceSheet.current
     val query = draft.query
     val new = id == null
+    // Leaving with changes not saved asks first; without, it just goes.
+    var discarding by remember { mutableStateOf(false) }
+    val leave = { if (vm.unsaved) discarding = true else onBack() }
+    BackHandler(enabled = !discarding && vm.unsaved) { discarding = true }
 
     // The page of choices to ask next. The sheet closes itself after a pick,
     // so the next page opens once that has happened.
@@ -205,8 +221,16 @@ fun LiveListEditScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-            item(key = "title") { ScreenTitle(if (new) "New live list" else "Edit live list") }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+            // Back leaves, asking first when there are changes; the save is
+            // on the control line.
+            item(key = "title") {
+                PageHeader(
+                    if (new) "New live list" else "Edit live list",
+                    leave,
+                    actions = { AccentButton(if (new) "Make live list" else "Save", onClick = { vm.save(onSaved) }, size = ButtonSize.Small) },
+                )
+            }
             item(key = "name") {
                 GlassInput(draft.name, vm::rename, placeholder = liveListName(query), modifier = Modifier.padding(horizontal = 20.dp))
             }
@@ -256,12 +280,6 @@ fun LiveListEditScreen(
                     }
                 }
             }
-            item(key = "save") {
-                Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AccentButton(if (new) "Make live list" else "Save", onClick = { vm.save(onSaved) })
-                    GlazeButton("Cancel", onClick = onBack)
-                }
-            }
             if (starters) {
                 item(key = "starters-title") { SectionTitle("Or start with one of these") }
                 LiveListStarters.forEach { starter ->
@@ -281,8 +299,28 @@ fun LiveListEditScreen(
                 itemsIndexed(songs, key = { _, track -> track.id }) { index, track -> SongRow(track) { vm.play(index) } }
             }
         }
-        BackButton(onBack)
+        GlassPopup(
+            visible = discarding,
+            anchor = rememberOpenedBeside(discarding),
+            onDismiss = { discarding = false },
+            backdrop = LocalHaze.current,
+            title = DISCARD_CHANGES,
+        ) {
+            PopupQuestion(
+                DISCARD_CHANGES,
+                if (new) "This live list has not been made yet." else "Your changes to this live list are not saved.",
+                "Discard",
+                onConfirm = {
+                    discarding = false
+                    onBack()
+                },
+                onCancel = { discarding = false },
+                cancel = "Keep editing",
+            )
+        }
     }
 }
+
+const val DISCARD_CHANGES = "Discard changes?"
 
 const val NO_RULE_MATCHES = "No songs match these rules yet. Take a rule off, or pick Any of these so a song needs to match only one."

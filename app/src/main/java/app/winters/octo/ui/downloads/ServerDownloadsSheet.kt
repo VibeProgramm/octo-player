@@ -16,6 +16,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -310,7 +312,7 @@ private fun ColumnScope.DownloadLog(model: ServerDownloads, key: String) {
     LaunchedEffect(events.size, follow) {
         if (follow == true && events.isNotEmpty()) list.animateScrollToItem(events.lastIndex)
     }
-    Bar(back = "Back to $SERVER_DOWNLOADS", onBack = model::showList) {
+    Bar(LOG_TITLE, back = "Back to $SERVER_DOWNLOADS", onBack = model::showList) {
         row?.findId?.let { id -> QuietButton(FIND_SONGS) { model.find(id, row.title, key) } }
         if (row?.finished == true) QuietButton("Clear") {
             model.clear(row.key)
@@ -526,7 +528,7 @@ private fun ColumnScope.FindSongs(model: ServerDownloads, view: SheetView.Find) 
     // Search again too, asks nothing of the old one's copies. A server that
     // asks first says itself when to ask, in `question`.
     var asking by remember(view, found?.id) { mutableStateOf<Pair<String, FoundCandidate>?>(null) }
-    Bar(back = if (view.from != null) "Back to the log" else "Back to $SERVER_DOWNLOADS", onBack = { view.from?.let(model::showLog) ?: model.showList() }) {
+    Bar(FIND_SONGS, back = if (view.from != null) "Back to the log" else "Back to $SERVER_DOWNLOADS", onBack = { view.from?.let(model::showLog) ?: model.showList() }) {
         if (!searching) {
             QuietButton("Search again", {
                 asking = null
@@ -609,7 +611,6 @@ private fun FindHead(view: SheetView.Find, found: FoundSongs?, asksFirst: Boolea
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         Artwork(artwork(song?.coverArt ?: view.id), 64.dp, shape = RoundedCornerShape(10.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(FIND_SONGS.uppercase(), style = OctoType.caption, color = OctoColors.TextMuted)
             Text(song?.title?.takeIf(String::isNotBlank) ?: view.title, style = OctoType.headline, color = OctoColors.TextPrimary)
             song?.artist?.takeIf(String::isNotBlank)?.let { Text(it, style = OctoType.bodySmall, color = OctoColors.TextSecondary) }
         }
@@ -622,22 +623,48 @@ private fun FindHead(view: SheetView.Find, found: FoundSongs?, asksFirst: Boolea
     }
 }
 
+// Each source as a small pill on one line, wrapping only when there are
+// many: how it stands as a mark, its name, and a quiet word on what it
+// found or why it could not search.
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Sources(sources: List<FindSourceState>) {
-    Column(Modifier.fillMaxWidth().padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    FlowRow(
+        Modifier.fillMaxWidth().padding(top = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         sources.forEach { source ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val (name, word) = sourcePill(source.name, source.state, source.text)
+            Row(
+                Modifier.clip(CircleShape).background(Chip).padding(start = 8.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 when (source.state) {
-                    FIND_SEARCHING -> Spinner(size = 14.dp, color = OctoColors.TextSecondary)
-                    FIND_OFF -> Mark(OctoIcons.Close, OctoColors.TextMuted, 14.dp)
-                    "failed" -> Mark(OctoIcons.Info, OctoColors.SignalOrange, 14.dp)
-                    else -> Mark(OctoIcons.Check, OctoColors.TextSecondary, 14.dp)
+                    FIND_SEARCHING -> Spinner(size = 12.dp, color = OctoColors.TextSecondary)
+                    FIND_OFF -> Mark(OctoIcons.Close, OctoColors.TextMuted, 12.dp)
+                    FIND_FAILED -> Mark(OctoIcons.Info, OctoColors.SignalOrange, 12.dp)
+                    else -> Mark(OctoIcons.Check, OctoColors.TextSecondary, 12.dp)
                 }
-                val words = if (source.state == FIND_SEARCHING) "Searching" else source.text ?: if (source.state == "failed") "Could not search" else "Done"
-                Text("${source.name}: $words", style = OctoType.caption, color = if (source.state == FIND_OFF) OctoColors.TextMuted else OctoColors.TextSecondary)
+                Text(name, style = OctoType.caption, color = if (source.state == FIND_OFF) OctoColors.TextMuted else OctoColors.TextPrimary, maxLines = 1)
+                word?.let { Text(it, style = OctoType.caption, color = if (source.state == FIND_FAILED) OctoColors.SignalOrange else OctoColors.TextMuted) }
             }
         }
     }
+}
+
+// The state a source that could not search is in.
+private const val FIND_FAILED = "failed"
+
+// A source's pill: its name, and the quiet word after it: what it is doing,
+// what it found, or why it could not search. Nothing more for a source done
+// with nothing to say.
+internal fun sourcePill(name: String, state: String?, text: String?): Pair<String, String?> = name to when (state) {
+    FIND_SEARCHING -> "searching"
+    FIND_OFF -> text ?: "off"
+    FIND_FAILED -> text ?: "could not search"
+    else -> text
 }
 
 // One copy: its kind on a badge, its title, where it sits, its facts, and
@@ -739,9 +766,13 @@ private fun Badge(text: String, lossless: Boolean) {
 // Parts
 // ---------------------------------------------------------------------------
 
-// The sheet's top line inside a log or Find songs: back, then its actions.
+// What a log is called on the sheet's top line.
+const val LOG_TITLE = "Download log"
+
+// The sheet's top line inside a log or Find songs: back, the view's name,
+// then its actions at the end.
 @Composable
-private fun Bar(back: String, onBack: () -> Unit, actions: @Composable () -> Unit) {
+private fun Bar(title: String, back: String, onBack: () -> Unit, actions: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier.size(44.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onBack).semantics { contentDescription = back },
@@ -749,6 +780,7 @@ private fun Bar(back: String, onBack: () -> Unit, actions: @Composable () -> Uni
         ) {
             Icon(painterResource(OctoIcons.ChevronBack), contentDescription = null, tint = OctoColors.TextSecondary, modifier = Modifier.size(22.dp))
         }
+        Text(title, style = OctoType.section, color = OctoColors.TextPrimary, maxLines = 1, modifier = Modifier.semantics { heading() })
         Spacer(Modifier.weight(1f))
         actions()
     }

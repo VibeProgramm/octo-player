@@ -330,7 +330,7 @@ class HomeViewModel @Inject constructor(
             val got = when (val answer = chartLists.answer(CHART_OVERALL)) {
                 is ChartAnswer.Got -> answer.list.songs.take(CHARTS_ROW).map { it.track }
                 ChartAnswer.None -> emptyList()
-                ChartAnswer.Failed -> {
+                is ChartAnswer.Failed -> {
                     chartsAsked = false
                     return@launch
                 }

@@ -1,9 +1,11 @@
 package app.winters.octo.ui.folders
 
+import app.winters.octo.ui.common.playShuffleItems
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.LineItem
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +20,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -44,25 +45,27 @@ import app.winters.octo.folders.ServerLevel
 import app.winters.octo.sort.SortList
 import app.winters.octo.sort.SortOrder
 import app.winters.octo.sort.sortFolderSongs
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.EmptyLibraryNote
 import app.winters.octo.ui.common.LoadState
 import app.winters.octo.ui.common.Pickable
-import app.winters.octo.ui.common.PlayRow
 import app.winters.octo.ui.common.Refreshable
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.SelectableSongs
 import app.winters.octo.ui.common.SongRow
 import app.winters.octo.ui.common.SortBar
 import app.winters.octo.ui.common.TopOnNewOrder
 import app.winters.octo.ui.common.screenPadding
+import app.winters.octo.ui.common.PageHeader
+import app.winters.octo.ui.common.HeaderDropdown
+import app.winters.octo.ui.common.LocalChoiceSheet
+import app.winters.octo.ui.common.showDropdown
 import app.winters.octo.ui.common.songs
 
 // Music as it is filed: folders on the phone and on the server. With both,
 // the page starts with one of each; with one, it starts inside it. Back
-// goes up a folder; the path at the top goes back to any folder on the way.
+// goes up a folder. The header holds the folder's name and what it holds,
+// then the folders on the way to it, any of which goes back there, and Play
+// and Shuffle for everything under it.
 @Composable
 fun FoldersScreen(onBack: () -> Unit, vm: FoldersViewModel = hiltViewModel()) {
     val sources by vm.sources.collectAsStateWithLifecycle()
@@ -81,8 +84,8 @@ fun FoldersScreen(onBack: () -> Unit, vm: FoldersViewModel = hiltViewModel()) {
             known == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = OctoColors.Accent, modifier = Modifier.size(28.dp))
             }
-            top == null -> Column(Modifier.fillMaxSize().padding(screenPadding(extraTop = DetailTopGap))) {
-                ScreenTitle("Folders")
+            top == null -> Column(Modifier.fillMaxSize().padding(screenPadding())) {
+                PageHeader("Folders", onBack)
                 EmptyLibraryNote("Folders show here once there is music on this phone or a server is signed in.")
             }
             else -> {
@@ -93,8 +96,8 @@ fun FoldersScreen(onBack: () -> Unit, vm: FoldersViewModel = hiltViewModel()) {
                 val level = (here as? FolderStop.Server)?.let { levels[it.id.orEmpty()] }
                 val (songs, songsAt) = when (here) {
                     FolderStop.Top -> null to 0
-                    is FolderStop.Phone -> known.phone?.root?.at(here.path)?.let { it.songs to 2 + it.folders.size } ?: (null to 0)
-                    is FolderStop.Server -> (level as? LoadState.Ready)?.data?.let { it.songs to 2 + it.folders.size } ?: (null to 0)
+                    is FolderStop.Phone -> known.phone?.root?.at(here.path)?.let { it.songs to 1 + it.folders.size } ?: (null to 0)
+                    is FolderStop.Server -> (level as? LoadState.Ready)?.data?.let { it.songs to 1 + it.folders.size } ?: (null to 0)
                 }
                 val sortedSongs = remember(songs, order) { songs?.let { sortFolderSongs(it, order) }.orEmpty() }
                 // A fresh list for each folder, so each one opens at its top.
@@ -103,14 +106,37 @@ fun FoldersScreen(onBack: () -> Unit, vm: FoldersViewModel = hiltViewModel()) {
                     TopOnNewOrder(order, state, top = songsAt)
                     val pickable = remember(sortedSongs) { sortedSongs.map { Pickable(it.id, it) } }
                     SelectableSongs(pickable) {
-                        LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = screenPadding(extraTop = DetailTopGap)) {
+                        LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = screenPadding()) {
                             item(key = "header") {
-                                Header(names, onCrumb = { vm.goTo(it - 1) })
+                                val phoneNode = (here as? FolderStop.Phone)?.let { known.phone?.root?.at(it.path) }
+                                PageHeader(
+                                    names.last(),
+                                    onBack = { if (!vm.up()) onBack() },
+                                    count = phoneNode?.let { folderCount(it.folders.size, it.songCount) },
+                                    lead = listOfNotNull(if (names.size > 1) breadcrumbItem(names, onCrumb = { vm.goTo(it - 1) }) else null),
+                                    tail = when (here) {
+                                        FolderStop.Top -> emptyList()
+                                        is FolderStop.Phone -> phoneNode?.let { node ->
+                                            playShuffleItems(
+                                                { vm.playPhone(node, shuffle = false) },
+                                                { vm.playPhone(node, shuffle = true) },
+                                                enabled = node.songCount > 0,
+                                            )
+                                        }.orEmpty()
+                                        is FolderStop.Server -> playShuffleItems(
+                                            { vm.playServer(here.id, shuffle = false) },
+                                            { vm.playServer(here.id, shuffle = true) },
+                                            loading = gathering,
+                                        )
+                                    },
+                                )
                             }
+                            // What came of the last Play, while there is something to say.
+                            note?.let { item(key = "note") { Quiet(it) } }
                             when (here) {
                                 FolderStop.Top -> topLevel(known, vm::open)
                                 is FolderStop.Phone -> phoneLevel(known, here, vm)
-                                is FolderStop.Server -> serverLevel(here, level, gathering, note, vm)
+                                is FolderStop.Server -> serverLevel(here, level, vm)
                             }
                             songRows(sortedSongs, order, vm)
                         }
@@ -119,9 +145,12 @@ fun FoldersScreen(onBack: () -> Unit, vm: FoldersViewModel = hiltViewModel()) {
                 if (here is FolderStop.Server) LaunchedEffect(here.id) { vm.load(here.id) }
             }
         }
-        BackButton { if (!vm.up()) onBack() }
     }
 }
+
+// What a phone folder holds, for the title line: "3 folders • 42 songs".
+internal fun folderCount(folders: Int, songCount: Int): String =
+    listOfNotNull(folders.takeIf { it > 0 }?.let { if (it == 1) "1 folder" else "$it folders" }, songs(songCount)).joinToString(" • ")
 
 // What to call a place, in the title and the path.
 private fun FolderSources.label(stop: FolderStop): String = when (stop) {
@@ -155,17 +184,6 @@ private fun LazyListScope.phoneLevel(sources: FolderSources, here: FolderStop.Ph
         item(key = "gone") { Quiet("This folder is no longer on the phone.") }
         return
     }
-    item(key = "buttons") {
-        Buttons(
-            details = listOfNotNull(
-                node.folders.size.takeIf { it > 0 }?.let { if (it == 1) "1 folder" else "$it folders" },
-                songs(node.songCount),
-            ).joinToString(" • "),
-            onPlay = { vm.playPhone(node, shuffle = false) },
-            onShuffle = { vm.playPhone(node, shuffle = true) },
-            enabled = node.songCount > 0,
-        )
-    }
     itemsIndexed(node.folders, key = { _, folder -> "folder:${folder.name}" }) { index, folder ->
         Column {
             if (index > 0) Separator()
@@ -174,22 +192,7 @@ private fun LazyListScope.phoneLevel(sources: FolderSources, here: FolderStop.Ph
     }
 }
 
-private fun LazyListScope.serverLevel(
-    here: FolderStop.Server,
-    state: LoadState<ServerLevel>?,
-    gathering: Boolean,
-    note: String?,
-    vm: FoldersViewModel,
-) {
-    item(key = "buttons") {
-        Buttons(
-            details = null,
-            onPlay = { vm.playServer(here.id, shuffle = false) },
-            onShuffle = { vm.playServer(here.id, shuffle = true) },
-            gathering = gathering,
-            note = note,
-        )
-    }
+private fun LazyListScope.serverLevel(here: FolderStop.Server, state: LoadState<ServerLevel>?, vm: FoldersViewModel) {
     when (state) {
         null, LoadState.Loading -> item(key = "loading") {
             Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -230,52 +233,16 @@ private fun LazyListScope.songRows(list: List<TrackEntity>, order: SortOrder, vm
     }
 }
 
-// The folder's name, the path to it, and its details.
+// The folder this one is in, as a dropdown on the control line listing
+// every folder on the way here, the nearest last; the title already names
+// this one. Picking one goes back there.
 @Composable
-private fun Header(names: List<String>, onCrumb: (Int) -> Unit) {
-    Column {
-        ScreenTitle(names.last())
-        if (names.size > 1) Breadcrumb(names, onCrumb)
-    }
-}
-
-// The path as plain words; any but the last goes back there. It scrolls
-// sideways when long, starting at the end.
-@Composable
-private fun Breadcrumb(names: List<String>, onCrumb: (Int) -> Unit) {
-    val scroll = rememberScrollState()
-    LaunchedEffect(names.size) { scroll.scrollTo(scroll.maxValue) }
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 20.dp).padding(bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        names.forEachIndexed { index, name ->
-            if (index > 0) Text(" / ", style = OctoType.caption, color = OctoColors.TextMuted)
-            val last = index == names.lastIndex
-            Text(
-                name,
-                style = OctoType.caption,
-                color = if (last) OctoColors.TextPrimary else OctoColors.TextSecondary,
-                maxLines = 1,
-                modifier = if (last) Modifier else Modifier.clickable(role = Role.Button) { onCrumb(index) },
-            )
-        }
-    }
-}
-
-// Play and Shuffle for everything under the folder, as on an album page.
-@Composable
-private fun Buttons(
-    details: String?,
-    onPlay: () -> Unit,
-    onShuffle: () -> Unit,
-    enabled: Boolean = true,
-    gathering: Boolean = false,
-    note: String? = null,
-) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 12.dp)) {
-        PlayRow(details, onPlay, onShuffle, enabled = enabled, loading = gathering)
-        note?.let { Text(it, style = OctoType.caption, color = OctoColors.TextMuted, modifier = Modifier.padding(top = 10.dp)) }
+private fun breadcrumbItem(names: List<String>, onCrumb: (Int) -> Unit): LineItem {
+    val sheet = LocalChoiceSheet.current
+    val above = names.dropLast(1)
+    val ask = { showDropdown(sheet, "Go back to", above, -1, onCrumb) }
+    return LineItem("way-back", overflow = 0, more = MoreItem("In ${above.last()}", OctoIcons.Folder, detail = "Go back to a folder on the way", onClick = ask)) { _ ->
+        HeaderDropdown(above.last(), onClick = ask, icon = OctoIcons.Folder, description = "In ${above.last()}", clickLabel = "Go back to a folder on the way")
     }
 }
 

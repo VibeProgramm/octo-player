@@ -1,23 +1,20 @@
 package app.winters.octo.ui.history
 
-import androidx.compose.foundation.clickable
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.LineSegments
+import app.winters.octo.ui.common.LineItem
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -28,11 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -52,15 +44,11 @@ import app.winters.octo.listening.mostPlayed
 import app.winters.octo.listening.rangeStart
 import app.winters.octo.listening.recentHistory
 import app.winters.octo.playback.PlaybackConnection
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.Choice
-import app.winters.octo.ui.common.ChoiceRequest
-import app.winters.octo.ui.common.DetailTopGap
+import app.winters.octo.ui.common.HeaderDropdown
+import app.winters.octo.ui.common.PageHeader
+import app.winters.octo.ui.common.showDropdown
 import app.winters.octo.ui.common.LocalChoiceSheet
-import app.winters.octo.ui.common.choiceAnchor
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
-import app.winters.octo.ui.common.Segmented
 import app.winters.octo.ui.common.SongRow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -111,23 +99,44 @@ class HistoryViewModel @Inject constructor(
     }
 }
 
+// The two ways to look at what was played.
+val HistoryViews = listOf("Recently played", "Most played")
+
+// The stretches of time Most played can cover.
+private val ranges = HistoryRange.entries.map { it.label }
+
 // What was played: the latest plays day by day, or the songs played most.
+// The control line picks which as two segments, and for the songs played
+// most, over what stretch of time.
 @Composable
 fun HistoryScreen(startMostPlayed: Boolean, onBack: () -> Unit, vm: HistoryViewModel = hiltViewModel()) {
     var most by rememberSaveable { mutableStateOf(startMostPlayed) }
+    val sheet = LocalChoiceSheet.current
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Spacer(Modifier.height(DetailTopGap))
-            ScreenTitle("History")
-            Segmented(
-                options = listOf("Recently played", "Most played"),
-                selected = if (most) 1 else 0,
-                onSelect = { most = it == 1 },
-                modifier = Modifier.padding(horizontal = 20.dp),
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
+            PageHeader(
+                "History",
+                onBack,
+                segments = LineSegments(HistoryViews, if (most) 1 else 0, "Show") { most = it == 1 },
+                // For the songs played most, over what stretch of time; on a
+                // narrow phone it moves into More.
+                tail = if (!most) emptyList() else listOf(
+                    LineItem(
+                        "range",
+                        overflow = 0,
+                        more = MoreItem("Most played in: ${vm.range.label}", OctoIcons.History) {
+                            showDropdown(sheet, "Most played in", ranges, vm.range.ordinal) { vm.range = HistoryRange.entries[it] }
+                        },
+                    ) { _ ->
+                        val range = vm.range
+                        HeaderDropdown(range.label, onClick = {
+                            showDropdown(sheet, "Most played in", ranges, range.ordinal) { vm.range = HistoryRange.entries[it] }
+                        }, description = "Most played, ${range.label}", clickLabel = "Change the time range")
+                    },
+                ),
             )
             if (most) MostPlayed(vm) else RecentlyPlayed(vm)
         }
-        BackButton(onBack)
     }
 }
 
@@ -163,27 +172,13 @@ private fun RecentlyPlayed(vm: HistoryViewModel) {
 private fun MostPlayed(vm: HistoryViewModel) {
     val top by vm.mostPlayed.collectAsStateWithLifecycle()
     val range = vm.range
-    val sheet = LocalChoiceSheet.current
-    Row(Modifier.fillMaxWidth().padding(top = 8.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Spacer(Modifier.weight(1f))
-        RangeButton(range, Modifier.choiceAnchor(sheet)) {
-            sheet.show(
-                ChoiceRequest(
-                    title = "Most played in",
-                    choices = HistoryRange.entries.map { Choice(it.label) },
-                    selected = range.ordinal,
-                    onPick = { vm.range = HistoryRange.entries[it] },
-                ),
-            )
-        }
-    }
     val shown = top
     when {
         shown == null -> Loading()
         shown.isEmpty() -> Note(if (range == HistoryRange.AllTime) "Nothing played yet" else "Nothing played in the ${range.label.lowercase()}")
         else -> {
             val songs = remember(shown) { shown.map { it.track } }
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 140.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = ListPadding) {
                 itemsIndexed(shown, key = { _, it -> it.track.id }) { _, played ->
                     val count = if (played.plays == 1) "1 play" else "${played.plays} plays"
                     SongRow(played.track, subtitle = { song -> listOf(song.artist, count).filter { it.isNotEmpty() }.joinToString(" • ") }) {
@@ -192,23 +187,6 @@ private fun MostPlayed(vm: HistoryViewModel) {
                 }
             }
         }
-    }
-}
-
-// The stretch of time the list covers, as a quiet line like the sort
-// button. A tap offers the others.
-@Composable
-private fun RangeButton(range: HistoryRange, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Row(
-        modifier
-            .clip(CircleShape)
-            .clickable(role = Role.Button, onClickLabel = "Change the time range", onClick = onClick)
-            .semantics(mergeDescendants = true) { contentDescription = "Most played, ${range.label}" }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(range.label, style = OctoType.label, color = OctoColors.TextSecondary)
-        Icon(painterResource(OctoIcons.Collapse), contentDescription = null, tint = OctoColors.TextSecondary, modifier = Modifier.size(14.dp))
     }
 }
 

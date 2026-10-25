@@ -1,5 +1,6 @@
 package app.winters.octo.ui.online
 
+import app.winters.octo.ui.common.factsLine
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,8 +36,7 @@ import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.LoadState
 import app.winters.octo.ui.common.LoadStateContent
 import app.winters.octo.ui.common.LocalAdoptedFinds
-import app.winters.octo.ui.common.QuietAction
-import app.winters.octo.ui.common.QuietActions
+import app.winters.octo.ui.common.MoreItem
 import app.winters.octo.ui.common.SongLead
 import app.winters.octo.ui.common.SongRow
 import app.winters.octo.ui.common.albumLibraryNote
@@ -170,43 +170,25 @@ fun OnlineAlbumScreen(
             LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
                 item(key = "header") {
                     val loop by vm.loop.collectAsStateWithLifecycle()
+                    // The cover stays clean. More adds the album to the
+                    // library; for an album partly there, the facts say how
+                    // much of it is.
+                    val outside = found.songs.any { isFind(it.id) }
+                    val adopted = LocalAdoptedFinds.current
+                    val note = if (outside) albumLibraryNote(found.songs.size, found.songs.count { isOutsideLibrary(it.id, adopted) }) else null
                     AlbumHeader(
                         artwork = album.artwork,
                         loop = loop,
                         title = album.title,
                         artist = album.artist,
-                        details = listOfNotNull(album.year?.toString(), songs(album.songCount), length).joinToString(" • "),
+                        details = factsLine(listOfNotNull(album.year?.toString(), songs(album.songCount), length, note)),
                         onArtist = album.artistId?.takeIf { it.isNotEmpty() }?.let { artistId -> { onOpen(OnlineArtistRoute(artistId)) } },
                         onPlay = { vm.play(0) },
                         onShuffle = vm::shuffle,
-                        // The cover stays clean. The plus adds the album to the
-                        // library; for an album partly there, a note says how
-                        // much of it is.
-                        more = if (found.songs.any { isFind(it.id) }) {
-                            {
-                                val adopted = LocalAdoptedFinds.current
-                                val note = albumLibraryNote(found.songs.size, found.songs.count { isOutsideLibrary(it.id, adopted) })
-                                QuietActions {
-                                    QuietAction(
-                                        OctoIcons.AddToLibrary,
-                                        if (downloading) "Adding" else "Add to your library",
-                                        onClick = vm::download,
-                                        enabled = !downloading,
-                                    )
-                                    if (note != null) {
-                                        Spacer(Modifier.weight(1f))
-                                        Text(
-                                            note,
-                                            style = OctoType.caption,
-                                            color = OctoColors.TextMuted,
-                                            maxLines = 1,
-                                            modifier = Modifier.padding(horizontal = 10.dp),
-                                        )
-                                    }
-                                }
-                            }
+                        more = if (outside) {
+                            listOf(MoreItem(if (downloading) "Adding" else "Add to your library", OctoIcons.AddToLibrary, enabled = !downloading, onClick = vm::download))
                         } else {
-                            null
+                            emptyList()
                         },
                     )
                 }

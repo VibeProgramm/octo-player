@@ -1,5 +1,8 @@
 package app.winters.octo.ui.liveradio
 
+import app.winters.octo.ui.common.ChoiceSheet
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.LineItem
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
@@ -10,16 +13,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +46,7 @@ import app.winters.octo.design.ButtonSize
 import app.winters.octo.design.GlassInput
 import app.winters.octo.design.GlazeButton
 import app.winters.octo.design.OctoColors
+import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
 import app.winters.octo.liveradio.LivePlace
 import app.winters.octo.liveradio.LiveSort
@@ -57,15 +58,17 @@ import app.winters.octo.liveradio.PlaceSource
 import app.winters.octo.liveradio.placeSourceLine
 import app.winters.octo.liveradio.radiusChoices
 import app.winters.octo.liveradio.radiusLabel
-import app.winters.octo.ui.common.BackButton
+import app.winters.octo.ui.common.HeaderDropdown
+import app.winters.octo.ui.common.showDropdown
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.LocalChoiceSheet
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
-import app.winters.octo.ui.common.Segmented
+import app.winters.octo.ui.common.COUNTRY_SEARCH_HINT
+import app.winters.octo.ui.common.NO_COUNTRY_MATCHES
 import app.winters.octo.ui.common.choiceAnchor
+import app.winters.octo.ui.common.countryChoiceMatches
 import app.winters.octo.ui.common.screenPadding
 
 private val SortWords = listOf("Nearest", "Most played")
@@ -102,7 +105,17 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
         // The phone's own country first, then every other by name.
         val here = countries.filter { it.first == vm.country }
         val ordered = here + countries.filterNot { it.first == vm.country }
-        sheet.show(ChoiceRequest("Country", ordered.map { Choice(it.second) }, selected = if (here.isEmpty()) -1 else 0) { vm.country = ordered[it].first })
+        sheet.show(
+            ChoiceRequest(
+                "Country",
+                ordered.map { Choice(it.second, key = it.first) },
+                selected = if (here.isEmpty()) -1 else 0,
+                onPick = { vm.country = ordered[it].first },
+                searchHint = COUNTRY_SEARCH_HINT,
+                match = ::countryChoiceMatches,
+                emptyText = NO_COUNTRY_MATCHES,
+            ),
+        )
     }
     val menu: (LiveStation) -> Unit = { station ->
         val actions = vm.actions(station)
@@ -112,8 +125,16 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
     val place = search?.place
     val miles = vm.miles
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-            item(key = "title") { ScreenTitle(LIVE_NEAR_TITLE) }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+            // The title, then one line of dropdowns: where the stations are
+            // found around (a tap changes it), their order, and how far around.
+            item(key = "title") {
+                PageHeader(
+                    LIVE_NEAR_TITLE,
+                    onBack,
+                    lead = if (search == null || place == null) emptyList() else liveLine(place, search.sort, search.radiusIndex, miles, sheet, vm),
+                )
+            }
             if (search != null) {
                 if (place == null || vm.choosing) {
                     item(key = "chooser") {
@@ -129,30 +150,6 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
                                 vm.findTyped(text)
                             },
                         )
-                    }
-                } else {
-                    item(key = "place") { PlaceLine(place, onChange = { vm.choose(true) }) }
-                }
-                if (place != null) {
-                    item(key = "sort") {
-                        Segmented(
-                            options = SortWords,
-                            selected = search.sort.ordinal,
-                            onSelect = { vm.setSort(LiveSort.entries[it]) },
-                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp),
-                        )
-                    }
-                    item(key = "radius") {
-                        val choices = radiusChoices(miles)
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
-                        ) {
-                            itemsIndexed(choices, key = { _, radius -> radius }) { index, radius ->
-                                RadiusChip(radiusLabel(miles, radius), chosen = index == search.radiusIndex.coerceIn(0, choices.lastIndex)) { vm.setRadius(index) }
-                            }
-                        }
                     }
                 }
                 when (val results = vm.results) {
@@ -186,24 +183,31 @@ fun LiveRadioScreen(onBack: () -> Unit, vm: LiveRadioViewModel = hiltViewModel()
                 }
             }
         }
-        BackButton(onBack)
     }
 }
 
-// Where the stations are found around, with a way to change it.
-@Composable
-private fun PlaceLine(place: LivePlace, onChange: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("Near", style = OctoType.caption, color = OctoColors.TextMuted)
-            Text(place.label, style = OctoType.body, color = OctoColors.TextPrimary)
-        }
-        GlazeButton("Change", onClick = onChange, size = ButtonSize.Small)
-    }
+// The control line: where the stations are found around (a tap changes it),
+// their order and how far around, each a dropdown. On a narrow phone the
+// place shows its globe alone, then the order and the distance move into
+// More, then the place.
+private fun liveLine(place: LivePlace, sort: LiveSort, radiusIndex: Int, miles: Boolean, sheet: ChoiceSheet, vm: LiveRadioViewModel): List<LineItem> {
+    val choices = radiusChoices(miles)
+    val radius = radiusIndex.coerceIn(0, choices.lastIndex)
+    val labels = choices.map { radiusLabel(miles, it) }
+    val change = { vm.choose(!vm.choosing) }
+    val order = { showDropdown(sheet, "Order", SortWords, sort.ordinal) { vm.setSort(LiveSort.entries[it]) } }
+    val far = { showDropdown(sheet, "How far", labels, radius) { vm.setRadius(it) } }
+    return listOf(
+        LineItem("place", overflow = 2, more = MoreItem("Near ${place.label}", OctoIcons.Globe, detail = "Change the place", onClick = change), forms = 2) { form ->
+            HeaderDropdown(place.label, onClick = change, icon = OctoIcons.Globe, showLabel = form == 0, description = "Near ${place.label}", clickLabel = "Change the place")
+        },
+        LineItem("order", overflow = 0, more = MoreItem("Order: ${SortWords[sort.ordinal]}", OctoIcons.Sort, onClick = order)) { _ ->
+            HeaderDropdown(SortWords[sort.ordinal], onClick = order, clickLabel = "Choose the order")
+        },
+        LineItem("far", overflow = 1, more = MoreItem("How far: ${labels[radius]}", OctoIcons.Radio, onClick = far)) { _ ->
+            HeaderDropdown(labels[radius], onClick = far, clickLabel = "Choose how far")
+        },
+    )
 }
 
 // Choosing a place: the phone's rough position, or a ZIP, postal code or

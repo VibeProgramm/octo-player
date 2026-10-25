@@ -1,5 +1,6 @@
 package app.winters.octo.ui.artist
 
+import app.winters.octo.ui.common.factsLine
 import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -82,8 +84,9 @@ import app.winters.octo.ui.common.CHECK_SETTLE_MS
 import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.FavouriteHeart
 import app.winters.octo.ui.common.Feedback
-import app.winters.octo.ui.common.PlayRow
-import app.winters.octo.ui.common.QuietAction
+import app.winters.octo.ui.common.HeaderButton
+import app.winters.octo.ui.common.HeaderControlLine
+import app.winters.octo.ui.common.PlayShuffleButtons
 import app.winters.octo.ui.common.QuietButton
 import app.winters.octo.ui.common.Refreshable
 import app.winters.octo.ui.common.SectionTitle
@@ -248,36 +251,27 @@ fun ArtistScreen(
     PageArtwork(ArtistRoute(id), artist?.artwork)
     val grid = rememberLazyGridState()
     // A new order scrolls back to the albums' own line, below the header,
-    // the buttons, the songs and any top songs.
-    val above = listOf(artist != null, artist != null, ownSongs.isNotEmpty(), top.isNotEmpty()).count { it }
+    // the songs and any top songs.
+    val above = listOf(artist != null, ownSongs.isNotEmpty(), top.isNotEmpty()).count { it }
     sortedAlbums?.let { TopOnNewOrder(it.order, grid, top = above) }
 
     Refreshable(onRefresh = vm::reloadExtras) {
         ArtistGrid(grid) {
+            // The heart leads the control line; the radio, Play and Shuffle
+            // sit at its end once there are songs. A radio needs the server,
+            // to find songs like these.
             artist?.let { a ->
                 item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
-                    ArtistHeader(a.artwork, a.name, "${albums(a.albumCount)} • ${songs(a.songCount)}")
-                }
-            }
-            // The heart always; Play and Shuffle once there are songs, with
-            // the radio as a quiet action on the left of the heart's line.
-            if (artist != null) {
-                wide("buttons") {
-                    PlayRow(
-                        details = null,
-                        onPlay = { vm.play(shuffle = false) },
-                        onShuffle = { vm.play(shuffle = true) },
-                        modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 4.dp),
-                        playable = ownSongs.isNotEmpty(),
-                        lead = {
-                            // A radio needs the server, to find songs like these.
-                            // Pulled back by its own padding, so its icon starts
-                            // at the page's edge.
-                            if (radio && ownSongs.isNotEmpty()) {
-                                QuietAction(OctoIcons.Radio, "Radio", onClick = vm::startRadio, modifier = Modifier.offset(x = (-10).dp))
-                            }
-                        },
-                    ) { FavouriteHeart(FavouriteKind.Artist, id) }
+                    ArtistHeader(
+                        a.artwork,
+                        a.name,
+                        factsLine(listOf(albums(a.albumCount), songs(a.songCount))),
+                        control = { FavouriteHeart(FavouriteKind.Artist, id) },
+                        actions = if (ownSongs.isEmpty()) null else ({
+                            if (radio) HeaderButton(OctoIcons.Radio, "Radio", vm::startRadio)
+                            PlayShuffleButtons({ vm.play(shuffle = false) }, { vm.play(shuffle = true) })
+                        }),
+                    )
                 }
             }
             if (ownSongs.isNotEmpty()) {
@@ -439,21 +433,31 @@ private fun About(text: String) {
     }
 }
 
-// The top of an artist page: round picture, name, and what they have.
+// The top of an artist page: round picture, name, and what they have, then
+// one control line with `control` first and `actions` at the end.
 @Composable
-fun ArtistHeader(artwork: String?, name: String, details: String) {
-    Column(
-        Modifier.fillMaxWidth().padding(bottom = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Artwork(artwork, 160.dp, shape = CircleShape)
-        Spacer(Modifier.height(16.dp))
-        Text(name, style = OctoType.title, color = OctoColors.TextPrimary, textAlign = TextAlign.Center)
-        Text(
-            details,
-            style = OctoType.caption,
-            color = OctoColors.TextMuted,
-            modifier = Modifier.padding(top = 4.dp),
-        )
+fun ArtistHeader(
+    artwork: String?,
+    name: String,
+    details: String,
+    control: (@Composable () -> Unit)? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Artwork(artwork, 160.dp, shape = CircleShape)
+            Spacer(Modifier.height(16.dp))
+            Text(name, style = OctoType.title, color = OctoColors.TextPrimary, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 20.dp))
+            Text(
+                details,
+                style = OctoType.bodySmall,
+                color = OctoColors.TextMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 4.dp, start = 20.dp, end = 20.dp),
+            )
+        }
+        if (control != null || actions != null) {
+            HeaderControlLine(control, actions = actions, modifier = Modifier.padding(start = 12.dp, end = 16.dp, top = 10.dp))
+        }
     }
 }

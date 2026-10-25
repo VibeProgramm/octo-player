@@ -59,4 +59,17 @@ class LiveListEditingTest {
         assertEquals("\"Hearts\" has no songs right now, so there is nothing to copy.", nothingToCopy("Hearts"))
         listOf(NO_MATCHES_NOTE, NO_RULE_MATCHES, LIVE_LIST).forEach { assertFalse(it.contains('—') || it.contains('–')) }
     }
+
+    // Back from the editor asks first only when leaving would lose something.
+    @Test
+    fun leavingAsksOnlyWithChangesNotSaved() {
+        val started = editorStart(saved, null)
+        assertFalse(unsavedChanges(started, started))
+        assertTrue(unsavedChanges(started, started.copy(name = "Loved")))
+        assertTrue(unsavedChanges(started, started.copy(query = LibraryQuery())))
+        // A new list untouched loses nothing.
+        val fresh = editorStart(null, null)
+        assertFalse(unsavedChanges(fresh, editorStart(null, null)))
+        assertTrue(unsavedChanges(fresh, fresh.copy(name = "x")))
+    }
 }

@@ -3,7 +3,6 @@ package app.winters.octo.desktop.pages
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,8 +42,6 @@ import app.winters.octo.design.GlazeSegments
 import app.winters.octo.design.Glyph
 import app.winters.octo.design.IconAction
 import app.winters.octo.design.IconSize
-import app.winters.octo.design.MenuRow
-import app.winters.octo.design.MenuSeparator
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
@@ -178,7 +175,9 @@ private fun WhereControls(app: AppState, saved: String, savedCountry: String) {
     ) {
         GlassField(where, { where = it }, Modifier.widthIn(max = FrameSize.SearchWidth).weight(1f, fill = false), placeholder = WHERE_HINT, icon = OctoIcons.Globe, onSubmit = find)
         GlazeCapsule(null, countryName(country), {
-            app.popups.showAt(pointer.point) { close -> CountryMenu(country, { country = it }, close) }
+            app.popups.showAt(pointer.point, scrollsItself = true) { close ->
+                CountryMenu(countryRows(country, Countries, ::countryName), { row -> row.code?.let { country = it } }, close)
+            }
         })
         GlazeCapsule(OctoIcons.Search, "Find", find, lit = true, enabled = where.isNotBlank())
     }
@@ -198,23 +197,6 @@ private fun OrderControls(app: AppState, sort: LiveSort, radius: Int, located: B
         if (located) {
             ChipRow(choices.indices.toList(), radius.coerceIn(choices.indices), { radiusLabel(choices[it], miles) }, app.liveRadio::setRadius)
         }
-    }
-}
-
-// The countries to look in, the chosen one first, then a field that narrows
-// the list as a name is typed.
-@Composable
-private fun ColumnScope.CountryMenu(chosen: String, pick: (String) -> Unit, close: () -> Unit) {
-    var typed by remember { mutableStateOf("") }
-    GlassField(typed, { typed = it }, Modifier.fillMaxWidth().padding(horizontal = Space.M, vertical = Space.S), placeholder = "Country", icon = OctoIcons.Search)
-    MenuRow(countryName(chosen), close, checked = true)
-    MenuSeparator()
-    val words = typed.trim().lowercase()
-    Countries.filter { it != chosen && (words.isEmpty() || countryName(it).lowercase().contains(words) || it.lowercase() == words) }.forEach { code ->
-        MenuRow(countryName(code), {
-            pick(code)
-            close()
-        })
     }
 }
 

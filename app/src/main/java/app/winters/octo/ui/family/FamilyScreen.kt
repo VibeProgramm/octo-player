@@ -2,6 +2,7 @@ package app.winters.octo.ui.family
 
 import app.winters.octo.ui.imports.GET_MY_MUSIC
 import app.winters.octo.ui.imports.IMPORT
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.LocalFeedback
 import app.winters.octo.design.OctoSwitch
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -67,9 +68,6 @@ import app.winters.octo.subsonic.FamilyMe
 import app.winters.octo.subsonic.FamilyMember
 import app.winters.octo.subsonic.FamilyRequest
 import app.winters.octo.subsonic.FamilyRequestState
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.screenPadding
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -98,8 +96,8 @@ fun FamilyScreen(onBack: () -> Unit, onImport: () -> Unit = {}, owner: FamilyShe
     }
     Box(Modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalFamilyCovers provides { id: String -> hub.coverRef(id) }) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-                item(key = "title") { ScreenTitle(FAMILY) }
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+                item(key = "title") { PageHeader(FAMILY, onBack) }
                 val info = model.info
                 if (info == null) {
                     item(key = "waiting") { Line(model.problem ?: "Asking the server about your plan.") }
@@ -116,7 +114,6 @@ fun FamilyScreen(onBack: () -> Unit, onImport: () -> Unit = {}, owner: FamilyShe
                 }
             }
         }
-        BackButton(onBack)
     }
     HandOverSheetHost(model, hub.serverAddress().orEmpty(), model.me?.username.orEmpty())
     InviteSheetHost(model, hub.serverAddress().orEmpty())
@@ -180,10 +177,13 @@ private fun NoticesRow() {
     var allowed by remember { mutableStateOf(FamilyNotifier.canPost(context)) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
     if (allowed || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Hear when a request is decided", style = OctoType.body, color = OctoColors.TextPrimary)
-        Text("Octo can tell you when a request is approved, declined or added, and a manager when requests wait.", style = OctoType.caption, color = OctoColors.TextMuted)
-        GlazeButton("Turn on notices", { ask.launch(Manifest.permission.POST_NOTIFICATIONS) }, size = ButtonSize.Small)
+    // One banner: what notices bring, and the button that turns them on.
+    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text("Hear when a request is decided", style = OctoType.bodySmall, color = OctoColors.TextPrimary)
+            Text("Octo can tell you when a request is approved, declined or added, and a manager when requests wait.", style = OctoType.caption, color = OctoColors.TextMuted)
+        }
+        GlazeButton("Turn on", { ask.launch(Manifest.permission.POST_NOTIFICATIONS) }, size = ButtonSize.Small)
     }
 }
 

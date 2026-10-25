@@ -55,10 +55,8 @@ import app.winters.octo.design.GlazeButton
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.LoadState
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.screenPadding
 import app.winters.octo.ui.common.songs
@@ -87,8 +85,8 @@ fun OctoAdminScreen(onBack: () -> Unit, vm: OctoAdminViewModel = hiltViewModel()
             onRefresh = vm::refresh,
             modifier = Modifier.fillMaxSize(),
         ) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-                item(key = "title") { ScreenTitle("Octo admin") }
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+                item(key = "title") { PageHeader("Octo admin", onBack) }
                 when (vm.place) {
                     AdminPlace.Looking -> item(key = "looking") { Spinner(Modifier.padding(top = 24.dp)) }
                     AdminPlace.Away -> item(key = "away") { AwayMessage(vm::tryAgain) }
@@ -107,7 +105,6 @@ fun OctoAdminScreen(onBack: () -> Unit, vm: OctoAdminViewModel = hiltViewModel()
                 }
             }
         }
-        BackButton(onBack)
     }
 }
 

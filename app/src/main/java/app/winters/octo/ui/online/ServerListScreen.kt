@@ -1,5 +1,6 @@
 package app.winters.octo.ui.online
 
+import app.winters.octo.ui.common.factsLine
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
@@ -142,7 +143,7 @@ fun ServerListScreen(
                         artwork = route.artwork,
                         title = route.name,
                         artist = "Octo",
-                        details = listOfNotNull(songs(songs.size), length).joinToString(" • "),
+                        details = factsLine(listOfNotNull(songs(songs.size), length)),
                         onArtist = null,
                         onPlay = { vm.play(0) },
                         onShuffle = vm::shuffle,
