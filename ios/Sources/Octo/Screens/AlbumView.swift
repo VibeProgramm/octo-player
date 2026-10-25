@@ -174,8 +174,8 @@ struct AlbumView: View {
             Text(album.title)
                 .font(.octoTitle)
                 .multilineTextAlignment(.center)
-                .padding(.top, 20)
                 .bigTitle()
+                .padding(.top, 20)
             Button { router.go(.artist(id: album.artistId, name: album.artist)) } label: {
                 Text(album.artist).font(.octoBody).foregroundStyle(OctoColor.accent)
             }
@@ -329,7 +329,7 @@ private struct OnlineAlbum: View {
                 .onAppear { coverShown = true }
                 .onDisappear { coverShown = false }
                 .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
-            Text(album.name).font(.octoTitle).multilineTextAlignment(.center).padding(.top, 20).bigTitle()
+            Text(album.name).font(.octoTitle).multilineTextAlignment(.center).bigTitle().padding(.top, 20)
             Text(album.byline).font(.octoBody).foregroundStyle(OctoColor.textSecondary).padding(.top, 4)
             PlayButtons(songs: album.song).padding(.top, 14)
         }
@@ -441,7 +441,7 @@ struct ArtistView: View {
     private var header: some View {
         VStack(spacing: 0) {
             ArtCover(artwork: artist?.artwork, size: 160, radius: 80)
-            Text(artist?.name ?? name).font(.octoTitle).multilineTextAlignment(.center).padding(.top, 16).bigTitle()
+            Text(artist?.name ?? name).font(.octoTitle).multilineTextAlignment(.center).bigTitle().padding(.top, 16)
             // The counts, then Radio and the heart on the same line.
             if let artist {
                 HStack(spacing: 0) {
@@ -634,7 +634,6 @@ struct PlaylistsView: View {
                         }
                     }
                     .padding(.top, pageTopGap)
-                    .bigTitle()
                     if let importNote { importNoteView(importNote) }
                     ForEach(liveLists.lists, id: \.id) { list in
                         NavigationLink(value: Route.liveList(id: list.id)) {
@@ -860,7 +859,7 @@ struct ServerListPage: View {
         return VStack(spacing: 0) {
             Cover(id: playlist.coverArt, size: 240, radius: 10)
                 .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
-            Text(playlist.name).font(.octoTitle).multilineTextAlignment(.center).padding(.top, 20).bigTitle()
+            Text(playlist.name).font(.octoTitle).multilineTextAlignment(.center).bigTitle().padding(.top, 20)
             Text(details)
                 .font(.octoCaption)
                 .foregroundStyle(OctoColor.textMuted)
@@ -966,7 +965,7 @@ struct PlaylistPage: View {
         VStack(spacing: 0) {
             PlaylistCover(playlist: playlist, size: 240, radius: 10)
                 .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
-            Text(playlist.name).font(.octoTitle).multilineTextAlignment(.center).padding(.top, 20).bigTitle()
+            Text(playlist.name).font(.octoTitle).multilineTextAlignment(.center).bigTitle().padding(.top, 20)
             HStack(spacing: 8) {
                 Text(playlistDetails(songs: rows.count, length: asLength(length),
                                      kept: keptDownloadedWords(offline, tracks: tracks, playlistId: playlist.id),
