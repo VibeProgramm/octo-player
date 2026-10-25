@@ -37,8 +37,8 @@ extension View {
                 case .imports: ImportScreen()
                 }
             }
-            .background { PageBackdrop(page: route.ambientPage, route: nil) }
             .detailPage(ownBack: true)
+            .background { PageBackdrop(page: route.ambientPage, route: nil) }
         }
     }
 }

@@ -194,24 +194,30 @@ final class BarMetrics {
     static let shared = BarMetrics()
     private(set) var back: CGPoint
     private(set) var height: CGFloat
+    /// Whether these come from this phone's bar (kept from an earlier launch, or read now).
+    private(set) var measured: Bool
     private static let key = "barMetrics"
 
     private init() {
         if let saved = UserDefaults.standard.array(forKey: Self.key) as? [Double], saved.count == 3 {
             back = CGPoint(x: saved[0], y: saved[1])
             height = saved[2]
+            measured = true
         } else {
             back = CGPoint(x: 38, y: 21.7)
             height = 54
+            measured = false
         }
     }
 
-    /// A reading from a bar at full size, kept when it differs from what is held.
+    /// A reading from a bar at full size, kept when it differs from what is held or nothing has
+    /// been read on this phone yet.
     func take(_ reading: BarReading) {
-        guard abs(reading.back.x - back.x) > 0.5 || abs(reading.back.y - back.y) > 0.5
+        guard !measured || abs(reading.back.x - back.x) > 0.5 || abs(reading.back.y - back.y) > 0.5
             || abs(reading.height - height) > 0.5 else { return }
         back = reading.back
         height = reading.height
+        measured = true
         UserDefaults.standard.set([Double(back.x), Double(back.y), Double(height)], forKey: Self.key)
     }
 }
@@ -240,13 +246,17 @@ final class PageTop {
             updateGone()
         }
     }
-    /// Where the page's layout puts its `PageHeader`, before the header lifts its line.
+    /// Whether the system bar is at its full size, so nothing scales the page while it is read.
+    var barFullSize = false { didSet { measureGap() } }
+    /// Where the page's layout puts its `PageHeader`, and the header's place below the content's
+    /// top, taken once with the page at rest and at full size.
     var headerSlot: CGFloat? { didSet { measureGap() } }
-    /// The header's slot below the content's top, taken once with the page at rest.
     var headerGap: CGFloat?
-    /// The title line's middle below the top of the line, and where it is drawn in the page.
+    /// The title line's height, and the middle of the title's capitals below the line's top.
+    var lineHeight: CGFloat?
     var lineInHeader: CGFloat?
-    var lineDrawn: CGFloat?
+    /// Where the button's room is drawn on screen (DEBUG readout).
+    var roomOnScreen: CGPoint?
     /// The page's name for the bar: its own, from `inlineTitle`, else its big title's.
     var name: String?
     var titleName: String?
@@ -258,7 +268,7 @@ final class PageTop {
     private(set) var gone = false
     /// The page showed before it was measured, after waiting too long.
     var waited = false
-    /// How many times the header's lift changed while the page was showing.
+    /// How many times the content's top moved while the page was showing.
     var moves = 0
 
     init(titleBesideBack: Bool) { self.titleBesideBack = titleBesideBack }
@@ -274,20 +284,20 @@ final class PageTop {
     /// The system bar's bottom.
     var barBottom: CGFloat { status + BarMetrics.shared.height }
 
-    /// Where the page's scrolling content starts: 8 under the bar on a page whose title shares
-    /// the back button's line (its header lifts that line onto the button), so a jump, a pull or a
-    /// scroll to the top lands clear of the bar; else under the status bar.
-    var contentTop: CGFloat { titleBesideBack ? barBottom + 8 : status }
-
-    /// How far the page's header lifts its line for the title's capitals to sit on the button's middle.
-    var lift: CGFloat? {
-        guard titleBesideBack, let headerGap, let lineInHeader else { return nil }
-        return contentTop + headerGap + lineInHeader - back.y
+    /// Where the page's scrolling content starts. A page whose title shares the back button's
+    /// line draws that line just above its header's place, so its content starts where that puts
+    /// the title's capitals on the button's middle (until measured, 8 under the bar); a jump, a
+    /// pull or a scroll to the top lands just under the line. Other pages start under the status bar.
+    var contentTop: CGFloat {
+        guard titleBesideBack else { return status }
+        guard let headerGap, let lineHeight, let lineInHeader else { return barBottom + 8 }
+        return back.y - lineInHeader + lineHeight - headerGap
     }
 
     /// Whether the page can be shown where it belongs.
     var settled: Bool {
-        waited || (status > 0 && (!titleBesideBack || (lift != nil && titleSize != nil)))
+        waited || (status > 0 && (!titleBesideBack
+            || (BarMetrics.shared.measured && headerGap != nil && lineHeight != nil && lineInHeader != nil && titleSize != nil)))
     }
 
     /// What the bar's title shows: the page's name once the big title's capitals reach the status
@@ -302,11 +312,11 @@ final class PageTop {
         return 2 * (back.y - status - 4) / capShare
     }
 
-    /// Takes the header's gap the first time the header is seen with the status bar known: the
-    /// page is at rest then.
+    /// Takes the header's gap the first time the header is seen with the status bar known and
+    /// the bar at full size: the page is at rest then, and its content starts 8 under the bar.
     private func measureGap() {
-        guard headerGap == nil, let headerSlot, status > 0 else { return }
-        headerGap = headerSlot - contentTop
+        guard headerGap == nil, let headerSlot, status > 0, barFullSize else { return }
+        headerGap = headerSlot - (barBottom + 8)
     }
 
     private func updateGone() {
@@ -337,14 +347,18 @@ private struct PageBar: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            // Named on the page itself, whose frame starts at the screen's top; the view that
+            // lets it run under the bar keeps the bar's bottom as its own top.
+            .coordinateSpace(.named(PageTop.space))
             .environment(top)
             .safeAreaPadding(.top, top.contentTop)
             .ignoresSafeArea(.container, edges: .top)
-            .coordinateSpace(.named(PageTop.space))
             .opacity(shown || top.settled ? 1 : 0)
             .background {
                 BarFrameProbe { reading in
                     if top.status == 0, reading.windowTop > 0 { top.status = reading.windowTop }
+                    let fullSize = abs(reading.bar.width - reading.windowWidth) < 0.5
+                    if top.barFullSize != fullSize { top.barFullSize = fullSize }
                     if barOnScreen != reading { barOnScreen = reading }
                 }
             }
@@ -365,14 +379,19 @@ private struct PageBar: ViewModifier {
                 }
             }
             .task(id: reading) {
-                // A reading held steady for a moment, from a bar at full size, becomes the phone's.
+                // The first reading on a phone is taken at once; later ones must hold steady for a
+                // moment, from a bar at full size.
                 guard let reading else { return }
+                if !BarMetrics.shared.measured {
+                    BarMetrics.shared.take(reading)
+                    return
+                }
                 try? await Task.sleep(for: .milliseconds(300))
                 guard !Task.isCancelled else { return }
                 BarMetrics.shared.take(reading)
             }
             .onChange(of: top.settled, initial: true) { _, settled in if settled { shown = true } }
-            .onChange(of: top.lift) { before, _ in if shown, before != nil { top.moves += 1 } }
+            .onChange(of: top.contentTop) { _, _ in if shown { top.moves += 1 } }
             .onAppear { if top.status == 0 { top.status = PageTop.windowTop() } }
             .task {
                 try? await Task.sleep(for: .milliseconds(300))

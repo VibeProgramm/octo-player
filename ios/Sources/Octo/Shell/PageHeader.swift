@@ -8,8 +8,7 @@ let pageTopGap: CGFloat = 8
 /// Line one of a page: on a pushed page the room the bar's back button sits over, then the big
 /// title, alone on its line, the button on the middle of the title's capitals. `count`, when
 /// given, follows the title in muted words only while both fit on the line; otherwise the title
-/// stands alone. The page's content starts under the bar, and the header lifts its line onto the
-/// button.
+/// stands alone. On a pushed page the header takes no height: its line sits just above its place.
 struct PageHeader: View {
     let title: String
     var count: String?
@@ -25,13 +24,19 @@ struct PageHeader: View {
     }
 
     var body: some View {
+        // On a pushed page the header takes no height: its line is drawn just above its place,
+        // and the page starts where that puts the title on the button's middle.
         VStack(alignment: .leading, spacing: 0) {
-            // Where the page's layout puts the header, before it lifts its line.
             Color.clear
                 .frame(height: 0)
                 .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageTop.space)).minY } action: { top?.headerSlot = $0 }
-            line
-                .padding(.top, -(top?.lift ?? 0))
+            if back {
+                line
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { top?.lineHeight = $0 }
+                    .frame(height: 0, alignment: .bottom)
+            } else {
+                line
+            }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
@@ -45,7 +50,7 @@ struct PageHeader: View {
                     .alignmentGuide(.pageTitleLine) { d in d[VerticalAlignment.center] }
                     .padding(.leading, roomLead)
                     .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageHeader.space)).midY } action: { top?.lineInHeader = $0 }
-                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageTop.space)).midY } action: { top?.lineDrawn = $0 }
+                    .onGeometryChange(for: CGPoint.self) { CGPoint(x: $0.frame(in: .global).midX, y: $0.frame(in: .global).midY) } action: { top?.roomOnScreen = $0 }
                     .accessibilityHidden(true)
             }
             ScreenTitle(title, maxSize: top?.titleRoom)
