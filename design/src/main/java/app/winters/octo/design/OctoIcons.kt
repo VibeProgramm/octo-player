@@ -144,6 +144,7 @@ object OctoIcons {
     val Servers = R.drawable.sym_servers
     val Timer = R.drawable.sym_timer
     val Listeners = R.drawable.sym_listeners
+    val Account = R.drawable.sym_person
     val Layout = R.drawable.sym_layout
     val Wifi = R.drawable.sym_wifi
 

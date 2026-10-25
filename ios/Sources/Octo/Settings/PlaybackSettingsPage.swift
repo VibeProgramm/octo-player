@@ -1,8 +1,9 @@
 import OctoKit
 import SwiftUI
 
-/// How songs play: blending, speed, skipping silence, Autoplay, music coming back when
-/// headphones connect, and what happens when casting ends. Radio has a page of its own.
+/// How songs play: blending, speed and skipping silence; the queue, what a swipe on a song adds
+/// to it and Autoplay when it ends; music coming back when headphones connect, and what happens
+/// when casting ends. Radio has a page of its own.
 struct PlaybackSettingsPage: View {
     var highlight: String?
     @State private var settings = AppSettings.shared
@@ -20,7 +21,7 @@ struct PlaybackSettingsPage: View {
                     // With Smart transitions on they pick the curve; the row says so and names
                     // the switch under it that frees the choice.
                     let curve = curveRowLook(prefs.crossfadeCurve, smartTransitions: prefs.smartTransitions)
-                    PopoverRow(SettingsIndex.crossfadeCurve, value: curve.value, helper: curve.helper, enabled: curve.choosable,
+                    PopoverRow(SettingsIndex.crossfadeCurve, value: curve.value, answers: FadeCurve.allCases.map(\.label), helpers: curve.choosable ? FadeCurve.allCases.map(\.detail) : [], helper: curve.helper, enabled: curve.choosable,
                                isPresented: $curveOpen) {
                         FadeCurveCard { curveOpen = false }.frame(width: 340)
                     }
@@ -39,6 +40,12 @@ struct PlaybackSettingsPage: View {
                     PaceCard().frame(width: 320)
                 }
                 ToggleRow(SettingsIndex.skipSilence, isOn: prefs.skipSilence, onChange: settings.setSkipSilence)
+            }
+            SettingsGroup(title: "Queue", icon: SettingsIcon.queue) {
+                ChoiceRow(SettingsIndex.songSwipe, value: prefs.swipeAction.label, helper: prefs.swipeAction.detail,
+                          question: SettingsQuestion(
+                              SettingsIndex.songSwipe.title, SwipeAction.allCases, current: prefs.swipeAction,
+                              answer: { SettingsAnswer($0.label, $0.detail) }, pick: settings.setSwipeAction))
                 ToggleRow(SettingsIndex.autoplay, isOn: prefs.autoplay,
                           helper: "When the queue ends, similar songs keep playing, picked as Radio settings say.",
                           onChange: settings.setAutoplay)
@@ -83,18 +90,23 @@ struct PlaybackSettingsPage: View {
 }
 
 /// A row like a choice row that opens its own card in a popover beside it instead of a list.
+/// `answers` names the card's answers, so the value keeps the width of the widest, and `helpers` their lines.
 struct PopoverRow<Card: View>: View {
     let entry: SettingEntry?
     let value: String
+    var answers: [String] = []
+    var helpers: [String] = []
     var helper: String?
     var enabled = true
     @Binding var isPresented: Bool
     let card: () -> Card
 
-    init(_ entry: SettingEntry?, value: String, helper: String? = nil, enabled: Bool = true, isPresented: Binding<Bool>,
+    init(_ entry: SettingEntry?, value: String, answers: [String] = [], helpers: [String] = [], helper: String? = nil, enabled: Bool = true, isPresented: Binding<Bool>,
          @ViewBuilder card: @escaping () -> Card) {
         self.entry = entry
         self.value = value
+        self.answers = answers
+        self.helpers = helpers
         self.helper = helper
         self.enabled = enabled
         _isPresented = isPresented
@@ -111,18 +123,19 @@ struct PopoverRow<Card: View>: View {
                             .foregroundStyle(enabled ? OctoColor.textPrimary : OctoColor.textMuted)
                             .fixedSize(horizontal: false, vertical: true)
                         if let helper {
-                            Text(helper).font(.octoCaption).foregroundStyle(OctoColor.textMuted).fixedSize(horizontal: false, vertical: true)
+                            ZStack(alignment: .topLeading) {
+                                ForEach(Array(helpers.enumerated()), id: \.offset) { _, line in
+                                    Text(line).font(.octoCaption).fixedSize(horizontal: false, vertical: true).hidden().accessibilityHidden(true)
+                                }
+                                Text(helper).font(.octoCaption).foregroundStyle(OctoColor.textMuted).fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .layoutValue(key: RowShare.self, value: 1)
-                    Text(value)
-                        .font(.octoBodySmall)
-                        .foregroundStyle(enabled ? OctoColor.textSecondary : OctoColor.textMuted)
-                        .multilineTextAlignment(.trailing)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    Reading(value: value, answers: answers, enabled: enabled)
                         .layoutValue(key: RowShare.self, value: 0.8)
+                        .layoutValue(key: RowAnswers.self, value: answers.contains(value) ? answers : [])
                     Image(systemName: SettingsIcon.chevron)
                         .font(.system(size: 13, weight: .semibold))
                         .frame(width: 18, height: 18)

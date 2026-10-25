@@ -72,7 +72,7 @@ fun PlayerBackgroundSection(vm: PlayerBackgroundViewModel = hiltViewModel()) {
     }
 
     SettingsGroup(title = "Player", icon = OctoIcons.Playback) {
-        ChoiceRow(SettingsIndex.PlayerBackground, value = ModeChoices.getValue(background.mode).label, onClick = {
+        ChoiceRow(SettingsIndex.PlayerBackground, value = ModeChoices.getValue(background.mode).label, answers = BackgroundMode.entries.map { ModeChoices.getValue(it).label }, onClick = {
             val options = BackgroundMode.entries
             sheet.show(
                 ChoiceRequest(SettingsIndex.PlayerBackground.title, options.map(ModeChoices::getValue), options.indexOf(background.mode)) {
@@ -121,7 +121,7 @@ fun PlayerBackgroundSection(vm: PlayerBackgroundViewModel = hiltViewModel()) {
 private fun AnimatedArtRow(setting: AnimatedArtSetting, onChange: (AnimatedArtSetting) -> Unit) {
     val sheet = LocalChoiceSheet.current
     val options = AnimatedArtSetting.entries
-    ChoiceRow(SettingsIndex.AnimatedArt, value = setting.label, helper = AnimatedArtSetting.ABOUT, onClick = {
+    ChoiceRow(SettingsIndex.AnimatedArt, value = setting.label, helper = AnimatedArtSetting.ABOUT, answers = options.map { it.label }, onClick = {
         sheet.show(
             ChoiceRequest(SettingsIndex.AnimatedArt.title, options.map { Choice(it.label, it.about) }, options.indexOf(setting)) {
                 onChange(options[it])

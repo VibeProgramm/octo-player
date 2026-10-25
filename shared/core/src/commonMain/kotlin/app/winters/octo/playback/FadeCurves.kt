@@ -110,11 +110,11 @@ val FadeCurve.label: String
 // What the curve sounds like, in a line.
 val FadeCurve.detail: String
     get() = when (this) {
-        FadeCurve.EqualPower -> "Steady loudness from one song to the next."
-        FadeCurve.Linear -> "A straight fade, with a slight dip in the middle."
-        FadeCurve.SCurve -> "Holds each song longer, then swaps them quickly in the middle."
-        FadeCurve.EvenLoudness -> "Fades by the same step every second, so the middle dips low."
-        FadeCurve.MixOnly -> "Both songs play full over each other, like a DJ, a little quieter so they don't distort."
+        FadeCurve.EqualPower -> "Steady loudness through the fade."
+        FadeCurve.Linear -> "A straight fade, softer midway."
+        FadeCurve.SCurve -> "Holds each song, then swaps fast."
+        FadeCurve.EvenLoudness -> "Steps down the same each second."
+        FadeCurve.MixOnly -> "Both play full, like a DJ mix."
     }
 
 // What the crossfade curve row says while smart transitions pick the

@@ -1,5 +1,6 @@
 import OctoKit
 import SwiftUI
+import UIKit
 
 extension Font {
     /// The quiet label size: group titles and small headings.
@@ -23,6 +24,7 @@ enum SettingsIcon {
     static let radio = "dot.radiowaves.left.and.right"
     static let headphones = "headphones"
     static let cast = "airplay.audio"
+    static let queue = "list.bullet"
     static let layout = "rectangle.3.group"
     static let home = "house"
     static let playlists = "music.note.list"
@@ -32,7 +34,8 @@ enum SettingsIcon {
     static let timer = "timer"
     static let wifi = "wifi"
     static let storage = "cylinder.split.1x2"
-    static let listeners = "person.3"
+    static let listeners = "person.2.circle"
+    static let account = "person.crop.circle"
     static let key = "key"
     static let sync = "arrow.triangle.2.circlepath"
     static let chevron = "chevron.right"
@@ -256,26 +259,41 @@ private struct RowLabel: View {
     var enabled = true
     var titleColor: Color = OctoColor.textPrimary
     var belowColor: Color = OctoColor.textMuted
+    /// Every answer's own line, when the line under the title is the chosen answer's: the room under the
+    /// title fits the tallest, so the row keeps one height and its title one place.
+    var belowAnswers: [String] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.octoBody).foregroundStyle(enabled ? titleColor : OctoColor.textMuted).fixedSize(horizontal: false, vertical: true)
             if let below {
-                Text(below).font(.octoCaption).foregroundStyle(belowColor).fixedSize(horizontal: false, vertical: true)
+                ZStack(alignment: .topLeading) {
+                    ForEach(Array(belowAnswers.enumerated()), id: \.offset) { _, line in
+                        Text(line).font(.octoCaption).fixedSize(horizontal: false, vertical: true).hidden().accessibilityHidden(true)
+                    }
+                    Text(below).font(.octoCaption).foregroundStyle(belowColor).fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// Which share of a row's spare width a part takes: the title 1, the value 0.8, and nothing set
+/// Which share of a row's spare width a part may take: the title 1, the value 0.8, and nothing set
 /// for parts that keep their own size (a chevron, a spinner).
 struct RowShare: LayoutValueKey {
     static let defaultValue: CGFloat? = nil
 }
 
-/// A row's title and value side by side, sharing the room the fixed parts leave 1 to 0.8, as
-/// the other apps divide it. Each wraps within its share, so neither is ever cut short.
+/// Every value a row can show, when the one shown is among them, for the narrower value its layout may pick.
+struct RowAnswers: LayoutValueKey {
+    static let defaultValue: [String] = []
+}
+
+/// A row's title and value side by side in the room the fixed parts leave. The value takes only
+/// the room its words need, up to 0.8 to the title's 1 (or all the room the title leaves when the title
+/// fits on one line beside it), as the other apps divide it, and the title takes the rest. Each wraps
+/// within its width, so neither is ever cut short.
 struct TitleValueLayout: Layout {
     var spacing: CGFloat = 12
 
@@ -306,27 +324,93 @@ struct TitleValueLayout: Layout {
         let fixed = zip(shares, ideal).reduce(CGFloat(0)) { $0 + ($1.0 == nil ? $1.1 : 0) }
         let spare = max(0, total - fixed - spacing * CGFloat(max(subviews.count - 1, 0)))
         let whole = shares.compactMap { $0 }.reduce(0, +)
-        return zip(shares, ideal).map { share, width in
-            guard let share else { return width }
-            return whole > 0 ? spare * share / whole : 0
+        guard whole > 0 else { return zip(shares, ideal).map { $0 == nil ? $1 : 0 } }
+        // A value (a share under 1) takes what its words need, up to its share, or up to all the room the
+        // titles leave when they fit on one line beside it; titles share the rest.
+        let titlesNeed = zip(shares, ideal).reduce(CGFloat(0)) { $0 + (($1.0 ?? 0) >= 1 ? $1.1 : 0) }
+        let values: [CGFloat?] = zip(shares, ideal).map { share, width in
+            guard let share, share < 1 else { return nil }
+            return min(width, max(spare * share / whole, spare - titlesNeed))
         }
+        let titleShares = zip(shares, values).reduce(CGFloat(0)) { $0 + ($1.1 == nil ? ($1.0 ?? 0) : 0) }
+        let left = spare - values.compactMap { $0 }.reduce(0, +)
+        let wide = subviews.indices.map { index in
+            guard let share = shares[index] else { return ideal[index] }
+            return values[index] ?? (titleShares > 0 ? left * share / titleShares : 0)
+        }
+        return narrower(wide, subviews, shares) ?? wide
+    }
+
+    /// The same row with its value narrower, its widest answers wrapping to two lines at a space: as wide as
+    /// its 2nd widest answer, then its 3rd, and so on, taking the first step that takes a line off the title's
+    /// side with the row no taller. Only for a row whose value shown is one of its answers (`RowAnswers` is
+    /// empty otherwise), so it never depends on the answer shown: nothing moves between answers, and no wide
+    /// empty gap sits beside a short value.
+    private func narrower(_ wide: [CGFloat], _ subviews: Subviews, _ shares: [CGFloat?]) -> [CGFloat]? {
+        guard let value = shares.firstIndex(where: { ($0 ?? 1) < 1 }) else { return nil }
+        let font = Self.readingFont
+        let answers = Array(Set(subviews[value][RowAnswers.self])).map { ($0, Self.oneLine($0, font)) }.sorted { $0.1 > $1.1 }
+        let titles = shares.indices.filter { (shares[$0] ?? 0) >= 1 }
+        guard answers.count >= 2, !titles.isEmpty else { return nil }
+        func widths(at step: Double) -> [CGFloat] {
+            var widths = wide
+            widths[value] = CGFloat(step)
+            for index in titles { widths[index] += (wide[value] - CGFloat(step)) / CGFloat(titles.count) }
+            return widths
+        }
+        guard let step = narrowValueWidth(
+            wide: Double(wide[value]), ones: answers.map { Double($0.1) }, twos: answers.map { Double(Self.twoLines($0.0, font)) },
+            title: { Double(height(widths(at: $0), subviews, titles)) },
+            value: { Double(height(widths(at: $0), subviews, subviews.indices.filter { !titles.contains($0) })) }
+        ) else { return nil }
+        return widths(at: step)
+    }
+
+    /// How tall the parts at `indices` stand at these widths.
+    private func height(_ widths: [CGFloat], _ subviews: Subviews, _ indices: [Int]) -> CGFloat {
+        indices.map { subviews[$0].sizeThatFits(ProposedViewSize(width: widths[$0], height: nil)).height }.max() ?? 0
+    }
+
+    /// UIKit's twin of `.octoBodySmall`, the font a value is drawn in.
+    private static var readingFont: UIFont {
+        UIFontMetrics(forTextStyle: .subheadline).scaledFont(for: .systemFont(ofSize: 14, weight: .regular))
+    }
+
+    private static func oneLine(_ text: String, _ font: UIFont) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width) + 1
+    }
+
+    /// The narrowest width that holds the text on two lines, broken at a space.
+    private static func twoLines(_ text: String, _ font: UIFont) -> CGFloat {
+        let words = text.split(separator: " ").map(String.init)
+        guard words.count > 1 else { return oneLine(text, font) }
+        return (1..<words.count).map { cut in
+            max(oneLine(words[..<cut].joined(separator: " "), font), oneLine(words[cut...].joined(separator: " "), font))
+        }.min() ?? oneLine(text, font)
     }
 }
 
 /// A row's current value on its right: quieter than the title, kept to the end of the line,
-/// at most two lines, in its share of the row.
-private struct Reading: View {
+/// at most two lines, in the width its row gives it. Given `answers`, every one is laid under it
+/// unseen, so the value is as wide as the widest and the row never changes height between them.
+struct Reading: View {
     let value: String
+    var answers: [String] = []
     var enabled = true
 
     var body: some View {
-        Text(value)
-            .font(.octoBodySmall)
-            .foregroundStyle(enabled ? OctoColor.textSecondary : OctoColor.textMuted)
-            .multilineTextAlignment(.trailing)
-            .lineLimit(2)
-            .truncationMode(.tail)
-            .frame(maxWidth: .infinity, alignment: .trailing)
+        ZStack(alignment: .trailing) {
+            ForEach(Array(answers.enumerated()), id: \.offset) { _, answer in
+                Text(answer).font(.octoBodySmall).multilineTextAlignment(.trailing).lineLimit(2).hidden().accessibilityHidden(true)
+            }
+            Text(value)
+                .font(.octoBodySmall)
+                .foregroundStyle(enabled ? OctoColor.textSecondary : OctoColor.textMuted)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+                .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
 
@@ -378,17 +462,30 @@ struct ChoiceRow: View {
     var title: String?
     let value: String
     var helper: String?
+    /// What the row can show on its right, when the menu words its answers longer; the menu's labels otherwise.
+    var values: [String]?
     var enabled = true
     let question: SettingsQuestion
 
-    init(_ entry: SettingEntry?, title: String? = nil, value: String, helper: String? = nil, enabled: Bool = true,
+    init(_ entry: SettingEntry?, title: String? = nil, value: String, helper: String? = nil, values: [String]? = nil, enabled: Bool = true,
          question: SettingsQuestion) {
         self.entry = entry
         self.title = title
         self.value = value
         self.helper = helper
+        self.values = values
         self.enabled = enabled
         self.question = question
+    }
+
+    /// What the row can show on its right: `values`, or the menu's labels.
+    private var shownAnswers: [String] { values ?? question.answers.map(\.label) }
+
+    /// The answers' own lines, when the line under the title is the chosen answer's.
+    private var answerLines: [String] {
+        let lines = question.answers.compactMap(\.detail)
+        guard let helper, lines.contains(helper) else { return [] }
+        return lines
     }
 
     var body: some View {
@@ -397,8 +494,10 @@ struct ChoiceRow: View {
         } label: {
             RowFrame(entry: entry) {
                 TitleValueLayout {
-                    RowLabel(title: title ?? entry?.title ?? "", below: helper, enabled: enabled).layoutValue(key: RowShare.self, value: 1)
-                    Reading(value: value, enabled: enabled).layoutValue(key: RowShare.self, value: 0.8)
+                    RowLabel(title: title ?? entry?.title ?? "", below: helper, enabled: enabled, belowAnswers: answerLines).layoutValue(key: RowShare.self, value: 1)
+                    Reading(value: value, answers: shownAnswers, enabled: enabled)
+                        .layoutValue(key: RowShare.self, value: 0.8)
+                        .layoutValue(key: RowAnswers.self, value: shownAnswers.contains(value) ? shownAnswers : [])
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 13, weight: .semibold))
                         .frame(width: 18, height: 18)

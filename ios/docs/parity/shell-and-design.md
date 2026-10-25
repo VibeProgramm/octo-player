@@ -249,27 +249,27 @@ Glass on iPhone: the 2026-10-07 decision (octo-ios-native-glass) is that every g
 - [x] Spoken text with a lead: "<step words>, <title>" plus ". N more on the way" when the server's running rows number more than one (unlisted asks are not counted here, unlike the "+N" chip) (shared/ui/downloads/Downloads.kt:340)
 - [x] Spoken text with no lead: "N downloading" (ui/downloads/DownloadsPill.kt:126)
 - [x] The ring stays still (no turn, pulse, fill easing or check morph) when Octo's Reduce motion is on or the phone's animations are off (ui/downloads/DownloadsPill.kt:122)
-- [x] The feedback toast sits at the same height and draws over the pill when both show (ui/common/Feedback.kt:122, ui/nav/MainShell.kt:350) (iPhone: the message floats in its own window above the pill)
+- [x] The feedback toast sits at the same height and draws over the pill when both show (ui/common/Feedback.kt:129, ui/nav/MainShell.kt:350) (iPhone: the message floats in its own window above the pill)
 
 ## 14. Feedback toasts
 
-- [x] One message at a time; a new one replaces the one showing at once (the words swap, no exit animation between them); the same text shown twice counts as a new message (ui/common/Feedback.kt:59, ui/common/Feedback.kt:110)
-- [x] Kinds: plain text; text with an action (Undo for an undoable change); a done line with a white check icon (ui/common/Feedback.kt:78, ui/common/Feedback.kt:83, ui/common/Feedback.kt:86)
-- [x] Only for what the listener did and can undo, or something they asked for that did or did not happen (ui/common/Feedback.kt:70)
-- [x] It stays 3.5 s, or 6 s when it has an action, counted from when its entrance finishes (ui/common/Feedback.kt:56, ui/common/Feedback.kt:113)
-- [x] It dismisses only itself: a newer message shown meanwhile is not cleared by the old timer (ui/common/Feedback.kt:88)
-- [x] Position: bottom center, 20 dp side margins, its bottom 80 dp above the bottom inset (14 + 56 + 10), the same whether the bar is visible or not; at most 520 dp wide; at least 48 dp tall (ui/common/Feedback.kt:96, ui/common/Feedback.kt:122, ui/common/Feedback.kt:138)
-- [x] It does not move for the keyboard (ui/common/Feedback.kt:122)
-- [x] Glass: the floating glaze (bar glass) as a capsule, frosting the page layer (ui/common/Feedback.kt:124) (iPhone: a floating Liquid Glass capsule)
-- [x] Row padding: start 16 dp with an icon, 20 dp without; end 6 dp with an action, 20 dp without; 12 dp top and bottom; items 10 dp apart, centered (ui/common/Feedback.kt:152)
-- [x] Icon 18 dp white (ui/common/Feedback.kt:162)
-- [x] Text 14 sp Medium white, up to 2 lines, ellipsized, wrapping to its content up to the space left (ui/common/Feedback.kt:164)
-- [x] Action: 14 sp SemiBold white, in a capsule touch area with 14 by 8 dp padding and the platform ripple; tapping runs the action then dismisses (ui/common/Feedback.kt:174) (iPhone: a light press highlight in the action's capsule)
-- [x] Tapping a message with no action dismisses it (no ripple); a message with an action is only dismissed by its action or its timer (ui/common/Feedback.kt:142)
-- [x] Entrance: alpha 0 to 1, scale 0.92 to 1 and a rise from 10 dp lower, from the bottom center, on `spring(0.85, 500)` (ui/common/Feedback.kt:113, ui/common/Feedback.kt:127)
-- [x] Exit: back to 0 over 160 ms on FastOutLinearIn, cubic (0.4, 0, 1, 1), then removed (ui/common/Feedback.kt:117)
-- [x] With the phone's animations off (only that, not Octo's Reduce motion) it only fades: in and out over 120 ms, no scale or rise (ui/common/Feedback.kt:105, ui/common/Feedback.kt:130) (iPhone: the phone's Reduce Motion stands in for animations off)
-- [x] Accessibility: a polite live region, so the line is read out when it appears (ui/common/Feedback.kt:140) (iPhone: a VoiceOver announcement as it appears)
+- [x] One message at a time; a new one replaces the one showing at once (the words swap, no exit animation between them); the same text shown twice counts as a new message (ui/common/Feedback.kt:63, ui/common/Feedback.kt:117)
+- [x] Kinds: plain text; text with an action (Undo for an undoable change); a done line with a white check icon (ui/common/Feedback.kt:82, ui/common/Feedback.kt:87, ui/common/Feedback.kt:90)
+- [x] Only for what the listener did and can undo, or something they asked for that did or did not happen (ui/common/Feedback.kt:74)
+- [x] It stays 3.5 s, or 6 s when it has an action, counted from when its entrance finishes (ui/common/Feedback.kt:60, ui/common/Feedback.kt:120)
+- [x] It dismisses only itself: a newer message shown meanwhile is not cleared by the old timer (ui/common/Feedback.kt:92)
+- [x] Position: bottom center, 20 dp side margins, its bottom 80 dp above the bottom inset (14 + 56 + 10), the same whether the bar is visible or not; at most 520 dp wide; at least 48 dp tall (ui/common/Feedback.kt:100, ui/common/Feedback.kt:129, ui/common/Feedback.kt:145)
+- [x] It does not move for the keyboard (ui/common/Feedback.kt:129)
+- [x] Glass: the floating glaze (bar glass) as a capsule, frosting the page layer (ui/common/Feedback.kt:131) (iPhone: a floating Liquid Glass capsule)
+- [x] Row padding: start 16 dp with an icon, 20 dp without; end 0 dp with an action (its target carries the inset), 20 dp without; the message text 12 dp top and bottom; items 10 dp apart, centered (ui/common/Feedback.kt:159)
+- [x] Icon 18 dp white (ui/common/Feedback.kt:167)
+- [x] Text 14 sp Medium white, up to 2 lines, ellipsized, wrapping to its content up to the space left (ui/common/Feedback.kt:169)
+- [x] Action: a button, 14 sp SemiBold in the page color `#0C0C0D` on a capsule of the accent (at least 34 dp tall, 14 dp side padding), 7 dp in from the pill's top, bottom and end, so its touch target is 48 dp tall and clipped to the pill's round end; pressed, the capsule's fill drops to 82%; tapping runs the action then dismisses (ui/common/Feedback.kt:179) (iPhone: the same capsule, its fill dimmed to 82% while pressed)
+- [x] Tapping a message with no action dismisses it (no ripple); a message with an action is only dismissed by its action or its timer (ui/common/Feedback.kt:149)
+- [x] Entrance: alpha 0 to 1, scale 0.92 to 1 and a rise from 10 dp lower, from the bottom center, on `spring(0.85, 500)` (ui/common/Feedback.kt:120, ui/common/Feedback.kt:134)
+- [x] Exit: back to 0 over 160 ms on FastOutLinearIn, cubic (0.4, 0, 1, 1), then removed (ui/common/Feedback.kt:124)
+- [x] With the phone's animations off (only that, not Octo's Reduce motion) it only fades: in and out over 120 ms, no scale or rise (ui/common/Feedback.kt:112, ui/common/Feedback.kt:137) (iPhone: the phone's Reduce Motion stands in for animations off)
+- [x] Accessibility: a polite live region, so the line is read out when it appears (ui/common/Feedback.kt:147) (iPhone: a VoiceOver announcement as it appears)
 
 ## 15. Selection mode and the selection bar
 
@@ -402,7 +402,7 @@ Glass on iPhone: the 2026-10-07 decision (octo-ios-native-glass) is that every g
 - [x] A scale factor after the scale is 1 + (base - 1) x distance, so 1.05 becomes 1.0 when reduced (design/OctoMotion.kt:111)
 - [x] The phone's own animation speed is not applied twice: only its "off" counts, as reduced (design/OctoMotion.kt:129) (iPhone: iOS gives no animation speed; only its Reduce Motion counts)
 - [x] Not shortened by Reduce motion (kept as they are): the bar's shape spring, the tab pill spring, the bar swipe lean and settle, the bar and pill fades (300 ms), the player fade (400/300 ms), the sheet's rise spring, the selection bar's enter and exit (ui/nav/BottomBar.kt:125, ui/nav/MainShell.kt:287, design/GlassSheet.kt:85, ui/common/SelectionBar.kt:102)
-- [x] The feedback toast only calms for the phone's animations-off, not Octo's setting (ui/common/Feedback.kt:105)
+- [x] The feedback toast only calms for the phone's animations-off, not Octo's setting (ui/common/Feedback.kt:112)
 
 ## 21. Colours
 

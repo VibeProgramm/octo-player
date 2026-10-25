@@ -58,7 +58,7 @@ struct ToastHost: View {
     }
 }
 
-/// One message: an optional icon, the words, and an optional action.
+/// One message: an optional icon, the words, and an optional action as a small accent button.
 private struct ToastPill: View {
     let toast: Router.Toast
     let dismiss: () -> Void
@@ -71,6 +71,7 @@ private struct ToastPill: View {
                 .foregroundStyle(.white)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 12)
             if let action = toast.action {
                 Button {
                     toast.perform?()
@@ -78,17 +79,16 @@ private struct ToastPill: View {
                 } label: {
                     Text(action)
                         .font(.octo(14, .semibold, .subheadline))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OctoColor.background)
+                        .lineLimit(1)
                         .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .contentShape(Capsule())
+                        .frame(minHeight: 34)
                 }
                 .buttonStyle(ToastActionPress())
             }
         }
         .padding(.leading, toast.icon != nil ? 16 : 20)
-        .padding(.trailing, toast.action != nil ? 6 : 20)
-        .padding(.vertical, 12)
+        .padding(.trailing, toast.action != nil ? 0 : 20)
         .frame(minHeight: 48)
         .floatingGlass(Capsule())
         .contentShape(Capsule())
@@ -97,11 +97,16 @@ private struct ToastPill: View {
     }
 }
 
-/// The action's press: the platform's light highlight inside its capsule.
+/// The action as a button: a capsule of the accent with the page's dark ink, which every accent
+/// keeps at AA, sitting in from the pill's end as far as from its top and bottom. Its fill dims a
+/// little under the finger. The capsule and the space around it, up to the pill's round end,
+/// take the tap.
 private struct ToastActionPress: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(Capsule().fill(Color.white.opacity(configuration.isPressed ? 0.12 : 0)))
+            .background(OctoColor.accent.opacity(configuration.isPressed ? 0.82 : 1), in: Capsule())
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .padding(7)
+            .contentShape(Capsule())
     }
 }

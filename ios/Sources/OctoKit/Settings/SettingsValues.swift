@@ -141,6 +141,30 @@ public enum RadioVariety: String, StoredChoice, Codable {
     }
 }
 
+/// What swiping a song row right does: puts it right after the song that is on, at the end of
+/// the queue, or nothing. Kept by name, as the other apps keep it.
+public enum SwipeAction: String, StoredChoice, Codable {
+    case playNext = "PlayNext"
+    case addToQueue = "AddToQueue"
+    case off = "Off"
+
+    public var label: String {
+        switch self {
+        case .playNext: "Play next"
+        case .addToQueue: "Add to queue"
+        case .off: "Off"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .playNext: "After the current song"
+        case .addToQueue: "At the end of the queue"
+        case .off: "Swiping does nothing"
+        }
+    }
+}
+
 /// How a listener tunes Octo's radio.
 public struct RadioTuning: Sendable, Equatable {
     public var discovery: RadioDiscovery
@@ -552,6 +576,8 @@ public struct PlayerPrefs: Sendable, Equatable, Codable {
     public var castRenderers = true
     public var castKeepPlaying = false
     public var libraryOnly = false
+    /// What swiping a song row right does.
+    public var swipeAction: SwipeAction = .playNext
     /// The accent the app is drawn in, or the playing cover's.
     public var accent: AccentChoice = .octo
     /// Whether Octo's glass takes the accent too, or stays Apple's own.
@@ -589,7 +615,7 @@ public struct PlayerPrefs: Sendable, Equatable, Codable {
     enum CodingKeys: String, CodingKey {
         case liveBackground, background, crossfade, crossfadeSeconds, crossfadeCurve, smartTransitions, filterSweeps, matchTempo, lyricsOnline,
              speed, keepPitch, pitchSemitones, skipSilence, autoplay, radioDiscovery, radioAdventure, radioVariety, radioFavorites,
-             resumeWired, resumeBluetooth, resumeAlways, ambient, reduceMotion, castRenderers, castKeepPlaying, libraryOnly, accent, glassTint,
+             resumeWired, resumeBluetooth, resumeAlways, ambient, reduceMotion, castRenderers, castKeepPlaying, libraryOnly, swipeAction, accent, glassTint,
              animatedArt
     }
 
@@ -622,6 +648,7 @@ public struct PlayerPrefs: Sendable, Equatable, Codable {
         castRenderers = c.value(.castRenderers, or: d.castRenderers)
         castKeepPlaying = c.value(.castKeepPlaying, or: d.castKeepPlaying)
         libraryOnly = c.value(.libraryOnly, or: d.libraryOnly)
+        swipeAction = c.choice(.swipeAction, or: d.swipeAction)
         accent = c.choice(.accent, or: d.accent)
         glassTint = c.value(.glassTint, or: d.glassTint)
         animatedArt = c.choice(.animatedArt, or: d.animatedArt)

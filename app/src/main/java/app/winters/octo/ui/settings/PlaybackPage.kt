@@ -29,6 +29,7 @@ import app.winters.octo.player.CrossfadeSecondsRange
 import app.winters.octo.player.PlayerPrefs
 import app.winters.octo.player.PlayerSettings
 import app.winters.octo.player.SpeedPopup
+import app.winters.octo.player.SwipeAction
 import app.winters.octo.ui.common.Choice
 import app.winters.octo.ui.common.ChoiceRequest
 import app.winters.octo.ui.common.LocalChoiceSheet
@@ -60,6 +61,7 @@ class PlaybackViewModel @Inject constructor(private val settings: PlayerSettings
     fun setCrossfadeCurve(curve: FadeCurve) = change { setCrossfadeCurve(curve) }
     fun setSkipSilence(on: Boolean) = change { setSkipSilence(on) }
     fun setAutoplay(on: Boolean) = change { setAutoplay(on) }
+    fun setSwipeAction(action: SwipeAction) = change { setSwipeAction(action) }
     fun setResumeWired(on: Boolean) = change { setResumeWired(on) }
     fun setResumeBluetooth(on: Boolean) = change { setResumeBluetooth(on) }
     fun setResumeAlways(on: Boolean) = change { setResumeAlways(on) }
@@ -74,9 +76,10 @@ private fun paceLabel(prefs: PlayerPrefs): String = buildString {
     if (prefs.pitchSemitones != 0) append(", shifted ${prefs.pitchSemitones} st")
 }
 
-// How songs play: blending, speed, skipping silence and Autoplay, music
-// coming back when headphones connect, and casting to TVs and speakers.
-// Radio has a page of its own.
+// How songs play: blending, speed and skipping silence; the queue, what
+// a swipe on a song adds to it and Autoplay when it ends; music coming
+// back when headphones connect, and casting to TVs and speakers. Radio
+// has a page of its own.
 @Composable
 fun PlaybackPage(onBack: () -> Unit, highlight: String?, vm: PlaybackViewModel = hiltViewModel()) {
     val prefs by vm.prefs.collectAsStateWithLifecycle()
@@ -120,6 +123,17 @@ fun PlaybackPage(onBack: () -> Unit, highlight: String?, vm: PlaybackViewModel =
                 checked = prefs.skipSilence,
                 onChange = vm::setSkipSilence,
             )
+        }
+        SettingsGroup(title = "Queue", icon = OctoIcons.Queue) {
+            val sheet = LocalChoiceSheet.current
+            val actions = SwipeAction.entries
+            ChoiceRow(SettingsIndex.SongSwipe, value = prefs.swipeAction.label, helper = prefs.swipeAction.detail, answers = actions.map { it.label }, helpers = actions.map { it.detail }, onClick = {
+                sheet.show(
+                    ChoiceRequest(SettingsIndex.SongSwipe.title, actions.map { Choice(it.label, it.detail) }, actions.indexOf(prefs.swipeAction)) {
+                        vm.setSwipeAction(actions[it])
+                    },
+                )
+            })
             SwitchRow(
                 SettingsIndex.Autoplay,
                 checked = prefs.autoplay,
@@ -205,6 +219,8 @@ private fun CurveRow(curve: FadeCurve, smart: Boolean, onPick: (FadeCurve) -> Un
         value = look.value,
         enabled = look.choosable,
         helper = look.helper,
+        answers = curves.map { it.label },
+        helpers = if (look.choosable) curves.map { it.detail } else emptyList(),
         onClick = {
             sheet.show(
                 ChoiceRequest(
