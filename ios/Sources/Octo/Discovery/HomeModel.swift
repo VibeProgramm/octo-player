@@ -225,6 +225,14 @@ final class HomeModel {
         }
     }
 
+    /// The listener's own charts became another country's: the chart is asked for again.
+    func chartsChanged() {
+        chartsTask?.cancel()
+        chartsTask = nil
+        chartsAsked = false
+        loadCharts()
+    }
+
     /// A shelf shown again, or the library found empty: asks for what Home now draws and has not
     /// asked for yet.
     func sectionsChanged() {

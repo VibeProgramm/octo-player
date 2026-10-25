@@ -88,9 +88,10 @@ enum TitleFit {
 
 extension View {
     /// A pushed page: no system bar, a floating glass back button at the top left, and room
-    /// for it above the content.
-    func detailPage() -> some View {
-        modifier(DetailPage())
+    /// for it above the content. A page with `ownBack` puts the back button on its title's line
+    /// itself, so none floats over it.
+    func detailPage(ownBack: Bool = false) -> some View {
+        modifier(DetailPage(ownBack: ownBack))
     }
 
     /// Room under a page's content for the floating bar.
@@ -139,12 +140,23 @@ private struct BackActionSetter: ViewModifier {
     }
 }
 
+/// Whether a page's own back button, on its title's line, has scrolled out of sight, so the
+/// floating one stands in for it.
+@MainActor
+@Observable
+final class PageTop {
+    var gone = false
+}
+
 private struct DetailPage: ViewModifier {
+    var ownBack = false
     @Environment(\.dismiss) private var dismiss
     @State private var handler: BackHandler?
+    @State private var top = PageTop()
 
     func body(content: Content) -> some View {
         content
+            .environment(top)
             .toolbar(.hidden, for: .navigationBar)
             .onPreferenceChange(BackHandlerKey.self) { value in
                 Task { @MainActor in
@@ -154,10 +166,14 @@ private struct DetailPage: ViewModifier {
             }
             .onDisappear { if BackHandler.current === handler { BackHandler.current = nil } }
             .overlay(alignment: .topLeading) {
-                GlazedIconButton(.back, label: "Back", size: 40) { if let handler { handler.run() } else { dismiss() } }
-                    .padding(.leading, 16)
-                    .padding(.top, 8)
+                if !ownBack || top.gone {
+                    GlazedIconButton(.back, label: "Back", size: 40) { if let handler { handler.run() } else { dismiss() } }
+                        .padding(.leading, 16)
+                        .padding(.top, 8)
+                        .transition(.opacity)
+                }
             }
+            .animation(.easeOut(duration: 0.2), value: top.gone)
     }
 }
 

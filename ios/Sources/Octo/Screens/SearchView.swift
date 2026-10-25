@@ -1,9 +1,10 @@
 import OctoKit
 import SwiftUI
 
-/// Search: its field under the title, the kinds to search, the "Library songs only" chip, recent
-/// searches and the chart while the field is empty, then each kind as one list: the library's
-/// answers first and, on a server, what it found beyond the library right after them.
+/// Search: its field in the title's place, one line of chips for the kinds and "Library songs
+/// only", recent searches and the chart while the field is empty, then each kind as one list:
+/// the library's answers first and, on a server, what it found beyond the library right after
+/// them.
 struct SearchView: View {
     @Environment(Session.self) private var session
     @Environment(Player.self) private var player
@@ -21,19 +22,26 @@ struct SearchView: View {
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 0) {
-            ScreenTitle("Search")
+            // The field in the title's place, then one line: the kinds as a menu, then Library
+            // songs only.
             field
-            Picker("Show", selection: $model.filter) {
-                ForEach(SearchFilter.allCases, id: \.self) { Text($0.label).tag($0) }
+                .padding(.top, 8)
+            // Library songs only moves into More on a phone with no room for it.
+            ControlLine(fills: false, overflow: libraryOnlyOverflow) {
+                // The five kinds do not fit on one line on the smallest phone, so they are a menu.
+                Menu {
+                    Picker("Show", selection: $model.filter) {
+                        ForEach(SearchFilter.allCases, id: \.self) { kind in Text(kind.label).tag(kind) }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    ChoiceChip(text: model.filter.label)
+                }
+                .accessibilityLabel("Show \(model.filter.label)")
+            } actions: {
+                EmptyView()
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 20)
             .padding(.top, 12)
-            if model.signedIn {
-                OnOffChip(text: LibraryOnlyWords.setting, on: libraryOnly) { AppSettings.shared.setLibraryOnly(!libraryOnly) }
-                    .padding(.leading, 20)
-                    .padding(.top, 10)
-            }
             if looksLikeRadioSearch(trimmed) { liveRadioRow }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -58,6 +66,17 @@ struct SearchView: View {
             if let raw = note.object as? Int, let kind = SearchFilter(rawValue: raw) { model.filter = kind }
         }
         #endif
+    }
+
+    /// "Library songs only" as a chip after the kinds, or as a switch in More.
+    private var libraryOnlyOverflow: [LineOverflow] {
+        guard model.signedIn else { return [] }
+        let on = libraryOnly
+        return [LineOverflow("libraryOnly", priority: 1, trailing: true) {
+            OnOffChip(text: LibraryOnlyWords.setting, on: on) { AppSettings.shared.setLibraryOnly(!on) }
+        } row: {
+            Toggle(LibraryOnlyWords.setting, isOn: Binding(get: { on }, set: { AppSettings.shared.setLibraryOnly($0) }))
+        }]
     }
 
     // MARK: The field

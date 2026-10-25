@@ -62,8 +62,9 @@ struct LiveListCover: View {
     }
 }
 
-/// One live list: its picture, name and size, one quiet line saying what it picks, Play and
-/// Shuffle, and its songs. More opens its options, where its rules are edited.
+/// One live list: its picture and name, one details line with its size and what it picks, Play
+/// and Shuffle, and its songs. More, at the end of the details line, opens its options, where its
+/// rules are edited.
 struct LiveListView: View {
     let id: String
     @Environment(LiveListStore.self) private var store
@@ -92,14 +93,15 @@ struct LiveListView: View {
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
                             .padding(.top, 20)
+                        // One details line: the size, then what the list picks, with More at its end.
                         HStack {
-                            if picked != nil {
-                                let total = songs.reduce(Int64(0)) { $0 + $1.durationMs } / 1_000
-                                Text([songCountLine(songs.count), songs.isEmpty ? nil : Int(total).spokenLength].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.octoCaption)
-                                    .foregroundStyle(OctoColor.textMuted)
-                            }
-                            Spacer()
+                            let total = songs.reduce(Int64(0)) { $0 + $1.durationMs } / 1_000
+                            Text([picked == nil ? nil : songCountLine(songs.count), songs.isEmpty ? nil : Int(total).spokenLength,
+                                  liveListSummary(list.query, count: nil)].compactMap { $0 }.joined(separator: " · "))
+                                .font(.octoCaption)
+                                .foregroundStyle(OctoColor.textMuted)
+                                .lineLimit(3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             options(list)
                         }
                         .frame(minHeight: 44)
@@ -113,13 +115,6 @@ struct LiveListView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, detailTopGap)
                     .padding(.bottom, 12)
-                    Text(liveListSummary(list.query, count: nil))
-                        .font(.octoCaption)
-                        .foregroundStyle(OctoColor.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 32)
-                        .padding(.bottom, 12)
                     if picked?.isEmpty == true {
                         Text(noMatchesNote).font(.octoBodySmall).foregroundStyle(OctoColor.textMuted).padding(20)
                     }
@@ -179,7 +174,14 @@ struct LiveListEditView: View {
         let playable = preview.map(\.asSong)
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle(id == nil ? "New live list" : "Edit live list")
+                PageHeader(id == nil ? "New live list" : "Edit live list")
+                // Cancel and Save held at the end of line two.
+                ControlLine {
+                    GlazeButton("Cancel", size: .small) { dismiss() }
+                    AccentButton(id == nil ? "Make live list" : "Save", size: .small) { save(draft) }
+                        .padding(.leading, 8)
+                        .padding(.trailing, 7)
+                }
                 GlassInput(liveListName(query), text: Binding(get: { draft.name }, set: { self.draft = LiveListDraft(name: $0, query: query) }))
                     .padding(.horizontal, 20)
                 Text("Picks songs from your whole library that match these rules, and keeps up as songs are added, played and liked.")
@@ -213,12 +215,7 @@ struct LiveListEditView: View {
                     limitMenu(query)
                 }
                 .padding(.horizontal, 20)
-                HStack(spacing: 10) {
-                    AccentButton(id == nil ? "Make live list" : "Save") { save(draft) }
-                    GlazeButton("Cancel") { dismiss() }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
+                .padding(.bottom, 16)
                 if starters {
                     SectionTitle("Or start with one of these")
                     ForEach(liveListStarters, id: \.name) { starter in
@@ -252,7 +249,7 @@ struct LiveListEditView: View {
                     }
                 }
             }
-            .padding(.top, detailTopGap)
+            .padding(.top, pageTopGap)
         }
         .barClearance()
         .scrollDismissesKeyboard(.immediately)

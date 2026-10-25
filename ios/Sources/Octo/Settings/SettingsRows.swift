@@ -101,8 +101,8 @@ private struct HighlightWash: ViewModifier {
 
 // MARK: Page frame
 
-/// A settings page: the back button, the large title, and its groups one under another, 24
-/// apart. `highlight` is the row a search result pointed at.
+/// A settings page: the back button and the large title on one line, and its groups one under
+/// another, 24 apart. `highlight` is the row a search result pointed at.
 struct SettingsPageFrame<Content: View>: View {
     let title: String
     var highlight: String?
@@ -114,10 +114,10 @@ struct SettingsPageFrame<Content: View>: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ScreenTitle(title)
+                    PageHeader(title)
                     VStack(spacing: 24) { content() }
                 }
-                .padding(.top, 8 + detailTopGap)
+                .padding(.top, pageTopGap)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollIndicators(.hidden)
@@ -129,7 +129,7 @@ struct SettingsPageFrame<Content: View>: View {
                 scroll: { id in proxy.scrollTo(id, anchor: .center) }
             ))
         }
-        .detailPage()
+        .detailPage(ownBack: true)
     }
 }
 

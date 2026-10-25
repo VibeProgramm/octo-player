@@ -282,10 +282,12 @@ public enum Charts {
 }
 
 extension SubsonicClient {
-    /// A chart from Octo (octoTopSongs; version 2 takes a chart id).
-    public func topChart(count: Int = 20, chart: String? = nil) async throws -> TopSongs {
+    /// A chart from Octo (octoTopSongs; version 2 takes a chart id, version 3 a country, the
+    /// listener's own when nil).
+    public func topChart(count: Int = 20, chart: String? = nil, country: String? = nil) async throws -> TopSongs {
         var params = [("count", "\(count)")]
         if let chart { params.append(("chart", chart)) }
+        if let country { params.append(("country", country)) }
         return try await get("getTopChart", params, key: "topSongs")
     }
 

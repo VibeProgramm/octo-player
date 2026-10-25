@@ -14,7 +14,7 @@ struct HealthPage: View {
         let offers = model.offers
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle("Library health").padding(.top, detailTopGap).bigTitle()
+                PageHeader("Library health").padding(.top, pageTopGap).bigTitle()
                 if let health = model.health {
                     let report = health.report
                     HealthWords(report.overview, muted: true)
@@ -77,7 +77,22 @@ struct HealthCheckPage: View {
         let files = actions.state.files
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle(found?.title ?? "Library health").padding(.top, detailTopGap).bigTitle()
+                VStack(spacing: 0) {
+                    PageHeader(found?.title ?? "Library health",
+                               count: found.flatMap { check in model.health.map { check.countLabel($0.report.count(check)) } })
+                    // Its fix for everything it found, when the server can, held at the end of line two.
+                    if let found, let health = model.health {
+                        let fixAll = fixAllButton(found, health)
+                        if fixAll.count > 0 {
+                            ControlLine {
+                                AccentButton(found.fixAllLabel(fixAll.count), size: .small, action: fixAll.open)
+                                    .padding(.trailing, 7)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, pageTopGap)
+                .bigTitle()
                 if let found {
                     if let health = model.health {
                         content(found, health)
@@ -104,13 +119,8 @@ struct HealthCheckPage: View {
         let songs = health.songs(check)
         let groups = groupIndexes(lines)
         let fixAll = fixAllButton(check, health)
-        HealthWords(check.meaning)
-        HealthWords(fixAll.count > 0 ? check.fixMeaning : check.advice)
-        if fixAll.count > 0 {
-            AccentButton(check.fixAllLabel(fixAll.count), size: .medium, action: fixAll.open)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
-        }
+        // What it means and what to do, as one paragraph.
+        HealthWords("\(check.meaning) \(fixAll.count > 0 ? check.fixMeaning : check.advice)")
         if lines.isEmpty { HealthWords("Nothing to fix here any more.", muted: true) }
         ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
             switch line {
@@ -210,15 +220,21 @@ struct RecentlyRemovedPage: View {
         let canRestore = files.actions?.canRestore == true
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle(recentlyRemovedWords).padding(.top, detailTopGap).bigTitle()
+                VStack(spacing: 0) {
+                    PageHeader(recentlyRemovedWords, count: trash.flatMap { $0.songs.isEmpty ? nil : songsCount($0.songs.count) })
+                    if let trash, canRestore && trash.songs.count > 1 {
+                        ControlLine {
+                            AccentButton("\(putBackWords) all", size: .small) { putBack(trash.songs) }
+                                .padding(.trailing, 7)
+                        }
+                    }
+                }
+                .padding(.top, pageTopGap)
+                .bigTitle()
                 if let trash {
                     HealthWords(keepsFor(trash.keepDays), muted: true)
                     if trash.songs.isEmpty {
                         HealthWords("Nothing is in the server's trash.", muted: true)
-                    } else if canRestore && trash.songs.count > 1 {
-                        AccentButton("\(putBackWords) all", size: .medium) { putBack(trash.songs) }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 8)
                     }
                     ForEach(trash.songs) { song in
                         TrashRow(song: song, gone: goneText(goneAtMillis: goneAtMillis(song.goneAt), nowMillis: now), canRestore: canRestore) {

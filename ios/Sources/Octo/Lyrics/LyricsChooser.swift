@@ -55,16 +55,19 @@ struct LyricsChooserContent: View {
         let onServer = serverChoice != nil
         let current = showingPick(serverChoice, showing)
         VStack(alignment: .leading, spacing: 0) {
-            Text("Choose lyrics").font(.octoSection).foregroundStyle(.white).padding(.horizontal, 24)
-            Text([song.title, song.byline].filter { !$0.isEmpty }.joined(separator: " by "))
-                .font(.octoCaption).foregroundStyle(OctoColor.textMuted).lineLimit(1)
-                .padding(.horizontal, 24)
-                .padding(.bottom, onServer ? 2 : 12)
-            if onServer {
-                Text("Lyrics picked from your server show on all your devices and apps.")
-                    .font(.octoCaption).foregroundStyle(OctoColor.textMuted)
-                    .padding(.horizontal, 24).padding(.bottom, 12)
+            // One line: the title, the song in muted words, and Done.
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Choose lyrics").font(.octoSection).foregroundStyle(.white).fixedSize().accessibilityAddTraits(.isHeader)
+                Text([song.title, song.byline].filter { !$0.isEmpty }.joined(separator: " by "))
+                    .font(.octoCaption).foregroundStyle(OctoColor.textMuted).lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Done") { dismiss() }
+                    .font(.octoLabel)
+                    .foregroundStyle(OctoColor.accent)
+                    .fixedSize()
             }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 12)
             let onlineAllowed = ready?.onlineAllowed ?? true
             if onServer || onlineAllowed {
                 let place = onServer ? "your server" : "LRCLIB"
@@ -122,6 +125,9 @@ struct LyricsChooserContent: View {
                 if let missed = missedLine(search.missed) { quiet(missed) }
             case .ready:
                 EmptyView()
+            }
+            if onServer {
+                quiet("Lyrics picked from your server show on all your devices and apps.")
             }
             Spacer().frame(height: 8)
         }

@@ -13,7 +13,7 @@ struct SharesScreen: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle("Shared links")
+                PageHeader("Shared links")
                 if let deleteProblem { PanelLine(text: deleteProblem, color: OctoColor.error) }
                 switch shares {
                 case .loading:
@@ -34,7 +34,7 @@ struct SharesScreen: View {
                     ForEach(list) { share in row(share, now: now) }
                 }
             }
-            .padding(.top, 8 + detailTopGap)
+            .padding(.top, pageTopGap)
         }
         .barClearance()
         .task { await load() }

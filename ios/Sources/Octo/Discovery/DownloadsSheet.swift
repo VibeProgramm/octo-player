@@ -219,7 +219,7 @@ private struct DownloadLogPage: View {
         let row = model.watch.rows.first { $0.logKey == key } ?? log.map { rowOf($0) }
         let events = log?.event ?? []
         let running = row?.finished == false
-        SheetBar(back: "Back to \(serverDownloadsTitle)", onBack: model.showList) {
+        SheetBar(back: "Back to \(serverDownloadsTitle)", onBack: model.showList, title: "Download") {
             if let row, let id = row.findId {
                 QuietButton(findSongsTitle) { model.find(id, title: row.title, from: key) }
             }
@@ -496,7 +496,7 @@ private struct FindSongsPage: View {
         let searching = found?.searching != false && watch.problem == nil
         SheetBar(back: from != nil ? "Back to the log" : "Back to \(serverDownloadsTitle)", onBack: {
             if let from { model.showLog(from) } else { model.showList() }
-        }) {
+        }, title: findSongsTitle) {
             if !searching {
                 QuietButton("Search again") {
                     asking = nil
@@ -585,7 +585,6 @@ private struct FindHead: View {
         HStack(spacing: 14) {
             Cover(id: song?.coverArt ?? id, size: 64, radius: 10)
             VStack(alignment: .leading, spacing: 2) {
-                Text(findSongsTitle.uppercased()).font(.octoCaption).foregroundStyle(OctoColor.textMuted)
                 Text(song.flatMap { $0.title.isEmpty ? nil : $0.title } ?? title).font(.octoHeadline).foregroundStyle(.white)
                 if let artist = song?.artist, !artist.isEmpty {
                     Text(artist).font(.octoBodySmall).foregroundStyle(OctoColor.textSecondary)
@@ -609,28 +608,48 @@ private struct FindHead: View {
 private struct FindSources: View {
     let sources: [FindSourceState]
 
+    /// Pills, a source each: its mark and its name, and why when it failed, wrapping onto a
+    /// second line rather than scrolling sideways.
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(sources, id: \.self) { source in
-                HStack(spacing: 8) {
-                    switch source.state {
-                    case findSearching:
-                        ProgressView().controlSize(.mini).tint(OctoColor.textSecondary).frame(width: 14, height: 14)
-                    case findOff:
-                        Image(systemName: "xmark").font(.system(size: 11)).foregroundStyle(OctoColor.textMuted).frame(width: 14)
-                    case findFailed:
-                        Image(systemName: "info.circle").font(.system(size: 12)).foregroundStyle(DiscoveryStyle.orange).frame(width: 14)
-                    default:
-                        Image(systemName: "checkmark").font(.system(size: 11)).foregroundStyle(OctoColor.textSecondary).frame(width: 14)
+        Group {
+            FlowRow(spacing: 6) {
+                ForEach(sources, id: \.self) { source in
+                    HStack(spacing: 6) {
+                        switch source.state {
+                        case findSearching:
+                            ProgressView().controlSize(.mini).tint(OctoColor.textSecondary).frame(width: 14, height: 14)
+                        case findOff:
+                            Image(systemName: "xmark").font(.system(size: 11)).foregroundStyle(OctoColor.textMuted).frame(width: 14)
+                        case findFailed:
+                            Image(systemName: "info.circle").font(.system(size: 12)).foregroundStyle(DiscoveryStyle.orange).frame(width: 14)
+                        default:
+                            Image(systemName: "checkmark").font(.system(size: 11)).foregroundStyle(OctoColor.textSecondary).frame(width: 14)
+                        }
+                        Text(source.name)
+                            .font(.octoCaption)
+                            .foregroundStyle(source.state == findOff ? OctoColor.textMuted : OctoColor.textSecondary)
+                            .lineLimit(1)
+                        // Why it could not search, as a quiet word on its pill.
+                        if source.state == findFailed {
+                            Text(words(source))
+                                .font(.octoCaption)
+                                .foregroundStyle(OctoColor.textMuted)
+                                .lineLimit(1)
+                        }
                     }
-                    let words = source.state == findSearching ? "Searching" : source.text ?? (source.state == findFailed ? "Could not search" : "Done")
-                    Text("\(source.name): \(words)")
-                        .font(.octoCaption)
-                        .foregroundStyle(source.state == findOff ? OctoColor.textMuted : OctoColor.textSecondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(chip, in: Capsule())
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(source.name): \(words(source))")
                 }
             }
         }
         .padding(.top, 12)
+    }
+
+    private func words(_ source: FindSourceState) -> String {
+        source.state == findSearching ? "Searching" : source.text ?? (source.state == findFailed ? "Could not search" : "Done")
     }
 }
 
@@ -729,10 +748,11 @@ private struct ReplaceItCard: View {
     }
 }
 
-/// The sheet's top line inside a log or Find songs: back, then its actions.
+/// The sheet's top line inside a log or Find songs: back, the view's title, then its actions.
 private struct SheetBar<Actions: View>: View {
     let back: String
     let onBack: () -> Void
+    var title: String?
     @ViewBuilder let actions: Actions
 
     var body: some View {
@@ -746,8 +766,13 @@ private struct SheetBar<Actions: View>: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(back)
-            Spacer()
-            actions
+            Text(title ?? "")
+                .font(.octoSection)
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+            actions.fixedSize()
         }
         .padding(.leading, 8)
         .padding(.trailing, 10)
