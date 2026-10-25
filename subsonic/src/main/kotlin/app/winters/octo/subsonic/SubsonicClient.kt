@@ -609,9 +609,10 @@ class SubsonicClient(
         public: Boolean? = null,
         songIdsToAdd: List<String> = emptyList(),
         songIndexesToRemove: List<Int> = emptyList(),
+        songsToRemove: List<Pair<String, Int>> = emptyList(),
         formPost: Boolean = false,
     ) {
-        updateCalls(id, name, comment, public, songIdsToAdd, songIndexesToRemove, formPost).forEach { sendCall(it, formPost) }
+        updateCalls(id, name, comment, public, songIdsToAdd, songIndexesToRemove, songsToRemove, formPost).forEach { sendCall(it, formPost) }
     }
 
     suspend fun deletePlaylist(id: String) = send("deletePlaylist", listOf("id" to id))

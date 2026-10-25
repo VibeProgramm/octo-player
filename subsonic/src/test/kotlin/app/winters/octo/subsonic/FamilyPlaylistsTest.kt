@@ -48,7 +48,7 @@ class FamilyPlaylistsTest {
 
     @Test
     fun familyMemberMayAddRemoveAndMaybeRename() {
-        val member = me(FamilyAbilities(familyPlaylistsEdit = true, manageFamily = false))
+        val member = me(FamilyAbilities(familyPlaylistsEdit = true, manageFamily = false, cleanOnly = false))
         assertEquals(
             PlaylistAccess(add = true, remove = true, mayRename = true, family = true),
             playlistAccess("Family", false, "alex", member),
@@ -66,10 +66,18 @@ class FamilyPlaylistsTest {
 
     @Test
     fun familyPlaylistWithoutAccountInfoLeavesRenameToServer() {
-        assertEquals(
-            PlaylistAccess(add = true, remove = true, mayRename = true, family = true),
-            playlistAccess("Family", false, "alex", null),
-        )
+        val access = playlistAccess("Family", false, "alex", null)
+        assertTrue(access.add)
+        assertFalse(access.remove)
+        assertTrue(access.mayRename)
+    }
+
+    @Test
+    fun aServerThatRemovesBySongLetsEveryEditorRemove() {
+        assertTrue(playlistAccess("Family", false, "alex", null, removesById = true).remove)
+        val cleanOnly = me(FamilyAbilities(cleanOnly = true))
+        assertTrue(playlistAccess("Family", false, "alex", cleanOnly, removesById = true).remove)
+        assertFalse(playlistAccess("Family", false, "alex", cleanOnly).remove)
     }
 
     @Test
@@ -77,6 +85,51 @@ class FamilyPlaylistsTest {
         val access = playlistAccess("Family", false, "alex", me(FamilyAbilities(cleanOnly = true)))
         assertTrue(access.add)
         assertFalse(access.remove)
+    }
+
+    @Test
+    fun octoSaysWhoMayRenameAndDelete() {
+        val member = me(FamilyAbilities(familyPlaylistsEdit = true, manageFamily = false, cleanOnly = false))
+        val made = playlistAccess("Family", false, "alex", member, mayRename = true, mayDelete = false)
+        assertTrue(made.rename)
+        assertFalse(made.mayRename)
+        assertFalse(made.delete)
+
+        val manager = me(FamilyAbilities(familyPlaylistsEdit = true, manageFamily = true, cleanOnly = false))
+        val refused = playlistAccess("Family", false, "alex", manager, mayRename = false)
+        assertFalse(refused.rename)
+    }
+
+    @Test
+    fun octoFamilyMarkDecidesOverTheOwnerName() {
+        assertFalse(isFamilyPlaylist("Family", "alex", octoFamily = false))
+        assertFalse(playlistAccess("Family", false, "alex", null, octoFamily = false).family)
+        assertTrue(isFamilyPlaylist("sam", "alex", octoFamily = true))
+        assertTrue(playlistAccess("sam", false, "alex", null, octoFamily = true).family)
+    }
+
+    @Test
+    fun aPlaylistRowPassesItsFamilyFields() {
+        val member = me(FamilyAbilities(manageFamily = false, cleanOnly = true))
+        val row = Playlist(
+            id = "p1",
+            owner = "sam",
+            octoFamily = true,
+            octoFamilyMayRename = true,
+            octoFamilyMayDelete = true,
+        )
+        assertEquals(
+            PlaylistAccess(add = true, remove = true, rename = true, delete = true, family = true),
+            row.access("alex", member, removesById = true),
+        )
+    }
+
+    @Test
+    fun songsToRemoveNameEachSongAndItsCopy() {
+        assertEquals(
+            listOf("a" to 1, "a" to 2),
+            songsToRemove(listOf("a", "b", "a", "c"), listOf(2, 0, 2, 9)),
+        )
     }
 
     @Test
