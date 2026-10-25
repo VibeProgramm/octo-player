@@ -56,9 +56,11 @@ struct PageHeader: View {
                 Color.clear
                     .frame(width: barButtonSide, height: barButtonSide)
                     .alignmentGuide(.pageTitleLine) { d in d[VerticalAlignment.center] }
-                    .padding(.leading, roomLead)
                     .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageHeader.space)).midY } action: { top?.lineInHeader = $0 }
+                    #if DEBUG
                     .onGeometryChange(for: CGPoint.self) { CGPoint(x: $0.frame(in: .global).midX, y: $0.frame(in: .global).midY) } action: { top?.roomOnScreen = $0 }
+                    #endif
+                    .padding(.leading, roomLead)
                     .accessibilityHidden(true)
             }
             ScreenTitle(title, maxSize: top?.titleRoom)

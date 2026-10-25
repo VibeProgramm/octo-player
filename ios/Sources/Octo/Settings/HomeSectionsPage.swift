@@ -48,8 +48,8 @@ struct HomeSectionsPage: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        // The header row takes no height of its own; the other rows set theirs.
-        .environment(\.defaultMinListRowHeight, 0)
+        // The list's own room above its first row would push the page's title off the bar's line.
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollIndicators(.hidden)
         .environment(\.editMode, .constant(.active))
         .tint(OctoColor.accent)
