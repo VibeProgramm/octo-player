@@ -79,6 +79,22 @@ class PlaylistEditsTest {
     }
 
     @Test
+    fun songsToRemoveGoAsIdAndCopy() {
+        val calls = updateCalls("pl1", null, null, null, emptyList(), emptyList(), songsToRemove = listOf("s1" to 2), formPost = false)
+        assertEquals(listOf("playlistId" to "pl1", "octoSongToRemove" to "s1@2"), calls[0].params)
+    }
+
+    @Test
+    fun updateSendsSongsToRemoveByIdAndCopy() = runTest {
+        ok()
+        client().updatePlaylist("pl1", songsToRemove = listOf("s1" to 2))
+
+        val request = server.takeRequest()
+        assertTrue(request.url.encodedQuery.orEmpty().contains("octoSongToRemove=s1%402"))
+        assertEquals(listOf("s1@2"), request.url.queryParameterValues("octoSongToRemove"))
+    }
+
+    @Test
     fun createPostsAFormWhenTheServerTakesOne() = runTest {
         ok(created)
         val playlist = client().createPlaylist("Drive", listOf("a", "b"), formPost = true)

@@ -56,6 +56,7 @@ fun updateCalls(
     public: Boolean?,
     songIdsToAdd: List<String>,
     songIndexesToRemove: List<Int>,
+    songsToRemove: List<Pair<String, Int>> = emptyList(),
     formPost: Boolean,
     perCall: Int = PLAYLIST_SONGS_PER_CALL,
 ): List<PlaylistCall> {
@@ -66,6 +67,8 @@ fun updateCalls(
         comment?.let { add("comment" to it) }
         public?.let { add("public" to "$it") }
         songIndexesToRemove.forEach { add("songIndexToRemove" to "$it") }
+        // Songs taken out by id and copy go as octoSongToRemove (Octo's family playlists).
+        songsToRemove.forEach { (id, copy) -> add("octoSongToRemove" to "$id@$copy") }
         batches.first().forEach { add("songIdToAdd" to it) }
     }
     return listOf(PlaylistCall("updatePlaylist", params)) + addSongsCalls(playlistId, batches.drop(1))

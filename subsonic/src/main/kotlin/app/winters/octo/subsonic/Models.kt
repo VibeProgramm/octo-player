@@ -269,6 +269,12 @@ data class Playlist(
     // "country", "artist", "chart", "forYou", "liked", "station"), from a
     // server that says; otherwise null.
     val octoGroup: String? = null,
+    // A family playlist, as Octo marks it, with who made it and what this
+    // listener may do with it (servers listing octoFamilyPlaylists).
+    val octoFamily: Boolean? = null,
+    val octoFamilyCreatedBy: String? = null,
+    val octoFamilyMayRename: Boolean? = null,
+    val octoFamilyMayDelete: Boolean? = null,
 )
 
 @Serializable
@@ -293,6 +299,12 @@ data class PlaylistWithSongs(
     val octoList: String? = null,
     val octoNotice: String? = null,
     val octoCoverTitle: String? = null,
+    // A family playlist, as Octo marks it, with who made it and what this
+    // listener may do with it (servers listing octoFamilyPlaylists).
+    val octoFamily: Boolean? = null,
+    val octoFamilyCreatedBy: String? = null,
+    val octoFamilyMayRename: Boolean? = null,
+    val octoFamilyMayDelete: Boolean? = null,
 )
 
 // Where one of a playlist's songs sits on the server, for writing a
