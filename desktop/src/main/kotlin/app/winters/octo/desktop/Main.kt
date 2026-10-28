@@ -37,6 +37,7 @@ import app.winters.octo.design.LocalTyping
 import app.winters.octo.design.ProvideWindowLook
 import app.winters.octo.design.TypingState
 import app.winters.octo.desktop.audio.CHECK_PLAY
+import app.winters.octo.desktop.audio.EnginePlayer
 import app.winters.octo.desktop.audio.checkSound
 import app.winters.octo.desktop.audio.openPlayer
 import app.winters.octo.desktop.library.coverLoader
@@ -54,11 +55,16 @@ import app.winters.octo.desktop.settings.systemTextScale
 import app.winters.octo.desktop.settings.textScale
 import app.winters.octo.desktop.system.AudioDropZone
 import app.winters.octo.desktop.system.LocalSystem
+import app.winters.octo.desktop.system.MemoryLog
+import app.winters.octo.desktop.system.logFolder
 import app.winters.octo.desktop.system.SOAK_RUN
 import app.winters.octo.desktop.system.SingleInstance
 import app.winters.octo.desktop.system.SystemIntegration
 import app.winters.octo.desktop.system.letRunningOctoComeForward
 import app.winters.octo.desktop.system.preloadStartClasses
+import app.winters.octo.desktop.system.rendererText
+import app.winters.octo.desktop.system.startMemoryLog
+import app.winters.octo.desktop.ui.GpuCacheTrim
 import app.winters.octo.desktop.system.soakRun
 import app.winters.octo.desktop.system.startsInTray
 import app.winters.octo.desktop.system.useAppNatives
@@ -320,6 +326,24 @@ fun main(args: Array<String>) {
                     val app = ready.app
                     val system = ready.system
                     system.watch(window)
+                    // A line every 10 minutes on the app's memory, for bug reports.
+                    val logs = logFolder(os)
+                    startMemoryLog(
+                        scope = app.scope,
+                        log = MemoryLog(logs),
+                        renderer = { rendererText(window) },
+                        state = {
+                            val where = when {
+                                system.miniPlayerOpen -> "mini"
+                                !system.windowVisible -> "tray"
+                                windowState.isMinimized -> "minimized"
+                                else -> "shown"
+                            }
+                            where to app.player.state.value.playing
+                        },
+                        reopens = { (app.player as? EnginePlayer)?.engine?.deviceReopens() },
+                    )
+                    GpuCacheTrim.start(app.scope)
                     // Music the server took in is looked for now and then
                     // while Octo runs, and on coming back to it; the library
                     // decides whether a look is due.
@@ -355,9 +379,13 @@ fun main(args: Array<String>) {
             // Remembers the window's own size and place as it changes, and
             // saves it once it settles, so a crash does not lose it.
             LaunchedEffect(Unit) {
+                var wasMinimized = false
                 snapshotFlow { Triple(windowState.position, windowState.size, maximizedNow() || windowState.placement != WindowPlacement.Floating) to windowState.isMinimized }
                     .debounce(700)
                     .collect { (where, minimized) ->
+                        // A window just minimized has its graphics card cache emptied soon.
+                        if (minimized && !wasMinimized) GpuCacheTrim.soon()
+                        wasMinimized = minimized
                         val (position, size, filled) = where
                         if (position is WindowPosition.Absolute && keepsSpot(minimized, filled, position.x.value, position.y.value)) {
                             floating = WindowSpot(position.x.value, position.y.value, size.width.value, size.height.value)

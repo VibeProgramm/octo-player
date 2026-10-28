@@ -76,6 +76,11 @@ pub trait Driver {
     fn devices(&mut self) -> Vec<OutputDevice>;
     /// The system's default device now.
     fn default_device(&mut self) -> Option<OutputDevice>;
+    /// The id of the system's default device now, as `default_device` would
+    /// give it. Asked every few seconds, so it must not cost memory each time.
+    fn default_device_id(&mut self) -> Option<String> {
+        self.default_device().map(|d| d.id)
+    }
     /// Opens `id`, or the default with `None`. `make` builds the callback's
     /// renderer once the rate and channels are known.
     fn open(

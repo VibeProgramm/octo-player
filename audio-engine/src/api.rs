@@ -443,6 +443,13 @@ impl Engine {
         self.shared.underruns()
     }
 
+    /// How many times a device was opened again and opened since the engine
+    /// started (a device lost and found, the default moved, or an output
+    /// chosen), not the attempts that found none.
+    pub fn device_reopens(&self) -> u64 {
+        self.shared.device_reopens.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// Replaces the certificates trusted for streams. A server's certificate
     /// is checked the system's way first; only when that fails is it let
     /// through, and only when its host has a pin equal to its SHA-256.
@@ -527,6 +534,12 @@ impl Engine {
     #[cfg(test)]
     pub fn set_test_planner(&self, planner: Option<crate::automix::Planner>) {
         *self.shared.planner.lock().unwrap_or_else(|e| e.into_inner()) = planner;
+    }
+
+    /// How many track infos the player holds.
+    #[cfg(test)]
+    pub fn infos_len(&self) -> usize {
+        self.shared.infos_len.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn send(&self, command: Command) -> Result<(), EngineError> {

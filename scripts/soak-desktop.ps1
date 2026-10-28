@@ -29,9 +29,29 @@
 #   -Source <name>    library (default) or radio
 #   -Minimized        minimizes the window once it is up
 #   -MinimizeAfter <m> minimizes it that many minutes in
+#   -TrayAfter <m>    closes the window to the tray that many minutes in
+#   -CycleTray <s>    from minute 2, closes the window to the tray and brings
+#                     it back (a second start) every that many seconds
+#   -CycleMinimize <s> from minute 2, minimizes and restores it every that
+#                     many seconds
+#   -MiniPlayer       opens the mini player beside the window
+#   -AmbientGlow <on|off> the song's colours behind the pages and the mini player
+#   -Discord          leaves the Discord status on (it shows the soak's songs)
 #   -PauseAfter <m>   pauses the music that many minutes in, for good
 #   -CacheAfter <m:MB> sets the window's GPU cache limit that many minutes in
 #   -Advance <s>      seconds per song (default 45; 0 lets each play out)
+#   -Output <name>    plays to the first output whose name holds this
+#   -MiniOnly         hands over to the mini player once playing (the window
+#                     goes away, as the mini player button does)
+#   -PurgeEvery <s>   empties every window's GPU cache every that many seconds
+#                     (each renderer on its own thread, Direct3D under skiko's
+#                     draw lock)
+#   -ToggleMiniEvery <s> hands over to the mini player and back every that many
+#                     seconds (0, never)
+#   -SwitchOutputs <s> moves the music to the next output (Octo's own
+#                     choice, not Windows') every that many seconds
+#   -CycleResize <s>  from minute 2, switches the window between two sizes
+#                     every that many seconds
 #   -Every <s>        seconds between samples (default 60)
 #   -Queue <file>     the songs every library run plays (default
 #                     desktop\build\soak\queue.txt, written by the first run)
@@ -41,10 +61,17 @@
 #                     after it shows (drawn by the window itself, so other
 #                     windows over it do not matter), for comparing builds
 #   -Keep             keeps the test profile afterwards
-#   -SelfTest         checks the script's reading of jcmd's answers
+#   -Gate <mode>      judges the run against 1.10.0's own: full, still, tray,
+#                     minimized or radio fail when private bytes grow more than
+#                     the mode's baseline plus 60 MB/h from minute 26; mini
+#                     fails when the graphics card memory or the median private
+#                     bytes keep climbing after the first minutes. Needs
+#                     -Minutes of at least 40; exits 3 on a failure.
+#   -SelfTest         checks the script's reading of jcmd's answers and its gates
 #
-# Writes samples.csv (a row a sample), summary.txt, the soak plan's events,
-# and gc.log (the JVM's collections) into the run's folder.
+# Writes samples.csv (a row a sample), summary.txt (ending with a GATE line
+# when -Gate is given), the soak plan's events, and gc.log (the JVM's
+# collections) into the run's folder.
 param(
     [string]$App = "",
     [string]$Label = "soak",
@@ -54,12 +81,24 @@ param(
     [ValidateSet("on", "off")][string]$WashMotion = "on",
     [ValidateSet("on", "off")][string]$Lyrics = "on",
     [ValidateSet("on", "off")][string]$Full = "on",
-    [ValidateSet("library", "radio")][string]$Source = "library",
+    [ValidateSet("library", "radio", "live")][string]$Source = "library",
     [switch]$Minimized,
     [int]$MinimizeAfter = 0,
+    [int]$TrayAfter = 0,
+    [int]$CycleTray = 0,
+    [int]$CycleMinimize = 0,
+    [switch]$MiniPlayer,
+    [ValidateSet("on", "off")][string]$AmbientGlow = "on",
+    [switch]$Discord,
     [int]$PauseAfter = 0,
     [string]$CacheAfter = "",
     [int]$Advance = 45,
+    [int]$SwitchOutputs = 0,
+    [string]$Output = "",
+    [switch]$MiniOnly,
+    [int]$PurgeEvery = 0,
+    [int]$ToggleMiniEvery = 0,
+    [int]$CycleResize = 0,
     [int]$Every = 60,
     [string]$Queue = "",
     [string]$Jvm = "",
@@ -68,10 +107,23 @@ param(
     [int]$Height = 900,
     [string]$Shots = "",
     [switch]$Keep,
+    [ValidateSet("", "full", "still", "tray", "minimized", "radio", "mini")][string]$Gate = "",
     [switch]$SelfTest
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
+
+# Private bytes growth in MB an hour from minute 26 (Get-Slope, regular
+# samples) of 1.10.0's own runs, which a gated run may exceed by 60. The
+# mini mode has no slope baseline: it is judged by Test-PlateauGate.
+#   full      f2-c64 (1.10.0's cap, 45 min): desktop-memory worktree, desktop\build\soak\f2-c64
+#   still     static-45
+#   tray      tray-45
+#   minimized min-45
+#   radio     radio-still (ran 30 min, so its slope rests on minutes 26 to 29)
+# The saved runs are in C:\Users\Brandon\.claude\plans\octo-player-issue-10-ram\evidence\soaks.
+$GateBaselines = @{ full = 203.7; still = 81.5; tray = 130.8; minimized = 47.4; radio = 107.7 }
+if ($Gate -and $Minutes -lt 40 -and -not $SelfTest) { throw "-Gate needs -Minutes of at least 40" }
 
 if (-not ("OctoSoak.Win" -as [type])) {
     Add-Type -Namespace OctoSoak -Name Win -MemberDefinition @'
@@ -84,6 +136,7 @@ if (-not ("OctoSoak.Win" -as [type])) {
 [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
 [DllImport("user32.dll")] public static extern bool PrintWindow(System.IntPtr hWnd, System.IntPtr hdc, uint flags);
 [DllImport("user32.dll")] public static extern bool GetWindowRect(System.IntPtr hWnd, out Rect rect);
+[DllImport("user32.dll")] public static extern bool SetWindowPos(System.IntPtr hWnd, System.IntPtr after, int x, int y, int cx, int cy, uint flags);
 public struct Rect { public int Left, Top, Right, Bottom; }
 public static string ThreadName(int id) {
     System.IntPtr thread = OpenThread(0x0800, false, id);
@@ -178,6 +231,7 @@ function Get-Sample([int]$ProcessId, [double]$Minute, [string]$Note = "") {
         GpuDedicatedMB = $gpu[0]
         GpuSharedMB = $gpu[1]
         CpuS = [math]::Round($p.TotalProcessorTime.TotalSeconds, 1)
+        IoOtherMB = $(try { [math]::Round((Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId").OtherTransferCount / 1MB, 1) } catch { $null })
     }
     $heap = Read-HeapInfo (Invoke-Jcmd $ProcessId "GC.heap_info")
     $row["HeapMB"] = $heap.HeapMB
@@ -189,9 +243,9 @@ function Get-Sample([int]$ProcessId, [double]$Minute, [string]$Note = "") {
     [pscustomobject]$row
 }
 
-# Growth in MB an hour over samples from minute 15 on (least squares).
-function Get-Slope($Samples, [string]$Field) {
-    $points = @($Samples | Where-Object { $_.Minute -ge 15 -and $_.Note -eq "" -and $null -ne $_.$Field })
+# Growth in MB an hour over samples from minute $From on (least squares).
+function Get-Slope($Samples, [string]$Field, [double]$From = 15) {
+    $points = @($Samples | Where-Object { $_.Minute -ge $From -and $_.Note -eq "" -and $null -ne $_.$Field })
     if ($points.Count -lt 3) { return $null }
     $mx = ($points | Measure-Object Minute -Average).Average
     $my = ($points | Measure-Object $Field -Average).Average
@@ -199,6 +253,53 @@ function Get-Slope($Samples, [string]$Field) {
     foreach ($pt in $points) { $num += ($pt.Minute - $mx) * ($pt.$Field - $my); $den += ($pt.Minute - $mx) * ($pt.Minute - $mx) }
     if ($den -eq 0) { return $null }
     [math]::Round($num / $den * 60, 1)
+}
+
+# ---- Gates ----
+
+function Get-Median($Values) {
+    $sorted = @($Values | Sort-Object)
+    if ($sorted.Count -eq 0) { return $null }
+    $mid = [int][math]::Floor($sorted.Count / 2)
+    if ($sorted.Count % 2) { $sorted[$mid] } else { ($sorted[$mid - 1] + $sorted[$mid]) / 2 }
+}
+
+# The regular samples of a field between two minutes.
+function Get-Window($Samples, [string]$Field, [double]$From, [double]$To) {
+    @($Samples | Where-Object { $_.Note -eq "" -and $_.Minute -ge $From -and $_.Minute -le $To -and $null -ne $_.$Field -and "$($_.$Field)" -ne "" } | ForEach-Object { [double]$_.$Field })
+}
+
+# A slope mode passes while private bytes grow no faster than the mode's
+# baseline plus 60 MB/h, from minute 26 on.
+function Test-SlopeGate([string]$Mode, $Samples) {
+    $baseline = $GateBaselines[$Mode]
+    $slope = Get-Slope $Samples "PrivateMB" 26
+    if ($null -eq $slope) { return [pscustomobject]@{ Ok = $false; Text = "too few samples from minute 26" } }
+    $limit = $baseline + 60
+    [pscustomobject]@{ Ok = ($slope -le $limit); Text = "private grew $slope MB/h from minute 26, limit $limit (baseline $baseline + 60)" }
+}
+
+# The mini player mode passes when it levels off: the graphics card memory
+# stays within 32 MB of its first minutes' most, and the median private bytes
+# of the last minutes within 100 MB of the first minutes' median.
+function Test-PlateauGate($Samples) {
+    $gpuEarly = @(Get-Window $Samples "GpuDedicatedMB" 2 8)
+    $gpuLate = @(Get-Window $Samples "GpuDedicatedMB" 30 45)
+    $privEarly = @(Get-Window $Samples "PrivateMB" 2 8)
+    $privLate = @(Get-Window $Samples "PrivateMB" 35 45)
+    if ($gpuEarly.Count -eq 0 -or $gpuLate.Count -eq 0 -or $privEarly.Count -eq 0 -or $privLate.Count -eq 0) {
+        return [pscustomobject]@{ Ok = $false; Text = "too few samples in minutes 2-8, 30-45 or 35-45" }
+    }
+    $gpuFrom = ($gpuEarly | Measure-Object -Maximum).Maximum
+    $gpuTo = ($gpuLate | Measure-Object -Maximum).Maximum
+    $privFrom = Get-Median $privEarly
+    $privTo = Get-Median $privLate
+    $ok = ($gpuTo -le $gpuFrom + 32) -and ($privTo -le $privFrom + 100)
+    [pscustomobject]@{ Ok = $ok; Text = "GPU most $gpuFrom MB (minutes 2-8) to $gpuTo MB (30-45), limit +32; private median $privFrom to $privTo MB (minutes 2-8, 35-45), limit +100" }
+}
+
+function Test-Gate([string]$Mode, $Samples) {
+    if ($Mode -eq "mini") { Test-PlateauGate $Samples } else { Test-SlopeGate $Mode $Samples }
 }
 
 # ---- Self-test ----
@@ -216,6 +317,23 @@ if ($SelfTest) {
     Check "native part with a space in its name" ($nmt["NmtArenaChunk"] -eq 2)
     $points = 0..10 | ForEach-Object { [pscustomobject]@{ Minute = 15 + $_ * 6; Note = ""; PrivateMB = 1000 + $_ * 10 } }
     Check "growth an hour (10 MB each 6 min is 100 MB/h)" ((Get-Slope $points "PrivateMB") -eq 100)
+    $line = { param($slopePerHour, $from) 0..44 | ForEach-Object { [pscustomobject]@{ Minute = $_; Note = ""; PrivateMB = 1000 + ($_ - 0) * $slopePerHour / 60 } } }
+    Check "growth from minute 26 (60 MB/h line)" ((Get-Slope (& $line 60) "PrivateMB" 26) -eq 60)
+    Check "growth from minute 26 ignores earlier jumps" ((Get-Slope ((0..9 | ForEach-Object { [pscustomobject]@{ Minute = $_; Note = ""; PrivateMB = 5000 } }) + (& $line 60)) "PrivateMB" 26) -eq 60)
+    # still's baseline is 81.5, so its limit is 141.5 MB/h.
+    Check "slope above baseline + 60 fails" (-not (Test-SlopeGate "still" (& $line 150)).Ok)
+    Check "slope below baseline + 60 passes" ((Test-SlopeGate "still" (& $line 130)).Ok)
+    Check "a run too short for the slope fails" (-not (Test-SlopeGate "still" @(& $line 100 | Select-Object -First 20)).Ok)
+    # A run shaped like mini-long: graphics memory 196 MB, 260 at minute 9, 388 at 27; private bytes 290 MB up.
+    $grown = 0..45 | ForEach-Object {
+        $gpu = if ($_ -lt 9) { 196 } elseif ($_ -lt 27) { 260 + ($_ - 9) * (388 - 260) / 18 } else { 388 }
+        [pscustomobject]@{ Minute = $_; Note = ""; GpuDedicatedMB = $gpu; PrivateMB = 1000 + [math]::Min($_, 27) * 290 / 27 }
+    }
+    Check "a climbing mini run fails the plateau" (-not (Test-PlateauGate $grown).Ok)
+    # A run shaped like a trimmed one: graphics memory never over the first minutes' most + 32, private flat.
+    $level = 0..45 | ForEach-Object { [pscustomobject]@{ Minute = $_; Note = ""; GpuDedicatedMB = 196 + ($_ % 3) * 10; PrivateMB = 1000 + ($_ % 2) * 20 } }
+    Check "a levelled mini run passes the plateau" ((Test-PlateauGate $level).Ok)
+    Check "a mini run without samples fails the plateau" (-not (Test-PlateauGate @()).Ok)
     $own = Get-Process -Id $PID
     $named = @($own.Threads | ForEach-Object { [OctoSoak.Win]::ThreadName($_.Id) } | Where-Object { $_ -ne $null })
     Check "reading thread names ($($named.Count) of $($own.Threads.Count) here)" ($named.Count -ge 0)
@@ -250,27 +368,40 @@ foreach ($place in "config\settings.json", "Roaming\Octo\settings.json") {
     if (-not $settings.appearance.wash) { $settings.appearance | Add-Member -NotePropertyName wash -NotePropertyValue ([pscustomobject]@{}) }
     $settings.appearance.wash | Add-Member -NotePropertyName moving -NotePropertyValue ($WashMotion -eq "on") -Force
     $settings | Add-Member -NotePropertyName window -NotePropertyValue ([pscustomobject]@{ x = 60; y = 60; width = $Width; height = $Height; maximized = $false }) -Force
+    $settings.system | Add-Member -NotePropertyName closeToTray -NotePropertyValue ($TrayAfter -gt 0 -or $CycleTray -gt 0) -Force
+    $settings.system | Add-Member -NotePropertyName miniPlayerOpen -NotePropertyValue ([bool]$MiniPlayer) -Force
+    $settings.appearance | Add-Member -NotePropertyName ambientGlow -NotePropertyValue ($AmbientGlow -eq "on") -Force
+    if ($Discord) {
+        if (-not $settings.discord) { $settings | Add-Member -NotePropertyName discord -NotePropertyValue ([pscustomobject]@{}) }
+        $settings.discord | Add-Member -NotePropertyName on -NotePropertyValue $true -Force
+    }
     [IO.File]::WriteAllText($file, ($settings | ConvertTo-Json -Depth 32), (New-Object System.Text.UTF8Encoding($false)))
 }
 $plan = Join-Path $profileDir "soak.properties"
-$planText = "source=$Source`nlyrics=$Lyrics`nfull=$Full`npauseAfter=$PauseAfter`ncacheAfter=$CacheAfter`nadvance=$Advance`nqueue=$($Queue -replace '\\', '/')`n"
+$planText = "source=$Source`nlyrics=$Lyrics`nfull=$Full`npauseAfter=$PauseAfter`ncacheAfter=$CacheAfter`nadvance=$Advance`nswitchOutputs=$SwitchOutputs`noutput=$Output`nminiOnly=$(if ($MiniOnly) { 'true' } else { 'false' })`npurgeEvery=$PurgeEvery`ntoggleMiniEvery=$ToggleMiniEvery`nqueue=$($Queue -replace '\\', '/')`n"
 [IO.File]::WriteAllText($plan, $planText)
 
 $gcLog = Join-Path $out "gc.log"
 $options = "-XX:NativeMemoryTracking=summary -Xlog:gc*:file=$($gcLog -replace '\\', '/'):time,uptime -Docto.soak=$($plan -replace '\\', '/') $Jvm".Trim()
 if ($options -match ' "') { throw "Paths with spaces cannot go in JAVA_TOOL_OPTIONS" }
 
-$saved = @{ OCTO_PROFILE_DIR = $env:OCTO_PROFILE_DIR; APPDATA = $env:APPDATA; LOCALAPPDATA = $env:LOCALAPPDATA; JAVA_TOOL_OPTIONS = $env:JAVA_TOOL_OPTIONS }
-try {
-    $env:OCTO_PROFILE_DIR = $profileDir
-    $env:APPDATA = Join-Path $profileDir "Roaming"
-    $env:LOCALAPPDATA = Join-Path $profileDir "Local"
-    $env:JAVA_TOOL_OPTIONS = $options
-    $exe = Join-Path $App "Octo.exe"
-    $launcher = Start-Process -FilePath $exe -WorkingDirectory $App -PassThru
-} finally {
-    foreach ($name in $saved.Keys) { if ($saved[$name]) { Set-Item -Path "Env:$name" -Value $saved[$name] } else { Remove-Item "Env:$name" -ErrorAction SilentlyContinue } }
+# Starts Octo on the test profile. A second start hands over to the one
+# running, which brings its window back (out of the tray too); it gets no
+# JVM options, so the first one's GC log is left alone.
+$exe = Join-Path $App "Octo.exe"
+function Start-Octo([string]$JavaOptions) {
+    $saved = @{ OCTO_PROFILE_DIR = $env:OCTO_PROFILE_DIR; APPDATA = $env:APPDATA; LOCALAPPDATA = $env:LOCALAPPDATA; JAVA_TOOL_OPTIONS = $env:JAVA_TOOL_OPTIONS }
+    try {
+        $env:OCTO_PROFILE_DIR = $profileDir
+        $env:APPDATA = Join-Path $profileDir "Roaming"
+        $env:LOCALAPPDATA = Join-Path $profileDir "Local"
+        if ($JavaOptions) { $env:JAVA_TOOL_OPTIONS = $JavaOptions } else { Remove-Item Env:JAVA_TOOL_OPTIONS -ErrorAction SilentlyContinue }
+        Start-Process -FilePath $exe -WorkingDirectory $App -PassThru
+    } finally {
+        foreach ($name in $saved.Keys) { if ($saved[$name]) { Set-Item -Path "Env:$name" -Value $saved[$name] } else { Remove-Item "Env:$name" -ErrorAction SilentlyContinue } }
+    }
 }
+$launcher = Start-Octo $options
 
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $process = $null
@@ -292,6 +423,11 @@ try {
 
     $shown = $clock.Elapsed.TotalSeconds
     $minimizedLate = $false
+    $trayed = $false
+    $away = $false
+    $cycles = 0
+    $gateFailed = $false
+    $nextCycle = 120
     $shotsDue = @($Shots -split ',' | Where-Object { $_.Trim() } | ForEach-Object { [int]$_ } | Sort-Object)
     $csv = Join-Path $out "samples.csv"
     $samples = @()
@@ -310,6 +446,35 @@ try {
             $process.Refresh()
             [void][OctoSoak.Win]::ShowWindow($process.MainWindowHandle, 6)
             $minimizedLate = $true
+        }
+        if ($TrayAfter -gt 0 -and -not $trayed -and $clock.Elapsed.TotalMinutes -ge $TrayAfter) {
+            $process.Refresh()
+            [void]$process.CloseMainWindow()
+            $trayed = $true
+        }
+        # Half of each cycle away (in the tray, or minimized), half shown.
+        if ($CycleTray -gt 0 -and $clock.Elapsed.TotalSeconds -ge $nextCycle) {
+            $process.Refresh()
+            if ($away) { [void](Start-Octo "") } else { [void]$process.CloseMainWindow() }
+            $away = -not $away
+            $cycles++
+            $nextCycle += $CycleTray / 2
+        }
+        if ($CycleResize -gt 0 -and $clock.Elapsed.TotalSeconds -ge $nextCycle) {
+            $process.Refresh()
+            $w = if ($away) { $Width } else { [int]($Width * 0.7) }
+            $h = if ($away) { $Height } else { [int]($Height * 0.7) }
+            [void][OctoSoak.Win]::SetWindowPos($process.MainWindowHandle, [IntPtr]::Zero, 60, 60, $w, $h, 0x0014)
+            $away = -not $away
+            $cycles++
+            $nextCycle += $CycleResize
+        }
+        if ($CycleMinimize -gt 0 -and $clock.Elapsed.TotalSeconds -ge $nextCycle) {
+            $process.Refresh()
+            [void][OctoSoak.Win]::ShowWindow($process.MainWindowHandle, $(if ($away) { 9 } else { 6 }))
+            $away = -not $away
+            $cycles++
+            $nextCycle += $CycleMinimize / 2
         }
         while ($shotsDue.Count -gt 0 -and $clock.Elapsed.TotalSeconds - $shown -ge $shotsDue[0]) {
             $process.Refresh()
@@ -333,13 +498,18 @@ try {
     $mark = $regular | Where-Object { $_.Minute -ge 15 } | Select-Object -First 1
     $last = $regular[-1]
     $summary = @(
-        "Soak $Label ($((Get-Date).ToString('yyyy-MM-dd HH:mm'))): art $Art, wash $Wash (moving $WashMotion), lyrics $Lyrics, full player $Full, $Source, $(if ($Minimized) { 'minimized' } elseif ($MinimizeAfter) { "minimized after $MinimizeAfter min" } else { 'shown' }), $(if ($PauseAfter) { "paused after $PauseAfter min, " })$Advance s a song, $Minutes min, JVM extra '$Jvm'",
+        "Soak $Label ($((Get-Date).ToString('yyyy-MM-dd HH:mm'))): art $Art, wash $Wash (moving $WashMotion), lyrics $Lyrics, full player $Full, $Source, $(if ($Minimized) { 'minimized' } elseif ($MinimizeAfter) { "minimized after $MinimizeAfter min" } else { 'shown' }), $(if ($PauseAfter) { "paused after $PauseAfter min, " })$Advance s a song, $Minutes min, $(if ($cycles) { "$cycles tray or minimize steps, " })JVM extra '$Jvm'",
         "Private MB: start $($regular[0].PrivateMB), 15 min $($mark.PrivateMB), end $($last.PrivateMB), most $(($regular | Measure-Object PrivateMB -Maximum).Maximum), after GC $($after.PrivateMB) (drop $([math]::Round($before.PrivateMB - $after.PrivateMB, 1)))",
         "Growth MB/h from 15 min: private $(Get-Slope $samples 'PrivateMB'), working set $(Get-Slope $samples 'WorkingSetMB'), outside the JVM $(Get-Slope $samples 'OutsideJvmMB'), JVM total $(Get-Slope $samples 'NmtMB'), heap used $(Get-Slope $samples 'HeapUsedMB'), GPU dedicated $(Get-Slope $samples 'GpuDedicatedMB')",
         "End: working set $($last.WorkingSetMB), threads $($last.Threads), octo-video threads $($last.VideoThreads), handles $($last.Handles), heap $($last.HeapUsedMB)/$($last.HeapMB), JVM total $($last.NmtMB), outside the JVM $($last.OutsideJvmMB), GPU dedicated $($last.GpuDedicatedMB)",
         "After GC: working set $($after.WorkingSetMB), heap $($after.HeapUsedMB)/$($after.HeapMB), JVM total $($after.NmtMB), outside the JVM $($after.OutsideJvmMB)",
         "Within 300 MB of the 15-minute mark at the end: $([math]::Abs($last.PrivateMB - $mark.PrivateMB) -le 300)"
     )
+    if ($Gate) {
+        $verdict = Test-Gate $Gate $samples
+        $summary += "GATE $(if ($verdict.Ok) { 'OK' } else { 'FAILED' }) $Gate ($($verdict.Text))"
+        $gateFailed = -not $verdict.Ok
+    }
     $summary | Set-Content -Path (Join-Path $out "summary.txt")
     $summary | ForEach-Object { Write-Host $_ }
 } finally {
@@ -354,3 +524,4 @@ try {
     if (Test-Path "$plan.events") { Copy-Item "$plan.events" (Join-Path $out "events.log") }
     if (-not $Keep) { Remove-Item -Recurse -Force $profileDir -Confirm:$false -ErrorAction SilentlyContinue }
 }
+if ($gateFailed) { exit 3 }

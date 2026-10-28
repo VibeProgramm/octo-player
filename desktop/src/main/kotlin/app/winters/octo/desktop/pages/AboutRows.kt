@@ -22,6 +22,8 @@ import app.winters.octo.desktop.AppState
 import app.winters.octo.desktop.settings.AppSettings
 import app.winters.octo.desktop.settings.DesktopOs
 import app.winters.octo.desktop.system.LocalSystem
+import app.winters.octo.desktop.system.copyBugDetails
+import app.winters.octo.desktop.system.logFolder
 import app.winters.octo.desktop.update.UpdaterAvailability
 import app.winters.octo.update.InstallWhen
 import app.winters.octo.update.UpdatePrefs
@@ -34,8 +36,8 @@ internal fun AboutRows(app: AppState, settings: AppSettings) {
     val updates = app.updates
     val ready = updates?.ready
     AboutCard()
-    Rows {
-        if (updates != null && ready != null) {
+    if (updates != null && ready != null) {
+        Rows {
             SettingRow("Update ready: ${ready.version}", updates.installHelp(ready)) {
                 val system = LocalSystem.current
                 RowAction(updates.installAction, { updates.install(quit = { system?.quit?.invoke() }) })
@@ -53,41 +55,47 @@ internal fun AboutRows(app: AppState, settings: AppSettings) {
             )
         }
     }
-    if (updates == null) return
-    val prefs = settings.updates
-    fun change(edit: (UpdatePrefs) -> UpdatePrefs) = app.settings.update { it.copy(updates = edit(it.updates)) }
-    Group("Updates") {
-        val availability = updates.availability
-        if (availability is UpdaterAvailability.Off || !updates.enabled) {
-            SettingRow("New versions", (availability as? UpdaterAvailability.Off)?.why)
-            return@Group
+    if (updates != null) {
+        val prefs = settings.updates
+        fun change(edit: (UpdatePrefs) -> UpdatePrefs) = app.settings.update { it.copy(updates = edit(it.updates)) }
+        Group("Updates") {
+            val availability = updates.availability
+            if (availability is UpdaterAvailability.Off || !updates.enabled) {
+                SettingRow("New versions", (availability as? UpdaterAvailability.Off)?.why)
+                return@Group
+            }
+            SwitchRow(
+                "Check for updates automatically",
+                "Looks every few hours and downloads in the background.",
+                prefs.checkAutomatically,
+            ) { on -> change { it.copy(checkAutomatically = on) } }
+            if (app.os == DesktopOs.Windows) {
+                ChoiceRow(
+                    "Install updates",
+                    installHelp(prefs.install),
+                    InstallWhen.entries,
+                    prefs.install,
+                    ::installName,
+                ) { choice -> change { it.copy(install = choice) } }
+            }
+            SwitchRow(
+                "Try early versions",
+                "Before they're finished. They can have rough edges.",
+                prefs.earlyVersions,
+            ) { on -> change { it.copy(earlyVersions = on) } }
+            ActionRow(
+                "New versions",
+                updates.lastLine ?: "Signed releases from GitHub.",
+                if (updates.checking) "Checking" else "Check now",
+                { app.scope.launch { updates.check() } },
+                enabled = !updates.checking,
+            )
         }
-        SwitchRow(
-            "Check for updates automatically",
-            "Looks every few hours and downloads in the background.",
-            prefs.checkAutomatically,
-        ) { on -> change { it.copy(checkAutomatically = on) } }
-        if (app.os == DesktopOs.Windows) {
-            ChoiceRow(
-                "Install updates",
-                installHelp(prefs.install),
-                InstallWhen.entries,
-                prefs.install,
-                ::installName,
-            ) { choice -> change { it.copy(install = choice) } }
+    }
+    Group("Help") {
+        SettingRow("Details for a bug report", "Version, graphics and memory, to paste into an issue.") {
+            RowAction("Copy", { app.scope.launch { copyBugDetails(app, null, logFolder(app.os)) } })
         }
-        SwitchRow(
-            "Try early versions",
-            "Before they're finished. They can have rough edges.",
-            prefs.earlyVersions,
-        ) { on -> change { it.copy(earlyVersions = on) } }
-        ActionRow(
-            "New versions",
-            updates.lastLine ?: "Signed releases from GitHub.",
-            if (updates.checking) "Checking" else "Check now",
-            { app.scope.launch { updates.check() } },
-            enabled = !updates.checking,
-        )
     }
 }
 

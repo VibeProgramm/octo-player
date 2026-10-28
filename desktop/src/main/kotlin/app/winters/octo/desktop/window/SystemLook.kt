@@ -40,7 +40,10 @@ private const val DWMWCP_ROUND = 2
 // (roundWindowsCorners). Elsewhere a window with round corners is drawn
 // see-through outside its rounded shape.
 fun systemRoundsWindows(os: DesktopOs, build: () -> Int? = ::windowsBuild): Boolean =
-    os == DesktopOs.Windows && (build() ?: 0) >= WINDOWS_11_BUILD
+    os == DesktopOs.Windows && (build() ?: 0) >= WINDOWS_11_BUILD && System.getProperty(SOAK_AS_WINDOWS_10) == null
+
+// Set for a soak, the app draws as it does on Windows 10 (a see-through mini player).
+const val SOAK_AS_WINDOWS_10 = "octo.soak.windows10"
 
 // The Windows build number, as the system itself has it (the version an
 // app is told can be held back for older apps).

@@ -210,4 +210,101 @@ mod tests {
         assert!(device_event(cpal::ErrorKind::Xrun, String::new).is_none());
         assert!(device_event(cpal::ErrorKind::DeviceBusy, String::new).is_none());
     }
+
+    #[cfg(windows)]
+    fn has_default_device() -> bool {
+        let found = cpal::default_host().default_output_device().is_some();
+        if !found {
+            println!("no default output device here; skipped");
+        }
+        found
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn default_id_matches_cpal() {
+        if !has_default_device() {
+            return;
+        }
+        let mut driver = CpalDriver::new();
+        assert_eq!(driver.default_device_id(), driver.default_device().map(|d| d.id));
+    }
+
+    // Run alone: `cargo test --release --lib default_id_costs_no_memory -- --ignored --test-threads=1`.
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn default_id_costs_no_memory() {
+        use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX};
+        use windows::Win32::System::Threading::GetCurrentProcess;
+        fn private_bytes() -> usize {
+            let mut counters = PROCESS_MEMORY_COUNTERS_EX::default();
+            unsafe {
+                let _ = GetProcessMemoryInfo(
+                    GetCurrentProcess(),
+                    &mut counters as *mut _ as *mut _,
+                    std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+                );
+            }
+            counters.PrivateUsage
+        }
+        if !has_default_device() {
+            return;
+        }
+        let mut driver = CpalDriver::new();
+        for _ in 0..1_000 {
+            assert!(driver.default_device_id().is_some());
+        }
+        let before = private_bytes();
+        for _ in 0..40_000 {
+            std::hint::black_box(driver.default_device_id());
+        }
+        let grown = private_bytes().saturating_sub(before);
+        // cpal's own id leaked about 10.7 MB over 40,000 checks.
+        assert!(grown < 2 * 1024 * 1024, "grew {grown} bytes over 40,000 checks");
+    }
+
+    // Run alone: `cargo test --release --lib stream_reopens_keep_no_handles -- --ignored --test-threads=1`.
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn stream_reopens_keep_no_handles() {
+        use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessHandleCount};
+        fn handles() -> u32 {
+            let mut count = 0u32;
+            unsafe {
+                let _ = GetProcessHandleCount(GetCurrentProcess(), &mut count);
+            }
+            count
+        }
+        fn round() {
+            let device = cpal::default_host().default_output_device().expect("default device");
+            let supported = device.default_output_config().expect("default config");
+            let stream = device
+                .build_output_stream_raw(
+                    supported.config(),
+                    supported.sample_format(),
+                    |data: &mut cpal::Data, _| data.bytes_mut().fill(0),
+                    |e| eprintln!("{e}"),
+                    None,
+                )
+                .expect("build stream");
+            stream.play().expect("play");
+            std::thread::sleep(Duration::from_millis(20));
+            drop(stream);
+        }
+        if !has_default_device() {
+            return;
+        }
+        for _ in 0..20 {
+            round();
+        }
+        let before = handles();
+        for _ in 0..500 {
+            round();
+        }
+        let grown = handles().saturating_sub(before);
+        println!("handles {before} -> {}", before + grown);
+        assert!(grown <= 5, "handle count grew by {grown} over 500 stream rounds");
+    }
 }

@@ -1,0 +1,2 @@
+Patch A (wasapi/device.rs): `Device::id` frees the string `GetId` returns (upstream commit ed8aa82, in releases after 0.18.2). Patch B (wasapi/stream.rs): each stream's audio thread calls `demote_current_thread_from_real_time` so its MMCSS task handle is released.
+Remove this copy and the `[patch.crates-io]` entry when a cpal release has both (check the release notes for MMCSS and `demote_current_thread_from_real_time`).

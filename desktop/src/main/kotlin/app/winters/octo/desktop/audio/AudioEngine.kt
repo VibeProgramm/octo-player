@@ -81,6 +81,10 @@ interface AudioEngine : AutoCloseable {
     // What the open device runs at, once one is open.
     fun outputFormat(): EngineFormat?
 
+    // How many times the engine opened its output device again since it
+    // started; null when it cannot say.
+    fun deviceReopens(): Long? = null
+
     fun heard(): Heard
 
     fun state(): PlaybackState
@@ -175,6 +179,8 @@ class NativeAudioEngine(private val engine: Engine) : AudioEngine {
     override fun currentDevice(): EngineDevice? = ifOpen(null) { engine.currentDevice() }
 
     override fun outputFormat(): EngineFormat? = ifOpen(null) { engine.outputFormat() }
+
+    override fun deviceReopens(): Long? = ifOpen(null) { engine.deviceReopens().toLong() }
 
     override fun heard(): Heard = ifOpen(lastHeard) {
         val p = engine.position()

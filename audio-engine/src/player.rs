@@ -140,6 +140,8 @@ pub struct Shared {
     timeline: Timeline,
     output: Mutex<Option<Arc<OutputShared>>>,
     player: OnceLock<Thread>,
+    /// How many times the output device was opened again, since start.
+    pub device_reopens: std::sync::atomic::AtomicU64,
     /// The certificates trusted for streams, changed from the app's threads.
     pub trust: Arc<Trust>,
     // The client every stream fetches with, knowing those certificates.
@@ -147,6 +149,9 @@ pub struct Shared {
     /// A planner used in place of `automix::plan` by this engine only.
     #[cfg(test)]
     pub planner: Mutex<Option<crate::automix::Planner>>,
+    /// How many track infos the player holds, for tests.
+    #[cfg(test)]
+    pub infos_len: std::sync::atomic::AtomicUsize,
 }
 
 impl Shared {
@@ -167,9 +172,12 @@ impl Shared {
             output: Mutex::new(None),
             player: OnceLock::new(),
             agent: http::agent(trust.clone()),
+            device_reopens: std::sync::atomic::AtomicU64::new(0),
             trust,
             #[cfg(test)]
             planner: Mutex::new(None),
+            #[cfg(test)]
+            infos_len: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
@@ -693,6 +701,7 @@ impl Player {
     fn load(&mut self, items: Vec<QueueItem>, start_index: usize, start_ms: u64, play: bool) {
         self.queue = items.into_iter().map(|i| self.entry(i)).collect();
         self.publish_queue();
+        self.forget_unqueued_infos();
         if self.queue.is_empty() {
             self.stop(EndReason::Skipped);
             return;
@@ -877,6 +886,7 @@ impl Player {
             lane.last = false;
         }
         self.publish_queue();
+        self.forget_unqueued_infos();
     }
 
     // Forgets the song lined up after the current one.
@@ -925,6 +935,8 @@ impl Player {
                     self.queue[i].item.duration_ms = Some(ms);
                 }
                 self.infos.insert(deck.key(), info);
+                #[cfg(test)]
+                self.shared.infos_len.store(self.infos.len(), std::sync::atomic::Ordering::Relaxed);
             }
         }
         // Follow the lane onto the song it plays now.
@@ -1134,6 +1146,8 @@ impl Player {
                 self.queue[next].item.duration_ms = Some(ms);
             }
             self.infos.insert(up_key, info);
+            #[cfg(test)]
+            self.shared.infos_len.store(self.infos.len(), std::sync::atomic::Ordering::Relaxed);
         }
         let Some(lane) = self.mixer.as_ref().and_then(|m| m.lane()) else { return };
         let failed = matches!(lane.current().status(), DeckStatus::Failed(_));
@@ -1559,6 +1573,7 @@ impl Player {
             self.emit(EngineEvent::TrackStarted { item_id: id, index: i as u32, info });
         }
         self.publish_queue();
+        self.forget_unqueued_infos();
     }
 
     fn on_end(&mut self) {
@@ -1652,6 +1667,9 @@ impl Player {
         self.out = None;
         *self.shared.output.lock().unwrap_or_else(|e| e.into_inner()) = None;
         self.open_output(report);
+        if self.out.is_some() {
+            self.shared.device_reopens.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
         if self.mixer.is_none() || self.ended {
             self.lost_at = None;
             return;
@@ -1725,11 +1743,11 @@ impl Player {
         if self.device_choice.is_none() && self.last_default_check.elapsed() > DEFAULT_DEVICE_CHECK {
             self.last_default_check = Instant::now();
             let current = out.opened.device.id.clone();
-            if let Some(default) = self.driver.default_device()
+            if let Some(default_id) = self.driver.default_device_id()
                 && !current.is_empty()
-                && default.id != current
+                && default_id != current
             {
-                log::info!("default device is now {}", default.name);
+                log::info!("default device is now {default_id}");
                 self.reopen_output(true);
                 return;
             }
@@ -1749,6 +1767,15 @@ impl Player {
 
     fn lock_status(&self) -> MutexGuard<'_, Status> {
         self.shared.lock_status()
+    }
+
+    // What the decoder found out about songs no longer queued is let go.
+    fn forget_unqueued_infos(&mut self) {
+        let heard = self.heard;
+        let queue = &self.queue;
+        self.infos.retain(|key, _| Some(*key) == heard || queue.iter().any(|e| e.key == *key));
+        #[cfg(test)]
+        self.shared.infos_len.store(self.infos.len(), std::sync::atomic::Ordering::Relaxed);
     }
 
     fn publish_queue(&self) {
