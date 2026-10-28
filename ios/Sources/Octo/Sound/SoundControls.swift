@@ -214,11 +214,17 @@ struct SoundSegmented: View {
     @Environment(\.accessibilityReduceMotion) private var still
 
     var body: some View {
+        SegmentsOrMenu(options: options, selected: selected, onSelect: onSelect, font: SoundStyle.label) {
+            strip
+        }
+    }
+
+    private var strip: some View {
         GeometryReader { box in
             let cell = options.isEmpty ? 0 : max(0, box.size.width - 8) / CGFloat(options.count)
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(SoundStyle.pill)
+                    .fill(OctoColor.accent)
                     .frame(width: cell, height: max(0, box.size.height - 8))
                     .offset(x: CGFloat(selected) * cell)
                     .animation(still ? nil : .timingCurve(0.65, 0.05, 0.36, 1, duration: 0.3), value: selected)
@@ -226,11 +232,7 @@ struct SoundSegmented: View {
                     ForEach(options.indices, id: \.self) { index in
                         let chosen = index == selected
                         Button { onSelect(index) } label: {
-                            Text(options[index])
-                                .font(SoundStyle.label)
-                                .foregroundStyle(chosen ? OctoColor.accent : OctoColor.textPrimary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
+                            SegmentLabel(text: options[index], chosen: chosen, font: SoundStyle.label)
                                 .padding(.horizontal, 4)
                                 .frame(width: cell, height: max(0, box.size.height - 8))
                                 .contentShape(Rectangle())

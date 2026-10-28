@@ -97,57 +97,84 @@ public func coverWords(_ spec: CoverSpec, side: Int, setter: CoverTypesetter, bo
     if side < layout.tinyBelowPx { return [] }
     let margin = (s * layout.margin).rounded()
     let width = s - 2 * margin
-    var out: [CoverWords] = []
-    var foot: CoverWords?
+    let bottom = s - margin
 
-    // The foot line first, so the name knows how far down it may go.
-    var floor = s - margin
+    // The foot line, or nil when it is not wanted or does not fit whole on its line at its size.
+    var foot: CoverWords?
     if let footerText = spec.footer?.trimmingCharacters(in: .whitespacesAndNewlines), !footerText.isEmpty,
        side >= layout.footer.showFromPx {
         let f = layout.footer
         let look = CoverType(sizePx: 0, weight: f.weight, tracking: f.tracking, lineHeight: coverLineHeight(coverScript(footerText), f.lineHeight),
                              maxLines: 1)
         let size = max(f.minPx, s * f.size)
-        let fit = fitCoverText(footerText, width: width, height: s * 0.2, maxLines: 1, minPx: f.minPx, maxPx: size, look: look, setter: setter)
-        let top = s - s * f.bottom - fit.measured.height
-        foot = CoverWords(role: .footer, text: footerText, type: fit.type, left: margin, top: top, width: width, align: align,
-                          ink: withAlpha(white, f.opacity), measured: fit.measured)
-        floor = top - s * 0.04
+        if let fit = fitOrNull(footerText, width: width, height: s * 0.2, maxLines: 1, minPx: f.minPx, maxPx: size, look: look, setter: setter) {
+            let top = s - s * f.bottom - fit.measured.height
+            foot = CoverWords(role: .footer, text: footerText, type: fit.type, left: margin, top: top, width: width, align: align,
+                              ink: withAlpha(white, f.opacity), measured: fit.measured)
+        }
     }
     if name.isEmpty { return foot.map { [$0] } ?? [] }
 
     let t = layout.title
     let top = s * t.top
     let lineText = side >= layout.line.showFromPx ? shown.line : nil
-    let lineRoom: Float = lineText == nil ? 0 : max(s * t.wrapSize, t.wrapMinPx) * layout.line.shareOfTitle * layout.line.lineHeight
-    let room = floor - top - lineRoom
     let look = CoverType(sizePx: 0, weight: t.weight, tracking: t.tracking, lineHeight: coverLineHeight(coverScript(name), t.lineHeight),
                          maxLines: 1)
     let minPx = max(t.minPx, s * t.minSize)
     let oneLineLeast = max(minPx, max(s * t.oneLineDownTo, t.oneLineMinPx))
     let wrapMost = max(minPx, max(s * t.wrapSize, min(t.wrapMinPx, s * t.size)))
-    let oneLine = oneLineLeast <= s * t.size
-        ? fitOrNull(name, width: width, height: room, maxLines: 1, minPx: oneLineLeast, maxPx: s * t.size, look: look, setter: setter)
-        : nil
-    let title = oneLine ?? fitCoverText(name, width: width, height: room, maxLines: t.maxLines, minPx: minPx, maxPx: wrapMost, look: look,
-                                        setter: setter)
-    out.append(CoverWords(role: .title, text: name, type: title.type, left: margin, top: top, width: width, align: align, ink: white,
-                          measured: title.measured))
 
-    if let lineText {
+    // The name whole in the room above `edge`, or nil: on one line when it can go that large, else
+    // wrapped, never smaller than `least`.
+    func titleAbove(_ edge: Float, withLine: Bool, least: Float) -> FittedText? {
+        let lineRoom: Float = withLine ? max(s * t.wrapSize, t.wrapMinPx) * layout.line.shareOfTitle * layout.line.lineHeight : 0
+        let room = edge - top - lineRoom
+        let oneLine = oneLineLeast <= s * t.size && least <= oneLineLeast
+            ? fitOrNull(name, width: width, height: room, maxLines: 1, minPx: oneLineLeast, maxPx: s * t.size, look: look, setter: setter)
+            : nil
+        return oneLine ?? fitOrNull(name, width: width, height: room, maxLines: t.maxLines, minPx: least, maxPx: max(wrapMost, least),
+                                    look: look, setter: setter)
+    }
+
+    func titleWords(_ fit: FittedText) -> CoverWords {
+        CoverWords(role: .title, text: name, type: fit.type, left: margin, top: top, width: width, align: align, ink: white, measured: fit.measured)
+    }
+
+    // The light line under the name, or nil when it does not fit whole.
+    func lineUnder(_ fit: FittedText, edge: Float) -> CoverWords? {
+        guard let lineText else { return nil }
         let l = layout.line
-        let lineTop = top + title.measured.height
-        let most = max(l.minPx, title.type.sizePx * l.shareOfTitle)
+        let lineTop = top + fit.measured.height
+        let most = max(l.minPx, fit.type.sizePx * l.shareOfTitle)
         let lineLook = CoverType(sizePx: 0, weight: l.weight, tracking: l.tracking,
                                  lineHeight: coverLineHeight(coverScript(lineText), l.lineHeight), maxLines: 1)
-        let fit = fitCoverText(lineText, width: width, height: s, maxLines: 1, minPx: min(l.minPx, most), maxPx: most, look: lineLook,
-                               setter: setter)
-        if lineTop + fit.measured.height <= floor {
-            out.append(CoverWords(role: .line, text: lineText, type: fit.type, left: margin, top: lineTop, width: width, align: align,
-                                  ink: white, measured: fit.measured))
+        guard let lineFit = fitOrNull(lineText, width: width, height: s, maxLines: 1, minPx: min(l.minPx, most), maxPx: most, look: lineLook,
+                                      setter: setter), lineTop + lineFit.measured.height <= edge else { return nil }
+        return CoverWords(role: .line, text: lineText, type: lineFit.type, left: margin, top: lineTop, width: width, align: align, ink: white,
+                          measured: lineFit.measured)
+    }
+
+    // The name keeps its usual smallest size, giving up the light line and then the foot line to
+    // make room for it.
+    let footEdge = foot.map { $0.top - s * 0.04 } ?? bottom
+    if lineText != nil, let foot {
+        if let fit = titleAbove(footEdge, withLine: true, least: minPx) {
+            return [titleWords(fit), lineUnder(fit, edge: footEdge), foot].compactMap { $0 }
+        }
+    } else if lineText != nil {
+        if let fit = titleAbove(bottom, withLine: true, least: minPx) {
+            return [titleWords(fit), lineUnder(fit, edge: bottom)].compactMap { $0 }
         }
     }
-    return out + (foot.map { [$0] } ?? [])
+    if let foot, let fit = titleAbove(footEdge, withLine: false, least: minPx) {
+        return [titleWords(fit), foot]
+    }
+    if let fit = titleAbove(bottom, withLine: false, least: minPx) { return [titleWords(fit)] }
+
+    // Then smaller than usual, down to the floor, alone; and if even that does not hold it whole,
+    // the cover is its artwork alone.
+    let floorPx = max(t.floorPx, s * t.floorSize)
+    return titleAbove(bottom, withLine: false, least: floorPx).map { [titleWords($0)] } ?? []
 }
 
 /// The words a cover sets large and the light line under them.
@@ -355,7 +382,7 @@ public func playlistCoverFooter(_ songCount: Int, owner: String? = nil, you: Str
 }
 
 /// Bumped whenever the drawing changes, so covers kept on disk are made again.
-public let coverDesignVersion = 4
+public let coverDesignVersion = 5
 
 /// Bumped whenever the colours are picked differently.
 public let coverPaletteVersion = 2

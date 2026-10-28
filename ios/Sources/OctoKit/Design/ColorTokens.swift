@@ -98,6 +98,8 @@ public enum OctoPalette {
     public static let popupFilm = RGBA.black.opacity(0.52)
     /// The darker pill that marks the chosen item inside glass.
     public static let glazeSelected = RGBA.black.opacity(0.72)
+    /// The words and checks on a full accent fill.
+    public static let onAccent = RGBA(hex: 0x0C0C0D)
 }
 
 /// White at falling opacities, for what has no Octo color of its own.

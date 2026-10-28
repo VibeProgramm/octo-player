@@ -62,6 +62,8 @@ struct HomeView: View {
         .onChange(of: discovery.stationsFrom, initial: true) { _, _ in model.stationsSourceChanged() }
         // A list found gone on its own page leaves Home.
         .onChange(of: discovery.goneLists) { _, gone in model.listsGone(gone) }
+        // The listener's chart country changed: Home's chart is another country's now.
+        .onChange(of: discovery.ownChartsChanged) { _, _ in model.chartsChanged() }
         // A server shelf shown again, or the empty card's chart, is asked for then.
         .onChange(of: settings.homeSections) { _, _ in model.sectionsChanged() }
         .onChange(of: model.songCount == 0) { _, _ in model.sectionsChanged() }

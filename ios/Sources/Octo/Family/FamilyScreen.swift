@@ -18,7 +18,7 @@ struct FamilyScreen: View {
         let model = hub.model
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle(FamilyText.family)
+                PageHeader(FamilyText.family)
                 if let info = model.info {
                     NoticesRow()
                     if let said = model.said { PanelLine(text: said, color: OctoColor.textSecondary) }
@@ -37,7 +37,7 @@ struct FamilyScreen: View {
                     PanelLine(text: model.problem ?? "Asking the server about your plan.")
                 }
             }
-            .padding(.top, 8 + detailTopGap)
+            .padding(.top, pageTopGap)
         }
         .barClearance()
         .onAppear { model.watch() }
@@ -226,13 +226,20 @@ private struct NoticesRow: View {
 
     var body: some View {
         Group {
+            // One banner: what notices are for, with a short muted line why, and the switch to them.
             if !allowed {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Hear when a request is decided").font(.octoBody).foregroundStyle(OctoColor.textPrimary)
-                    Text("Octo can tell you when a request is approved, declined or added, and a manager when requests wait.")
-                        .font(.octoCaption)
-                        .foregroundStyle(OctoColor.textMuted)
-                    GlazeButton("Turn on notices", size: .small) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Hear when a request is decided")
+                            .font(.octoBodySmall)
+                            .foregroundStyle(OctoColor.textPrimary)
+                            .lineLimit(2)
+                        Text("Approved, declined or added, and for a manager, requests waiting.")
+                            .font(.octoCaption)
+                            .foregroundStyle(OctoColor.textMuted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    GlazeButton("Turn on", size: .small) {
                         Task {
                             let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
                             if status == .denied, let url = URL(string: UIApplication.openNotificationSettingsURLString) {

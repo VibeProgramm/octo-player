@@ -17,14 +17,15 @@ struct RadioStationsScreen: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle(SettingsIndex.radioStations.title)
+                PageHeader(SettingsIndex.radioStations.title)
                 if controls.isAdmin {
-                    GlazeButton("Add station", size: .medium) {
-                        problem = nil
-                        form = StationFormRequest(StationDraft())
+                    // Add station, held at the end of line two.
+                    ControlLine {
+                        GlassIconButton(icon: .addToLibrary, label: "Add station") {
+                            problem = nil
+                            form = StationFormRequest(StationDraft())
+                        }
                     }
-                    .padding(.leading, 20)
-                    .padding(.bottom, 8)
                 }
                 findNearbyRow
                 switch stations {
@@ -60,7 +61,7 @@ struct RadioStationsScreen: View {
                     ForEach(list) { station in row(station, readOnly: !controls.canEdit(stationId: station.id, coverArt: station.coverArt), admin: controls.isAdmin) }
                 }
             }
-            .padding(.top, 8 + detailTopGap)
+            .padding(.top, pageTopGap)
         }
         .barClearance()
         .task { await reload() }

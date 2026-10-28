@@ -54,6 +54,7 @@ public enum WhatsNew {
     - **Share links** to songs and albums.
     - Pick up the queue where another device left off.
     - Artist pages show top songs, a biography and similar artists.
+    - **Charts from any country.** Make one your own, or pin up to three so their charts come as playlists too.
     - Scan your server for new music, and see who else is listening.
     - If your server is Octo, Settings shows what it is doing.
 

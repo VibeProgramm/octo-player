@@ -35,6 +35,15 @@ extension LibraryPage {
     }
 }
 
+extension LibraryPage {
+    /// Whether the page puts the back button on its title's line; a playlist keeps it floating
+    /// over its cover.
+    var ownsBack: Bool {
+        if case .playlist = self { return false }
+        return true
+    }
+}
+
 /// The page for one of them.
 struct LibraryPageView: View {
     let page: LibraryPage
@@ -86,16 +95,17 @@ struct SongsPage: View {
         let list = shown?.items ?? []
         ScrollViewReader { proxy in
             LibraryList {
-                TitleWithButtons(title: "Songs") {
-                    if let sorted, !sorted.items.isEmpty {
-                        GlassIconButton(icon: searching ? .close : .search,
-                                        label: searching ? "Close the search" : "Search these songs", lit: searching) {
-                            if searching { closeSearch() } else { openSearch() }
+                VStack(spacing: 0) {
+                    PageHeader("Songs", count: songsCountWords(list))
+                    ControlLine(overflow: lineOverflow) {
+                        RoundPlayShuffle(enabled: !list.isEmpty) {
+                            actions.play(list, source: "Songs")
+                        } shuffle: {
+                            actions.play(list, shuffled: true, source: "Songs")
                         }
                     }
-                    SortButton(list: .songs)
                 }
-                .padding(.top, detailTopGap)
+                .padding(.top, pageTopGap)
                 .bigTitle()
                 if sorted != nil, searching {
                     searchPanel.transition(calm ? .opacity : .opacity.combined(with: .move(edge: .top)))
@@ -111,12 +121,6 @@ struct SongsPage: View {
                             }
                             .padding(20)
                         } else {
-                            ListPlayLine(count: query.filters ? filteredCount(shown: list.count, all: sorted.items.count)
-                                         : countText(list.count, "song", "songs")) {
-                                actions.play(list, source: "Songs")
-                            } shuffle: {
-                                actions.play(list, shuffled: true, source: "Songs")
-                            }
                             FirstRowMark().id("first")
                             LetterRuns(items: list, headings: shown.headings, id: \.id) { position, track in
                                 TrackRow(track: track) { actions.play(list, from: position, source: "Songs") }
@@ -169,6 +173,30 @@ struct SongsPage: View {
             await applyFilters()
         }
         .task(id: query) { await applyFilters() }
+    }
+
+    /// Sort, then Search, which move into More in that order when the line runs out of room.
+    private var lineOverflow: [LineOverflow] {
+        var items = [LineOverflow.sort(.songs)]
+        if let sorted, !sorted.items.isEmpty {
+            let words = searching ? "Close the search" : "Search these songs"
+            items.append(LineOverflow("search", priority: 2, trailing: true) {
+                GlassIconButton(icon: searching ? .close : .search, label: words, lit: searching) {
+                    if searching { closeSearch() } else { openSearch() }
+                }
+            } row: {
+                Button(words, systemImage: (searching ? OctoIcon.close : OctoIcon.search).symbol) {
+                    if searching { closeSearch() } else { openSearch() }
+                }
+            })
+        }
+        return items
+    }
+
+    /// The count on the title's line: how many songs, or how many of them the filters leave.
+    private func songsCountWords(_ list: [LibraryTrack]) -> String? {
+        guard let sorted, !sorted.items.isEmpty else { return nil }
+        return query.filters ? filteredCount(shown: list.count, all: sorted.items.count) : countText(list.count, "song", "songs")
     }
 
     /// Works the shown list out again from the whole list and the filters, away from the main
@@ -235,51 +263,48 @@ struct SongsPage: View {
             .frame(minHeight: 44)
             .glassEffect(Glass.octo, in: .capsule)
             .padding(.horizontal, 20)
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    if query.filters {
-                        QuietButton("Clear all") { query = query.cleared() }
-                        QuietButton("Save as live list") { saveAsLiveList() }
+            // The filters as one menu button, never a row that scrolls sideways: each quick
+            // filter checked while on, a rating, a genre and a decade each in a menu of its own.
+            HStack(spacing: 8) {
+                Menu {
+                    Section {
+                        ForEach(FilterPresets.simple, id: \.self) { rule in
+                            MenuPick(rule.label(), checked: query.rules.contains(rule)) { toggle(rule) }
+                        }
                     }
-                    ForEach(FilterPresets.simple, id: \.self) { rule in
-                        FilterChip(text: rule.label(), on: query.rules.contains(rule)) { toggle(rule) }
-                    }
-                    askingChip(.rating, off: "Rating", title: "Rating",
-                               answers: (1...5).reversed().map { (FilterPresets.ratingWords($0), FilterPresets.ratingAtLeast($0)) })
+                    pickMenu("Rating", (1...5).reversed().map { (FilterPresets.ratingWords($0), FilterPresets.ratingAtLeast($0)) })
                     if !genreChoices.isEmpty || query.rules.contains(where: { $0.field == .genre }) {
-                        askingChip(.genre, off: "Genre", title: "Genre", answers: genreChoices.map { ($0, FilterPresets.genre($0)) })
+                        pickMenu("Genre", genreChoices.map { ($0, FilterPresets.genre($0)) })
                     }
                     if !decadeChoices.isEmpty || query.rules.contains(where: { $0.field == .year }) {
-                        askingChip(.year, off: "Year", title: "Year",
-                                   answers: decadeChoices.reversed().map { ("The \($0)s", FilterPresets.decade($0)) })
+                        pickMenu("Year", decadeChoices.reversed().map { ("The \($0)s", FilterPresets.decade($0)) })
                     }
+                    if query.filters {
+                        Section {
+                            Button("Save as live list", systemImage: "wand.and.stars") { saveAsLiveList() }
+                            Button("Clear all", systemImage: OctoIcon.close.symbol, role: .destructive) { query = query.cleared() }
+                        }
+                    }
+                } label: {
+                    ChoiceChip(text: filtersLabel(query.rules.count), systemImage: OctoIcon.filter.symbol)
                 }
-                .padding(.horizontal, 20)
+                .menuOrder(.fixed)
+                .accessibilityLabel(filtersLabel(query.rules.count))
+                Spacer(minLength: 0)
             }
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 20)
         }
         .padding(.top, 2)
         .padding(.bottom, 10)
     }
 
-    /// A chip that asks which first, from a menu that opens on it. On, it reads as its filter and
-    /// a tap takes the filter off without asking.
-    @ViewBuilder
-    private func askingChip(_ field: QueryField, off: String, title: String, answers: [(String, QueryRule)]) -> some View {
-        if let on = query.rules.first(where: { $0.field == field }) {
-            FilterChip(text: on.label(), on: true) { query = query.without(on) }
-        } else {
-            Menu {
-                Section(title) {
-                    ForEach(answers.indices, id: \.self) { index in
-                        Button(answers[index].0) { query = query.setting(answers[index].1) }
-                    }
-                }
-            } label: {
-                chipLabel(off, on: false)
+    /// A rating, a genre or a decade: a menu of its own inside the filters, the one on checked; a
+    /// pick takes the place of any filter on its field, and picking the one on takes it off.
+    private func pickMenu(_ title: String, _ answers: [(String, QueryRule)]) -> some View {
+        Menu(title) {
+            ForEach(answers.indices, id: \.self) { index in
+                MenuPick(answers[index].0, checked: query.rules.contains(answers[index].1)) { toggle(answers[index].1) }
             }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(.isToggle)
         }
     }
 }
@@ -294,7 +319,9 @@ struct GenresPage: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle("Genres").padding(.top, detailTopGap).bigTitle()
+                PageHeader("Genres", count: genres.flatMap { $0.isEmpty ? nil : countText($0.count, "genre", "genres") })
+                    .padding(.top, pageTopGap)
+                    .bigTitle()
                 if let genres {
                     if genres.isEmpty {
                         MutedNote("None of your songs has a genre yet")
@@ -343,17 +370,17 @@ struct GenrePage: View {
         ScrollViewReader { proxy in
             LibraryList {
                     VStack(spacing: 0) {
-                        Text(name).font(.octoTitle).multilineTextAlignment(.center).frame(maxWidth: .infinity).bigTitle()
-                        PlayRow(details: "\(albumsCount(albums.count)) • \(songsCount(songs.count))") {
-                            actions.play(songs, source: name)
-                        } shuffle: {
-                            actions.play(songs, shuffled: true, source: name)
+                        PageHeader(name, count: "\(albumsCount(albums.count)) • \(songsCount(songs.count))")
+                        ControlLine {
+                            RoundPlayShuffle(enabled: !songs.isEmpty) {
+                                actions.play(songs, source: name)
+                            } shuffle: {
+                                actions.play(songs, shuffled: true, source: name)
+                            }
                         }
-                        .padding(.top, 14)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, detailTopGap)
-                    .padding(.bottom, 20)
+                    .padding(.top, pageTopGap)
+                    .bigTitle()
                     albumGrid
                     if !songs.isEmpty {
                         FirstRowMark()
@@ -425,9 +452,20 @@ struct HistoryPage: View {
 
     var body: some View {
         LibraryList {
-            ScreenTitle("History").padding(.top, detailTopGap).bigTitle()
-            GlassSegments(options: [(false, "Recently played"), (true, "Most played")], selection: $mostPlayed)
-                .padding(.horizontal, 20)
+            VStack(spacing: 0) {
+                PageHeader("History", count: shownTracks.map { songsCount($0.count) })
+                ControlLine(fills: true, overflow: lineOverflow, chipsMenu: AnyView(segmentsMenu)) {
+                    GlassSegments(options: [(false, "Recently played"), (true, "Most played")], selection: $mostPlayed)
+                } actions: {
+                    RoundPlayShuffle(enabled: !(shownTracks ?? []).isEmpty) {
+                        actions.play(shownTracks ?? [], source: "History")
+                    } shuffle: {
+                        actions.play(shownTracks ?? [], shuffled: true, source: "History")
+                    }
+                }
+            }
+            .padding(.top, pageTopGap)
+            .bigTitle()
             if mostPlayed { mostPlayedList } else { recentList }
             Color.clear.frame(height: 20)
         }
@@ -470,31 +508,72 @@ struct HistoryPage: View {
         actions.play(once, from: once.firstIndex { $0.id == track.id } ?? 0, source: "History")
     }
 
+    /// The songs listed now, each once where it first shows; nil while they are being read.
+    private var shownTracks: [LibraryTrack]? {
+        let all: [LibraryTrack]? = mostPlayed ? most?.map(\.track) : days?.flatMap(\.plays).map(\.track)
+        guard let all else { return nil }
+        var seen = Set<String>()
+        return all.filter { seen.insert($0.id).inserted }
+    }
+
+    /// The range, while Most played shows: it moves into More first when the line runs out of room.
+    private var lineOverflow: [LineOverflow] {
+        guard mostPlayed else { return [] }
+        return [LineOverflow("range", priority: 1, trailing: true) {
+            rangeMenu
+        } row: {
+            Menu {
+                rangePicker
+            } label: {
+                Label("Range: \(range.label)", systemImage: OctoIcon.history.symbol)
+            }
+        }]
+    }
+
+    /// The two lists as one menu button, for a phone where even shrunk the segments do not fit.
+    private var segmentsMenu: some View {
+        Menu {
+            Picker("Show", selection: $mostPlayed) {
+                Text("Recently played").tag(false)
+                Text("Most played").tag(true)
+            }
+            .pickerStyle(.inline)
+        } label: {
+            ChoiceChip(text: mostPlayed ? "Most played" : "Recently played")
+        }
+    }
+
+    private var rangePicker: some View {
+        Picker("Most played in", selection: $range) {
+            ForEach(HistoryRange.allCases, id: \.self) { range in Text(range.label).tag(range) }
+        }
+    }
+
+    /// The time range Most played covers, at the end of the segments' line.
+    private var rangeMenu: some View {
+        Menu {
+            Picker("Most played in", selection: $range) {
+                ForEach(HistoryRange.allCases, id: \.self) { range in Text(range.label).tag(range) }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(range.label).font(LibraryLook.label).lineLimit(1)
+                IconView(.collapse, size: 14)
+            }
+            .foregroundStyle(OctoColor.textSecondary)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Most played, \(range.label)")
+        .accessibilityHint("Change the time range")
+    }
+
     @ViewBuilder
     private var mostPlayedList: some View {
-        HStack {
-            Spacer()
-            Menu {
-                Picker("Most played in", selection: $range) {
-                    ForEach(HistoryRange.allCases, id: \.self) { range in Text(range.label).tag(range) }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(range.label).font(LibraryLook.label)
-                    IconView(.collapse, size: 14)
-                }
-                .foregroundStyle(OctoColor.textSecondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Most played, \(range.label)")
-            .accessibilityHint("Change the time range")
-        }
-        .padding(.top, 8)
-        .padding(.horizontal, 10)
         if let most {
             if most.isEmpty {
                 MutedNote(range == .allTime ? "Nothing played yet"
@@ -533,13 +612,20 @@ struct DownloadsPage: View {
         let shown = sortDownloads(rows, order, done: { $0.state == .done }, title: \.title, id: \.trackId, size: \.sizeBytes,
                                   addedAt: \.addedAt)
         LibraryList {
-            TitleWithButtons(title: "Downloads") { if !rows.isEmpty { SortButton(list: .downloads) } }
-                .padding(.top, detailTopGap)
-                .bigTitle()
+            VStack(spacing: 0) {
+                PageHeader("Downloads", count: rows.isEmpty ? nil : summaryWords(rows))
+                if !rows.isEmpty {
+                    ControlLine(overflow: [.sort(.downloads)],
+                                more: AnyView(Button("Remove all", systemImage: OctoIcon.delete.symbol, role: .destructive) { confirming = true })) {
+                        EmptyView()
+                    }
+                }
+            }
+            .padding(.top, pageTopGap)
+            .bigTitle()
             if rows.isEmpty {
                 MutedNote("Songs you download play without a connection. Long press a song and choose Download, or keep a playlist downloaded from its page.")
             } else {
-                summary(rows)
                 ForEach(shown) { row in downloadRow(row, shown) }
             }
             Color.clear.frame(height: 20)
@@ -547,38 +633,22 @@ struct DownloadsPage: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.9), value: shown.map(\.id))
         .barClearance()
         .inlineTitle("Downloads")
+        .confirmationDialog("Remove every download from this phone?", isPresented: $confirming, titleVisibility: .visible) {
+            Button("Remove all", role: .destructive) { offline.removeAll() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Liked songs and playlists stop being kept downloaded too.")
+        }
         .sensoryFeedback(.impact, trigger: removals)
         .task(id: library.stamp(.playlists)) {
             playlistNames = Dictionary((await library.playlists()).map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
         }
     }
 
-    private func summary(_ rows: [DownloadListRow]) -> some View {
+    /// The count and size of what is on the phone, for the title's line.
+    private func summaryWords(_ rows: [DownloadListRow]) -> String {
         let done = rows.filter { $0.state == .done }
-        return VStack(alignment: .leading, spacing: 0) {
-            Text("\(songsCount(done.count)) · \(sizeLabel(done.reduce(0) { $0 + $1.sizeBytes }))")
-                .font(.octoCaption)
-                .foregroundStyle(OctoColor.textMuted)
-            if confirming {
-                Text("Remove every download from this phone? Liked songs and playlists stop being kept downloaded too.")
-                    .font(.octoBodySmall)
-                    .foregroundStyle(OctoColor.textSecondary)
-                    .padding(.top, 10)
-                HStack(spacing: 12) {
-                    AccentButton("Remove all", size: .medium) {
-                        offline.removeAll()
-                        confirming = false
-                    }
-                    GlazeButton("Cancel", size: .medium) { confirming = false }
-                }
-                .padding(.top, 12)
-            } else {
-                GlazeButton("Remove all", size: .medium) { confirming = true }
-                    .padding(.top, 12)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 12)
+        return "\(songsCount(done.count)) · \(sizeLabel(done.reduce(0) { $0 + $1.sizeBytes }))"
     }
 
     private func downloadRow(_ row: DownloadListRow, _ shown: [DownloadListRow]) -> some View {

@@ -40,10 +40,18 @@ final class Discovery {
 
     @ObservationIgnored private var offered: [String: Bool] = [:]
     @ObservationIgnored private var chartsOfferedLive: [String: Bool] = [:]
+    @ObservationIgnored private var chartCountriesOfferedLive: [String: Bool] = [:]
+    /// The reads of other countries' charts on their way; a server still loading some is asked
+    /// again when one finishes.
+    @ObservationIgnored private let countryReads = CountryReads()
     @ObservationIgnored private var chart: (server: String, at: Date, list: RankedSongs<Song>)?
     @ObservationIgnored private var choices: [String: (at: Date, value: ChartChoices)] = [:]
     @ObservationIgnored private var chartLists: [String: (at: Date, value: ChartList<Song>)] = [:]
     @ObservationIgnored private var albumTops: [String: [TopSongRef]] = [:]
+
+    /// Counts the times the listener's own charts became another country's (a save, or a change
+    /// made elsewhere), so Home asks for its chart again.
+    private(set) var ownChartsChanged = 0
 
     init(session: Session, online: ServerDiscovery, library: Library) {
         self.session = session
@@ -138,21 +146,82 @@ final class Discovery {
         return yes
     }
 
-    /// The charts the server's country has, kept a day per server. Nil when it has none.
-    func chartChoices() async -> ChartChoices? {
+    /// Whether the server offers charts of any country and saves the listener's own: octoTopSongs
+    /// at version 3, or Octo saying so when asked.
+    func offersChartCountries() async -> Bool {
+        guard let client = session.client, let server = session.active?.sourceId else { return false }
+        if chartCountriesOffered(session.extensions) { return true }
+        if !session.runsOcto { return false }
+        if let known = chartCountriesOfferedLive[server] { return known }
+        guard let yes = await client.supportsIfKnown(octoTopSongs, version: octoTopSongsCountries) else { return false }
+        chartCountriesOfferedLive[server] = yes
+        return yes
+    }
+
+    /// The charts a country has, `country` nil for the listener's own, kept a day per server and
+    /// country. `fresh` asks the server again and keeps its answer. Nil when it has none; throws
+    /// when the server cannot answer or refuses.
+    func chartChoices(country: String? = nil, fresh: Bool = false) async throws -> ChartChoices? {
         guard let client = session.client, let asked = session.activeId else { return nil }
-        if let kept = choices[asked], Date().timeIntervalSince(kept.at) < chartChoicesKeptSeconds { return kept.value }
-        guard await offersCharts(), let value = try? await client.charts(), session.activeId == asked else { return nil }
-        choices[asked] = (Date(), value)
+        let key = chartChoicesKey(server: asked, country: country)
+        if !fresh, let kept = choices[key], Date().timeIntervalSince(kept.at) < chartChoicesKeptSeconds { return kept.value }
+        guard await offersCharts() else { return nil }
+        let value = try await countryReads.read(country: country) { try await client.charts(country: country) }
+        guard session.activeId == asked else { return nil }
+        // The listener's own country changed elsewhere: their own charts kept here are another's.
+        if country == nil, let old = choices[key]?.value, old.country != value.country {
+            chartLists = chartLists.filter { !isOwnChartKey($0.key, server: asked) }
+            if chart?.server == asked { chart = nil }
+            ownChartsChanged += 1
+        }
+        choices[key] = (Date(), value)
         return value
     }
 
-    /// A chart's songs, kept an hour per server and chart. Nil when it could not be read.
-    func chart(_ id: String) async -> ChartList<Song>? {
+    /// The listener's own charts as kept, without asking the server.
+    func keptChartChoices() -> ChartChoices? {
+        guard session.client != nil, let asked = session.activeId,
+              let kept = choices[chartChoicesKey(server: asked, country: nil)],
+              Date().timeIntervalSince(kept.at) < chartChoicesKeptSeconds else { return nil }
+        return kept.value
+    }
+
+    /// Saves the listener's own chart country (`auto` follows the server) and answers their charts.
+    func saveChartCountry(_ code: String) async throws -> ChartChoices? {
         guard let client = session.client, let asked = session.activeId else { return nil }
-        let key = "\(asked)|\(id)"
+        let value = try await client.setChartCountry(code)
+        return savedCharts(value, asked: asked)
+    }
+
+    /// Pins a country for the listener, or unpins it, and answers their charts.
+    func pinChartCountry(_ code: String, pinned: Bool) async throws -> ChartChoices? {
+        guard let client = session.client, let asked = session.activeId else { return nil }
+        let value = try await client.pinChartCountry(code, pinned: pinned)
+        return savedCharts(value, asked: asked)
+    }
+
+    /// After a save the listener's own lists and playlists are others: every chart kept for that
+    /// server goes, and the answer is kept as their own charts.
+    private func savedCharts(_ value: ChartChoices, asked: String) -> ChartChoices? {
+        choices = choices.filter { !isChartKey($0.key, server: asked) }
+        chartLists = chartLists.filter { !isChartKey($0.key, server: asked) }
+        if chart?.server == asked { chart = nil }
+        guard session.activeId == asked else { return nil }
+        choices[chartChoicesKey(server: asked, country: nil)] = (Date(), value)
+        ownChartsChanged += 1
+        return value
+    }
+
+    /// A chart's songs, `country` nil for the listener's own, kept an hour per server, country and
+    /// chart. Nil when it could not be read.
+    func chart(_ id: String, country: String? = nil) async -> ChartList<Song>? {
+        guard let client = session.client, let asked = session.activeId else { return nil }
+        let key = chartListKey(server: asked, country: country, chart: id)
         if let kept = chartLists[key], Date().timeIntervalSince(kept.at) < chartSongsKeptSeconds { return kept.value }
-        guard await offersCharts(), let list = try? await client.topChart(count: chartSongs(id), chart: id) else { return nil }
+        let count = chartSongs(id)
+        guard await offersCharts(),
+              let list = try? await countryReads.read(country: country, { try await client.topChart(count: count, chart: id, country: country) })
+        else { return nil }
         // Another server in use by the time it came: not this one's chart.
         guard session.activeId == asked else { return nil }
         let entries = list.entry.filter { $0.song != nil }

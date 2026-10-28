@@ -2,9 +2,9 @@ import OctoKit
 import SwiftUI
 import UIKit
 
-/// Live radio near you: the place, the order and the radius, then every station the Radio
-/// Browser catalog lists around the place that this app plays. Tapping a station plays it; its
-/// menu keeps it on the phone, or, for a server's admin, adds it to the server.
+/// Live radio near you: one line with the place, the order and the radius, then every station
+/// the Radio Browser catalog lists around the place that this app plays. Tapping a station plays
+/// it; its menu keeps it on the phone, or, for a server's admin, adds it to the server.
 struct LiveRadioPage: View {
     @Environment(Player.self) private var player
     @State private var radio = LiveRadioStore.shared
@@ -14,10 +14,9 @@ struct LiveRadioPage: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle("Live radio near you")
+                PageHeader("Live radio near you")
                 if let place = radio.place {
-                    placeLine(place)
-                    controlsRow
+                    controlLine(place)
                     content(place)
                 } else {
                     PlaceChooser { radio.choose($0) }
@@ -29,7 +28,7 @@ struct LiveRadioPage: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 24)
             }
-            .padding(.top, detailTopGap)
+            .padding(.top, pageTopGap)
             .animation(.easeInOut(duration: 0.2), value: radio.found)
             .animation(.easeInOut(duration: 0.2), value: radio.sort)
         }
@@ -48,49 +47,51 @@ struct LiveRadioPage: View {
 
     // MARK: The place and the choices
 
-    private func placeLine(_ place: LivePlace) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "location.fill")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(OctoColor.accent)
-                .accessibilityHidden(true)
-            Text(place.label)
-                .font(.octoBody)
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            GlazeButton("Change", size: .small) { choosing = true }
+    /// Line two: the place, which opens the place chooser, then the order and the radius, which
+    /// move into More, the order first, on a phone with no room for them.
+    private func controlLine(_ place: LivePlace) -> some View {
+        ControlLine(overflow: [orderOverflow, radiusOverflow]) {
+            Button { choosing = true } label: { ChoiceChip(text: place.label, systemImage: "location.fill") }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Near \(place.label)")
+                .accessibilityHint("Change the place")
+        } actions: {
+            EmptyView()
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 12)
-        .accessibilityElement(children: .combine)
     }
 
-    private var controlsRow: some View {
-        HStack(spacing: 8) {
-            Menu {
-                Picker("Order", selection: Binding(get: { radio.sort }, set: { radio.setSort($0) })) {
-                    ForEach(LiveSort.allCases, id: \.self) { sort in
-                        Label(sort.label, systemImage: sort == .distance ? "location" : "flame").tag(sort)
-                    }
-                }
-            } label: {
-                ChoiceChip(text: radio.sort.label, systemImage: "arrow.up.arrow.down")
+    private var orderPicker: some View {
+        Picker("Order", selection: Binding(get: { radio.sort }, set: { radio.setSort($0) })) {
+            ForEach(LiveSort.allCases, id: \.self) { sort in
+                Label(sort.label, systemImage: sort == .distance ? "location" : "flame").tag(sort)
             }
-            .accessibilityLabel("Order: \(radio.sort.label)")
-            Menu {
-                Picker("Within", selection: Binding(get: { radio.radiusIndex }, set: { radio.setRadius($0) })) {
-                    ForEach(Array(radio.radiusChoices.enumerated()), id: \.offset) { index, choice in
-                        Text("Within \(choice.label)").tag(index)
-                    }
-                }
-            } label: {
-                ChoiceChip(text: "Within \(radio.radius.label)", systemImage: "scope")
-            }
-            .accessibilityLabel("Within \(radio.radius.label)")
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 12)
+    }
+
+    private var radiusPicker: some View {
+        Picker("Within", selection: Binding(get: { radio.radiusIndex }, set: { radio.setRadius($0) })) {
+            ForEach(Array(radio.radiusChoices.enumerated()), id: \.offset) { index, choice in
+                Text("Within \(choice.label)").tag(index)
+            }
+        }
+    }
+
+    private var orderOverflow: LineOverflow {
+        LineOverflow("order", priority: 1) {
+            Menu { orderPicker } label: { ChoiceChip(text: radio.sort.label, systemImage: "arrow.up.arrow.down") }
+                .accessibilityLabel("Order: \(radio.sort.label)")
+        } row: {
+            Menu { orderPicker } label: { Label("Order: \(radio.sort.label)", systemImage: "arrow.up.arrow.down") }
+        }
+    }
+
+    private var radiusOverflow: LineOverflow {
+        LineOverflow("radius", priority: 2) {
+            Menu { radiusPicker } label: { ChoiceChip(text: "Within \(radio.radius.label)", systemImage: "scope") }
+                .accessibilityLabel("Within \(radio.radius.label)")
+        } row: {
+            Menu { radiusPicker } label: { Label("Within \(radio.radius.label)", systemImage: "scope") }
+        }
     }
 
     // MARK: The stations
@@ -262,13 +263,13 @@ func addStationToServer(_ station: LiveStation, controls: ServerControls, router
 }
 
 /// A choice shown as a glass chip: its icon, what is chosen, and a chevron saying it opens a list.
-private struct ChoiceChip: View {
+struct ChoiceChip: View {
     let text: String
-    let systemImage: String
+    var systemImage: String?
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: systemImage).font(.system(size: 13, weight: .semibold))
+            if let systemImage { Image(systemName: systemImage).font(.system(size: 13, weight: .semibold)) }
             Text(text).font(.octoBodySmall).lineLimit(1)
             Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(OctoColor.textSecondary)
         }
@@ -289,6 +290,7 @@ struct PlaceChooser: View {
     @State private var finder = PlaceFinderHolder()
     @State private var text = ""
     @State private var country = phoneCountry()
+    @State private var pickingCountry = false
     @State private var locating = false
     @State private var looking = false
     @State private var problem: String?
@@ -316,13 +318,9 @@ struct PlaceChooser: View {
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
             HStack(spacing: 12) {
-                Picker("Country", selection: $country) {
-                    ForEach(placeCountries(), id: \.code) { entry in Text(entry.name).tag(entry.code) }
-                }
-                .pickerStyle(.menu)
-                .tint(.white)
-                .labelsHidden()
-                .accessibilityLabel("Country")
+                Button { pickingCountry = true } label: { ChoiceChip(text: countryName(country), systemImage: OctoIcon.globe.symbol) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Country: \(countryName(country))")
                 Spacer(minLength: 0)
                 GlazeButton("Find", size: .medium, enabled: !text.trimmingCharacters(in: .whitespaces).isEmpty, loading: looking) { find() }
             }
@@ -338,6 +336,13 @@ struct PlaceChooser: View {
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(ChooserBackground(inSheet: inSheet))
+        .sheet(isPresented: $pickingCountry) {
+            let rows = placeCountries().map { CountryRow(id: $0.code, code: $0.code, name: $0.name) }
+            CountryPickerSheet(sections: [CountrySection(title: nil, rows: rows)], chosen: country) { row in
+                country = row.id
+                return true
+            }
+        }
     }
 
     /// How places are looked up for the server in use.

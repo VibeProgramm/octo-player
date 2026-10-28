@@ -55,102 +55,6 @@ struct PlayShuffle: View {
     }
 }
 
-/// A detail page's play line: what it holds on the left, up to two lines, and any quieter
-/// controls at the right, 8 apart; then Play and Shuffle across the full width 10 below, left out
-/// when there is nothing to play.
-struct PlayRow<Extras: View>: View {
-    let details: String
-    var playable = true
-    let play: () -> Void
-    let shuffle: () -> Void
-    @ViewBuilder var extras: Extras
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text(details)
-                    .font(.octoCaption)
-                    .foregroundStyle(OctoColor.textMuted)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                extras
-            }
-            if playable {
-                PlayShuffle(play: play, shuffle: shuffle).padding(.top, 10)
-            }
-        }
-    }
-}
-
-extension PlayRow where Extras == EmptyView {
-    init(details: String, playable: Bool = true, play: @escaping () -> Void, shuffle: @escaping () -> Void) {
-        self.init(details: details, playable: playable, play: play, shuffle: shuffle) { EmptyView() }
-    }
-}
-
-/// "Keep downloaded" for a playlist, or for Liked songs when `playlistId` is nil: their songs
-/// only on a server download to the phone, and the downloads follow the list as songs come and
-/// go. Shown only when there is something to download or it is on. Liked songs' switch is the one
-/// the Streaming and offline settings have too.
-struct KeepDownloadedLine: View {
-    let tracks: [LibraryTrack]
-    var playlistId: String?
-    @Environment(OfflineDownloads.self) private var offline
-
-    var body: some View {
-        let prefs = offline.settings.offline
-        let checked = playlistId.map { prefs.keptPlaylists.contains($0) } ?? prefs.keepLiked
-        let serverOnly = tracks.filter { !$0.onPhone && !$0.isFound }
-        if !serverOnly.isEmpty || checked {
-            let done = serverOnly.filter { offline.byTrack[$0.id]?.state == .done }.count
-            HStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Keep downloaded").font(.octoBodySmall).foregroundStyle(.white)
-                    Text(checked ? keptSummary(serverOnly: serverOnly.count, done: done)
-                         : "Download the songs only on your server, and keep them in step")
-                        .font(.octoCaption)
-                        .foregroundStyle(OctoColor.textMuted)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, 12)
-                Toggle("Keep downloaded", isOn: Binding(get: { checked }, set: { on in
-                    if let playlistId { offline.setPlaylistKept(playlistId, on) } else { offline.setKeepLiked(on) }
-                }))
-                .labelsHidden()
-                .tint(OctoColor.accent)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 6)
-        }
-    }
-}
-
-/// Play as a small glass pill and Shuffle as a round glass button beside it, for list pages.
-struct PlayPills: View {
-    let play: () -> Void
-    let shuffle: () -> Void
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Button(action: play) {
-                HStack(spacing: 6) {
-                    IconView(.play, size: 18)
-                    Text("Play").font(LibraryLook.labelMedium)
-                }
-                .foregroundStyle(.white)
-                .padding(.leading, 11)
-                .padding(.trailing, 15)
-                .frame(height: 34)
-                .glassEffect(LibraryLook.lifted, in: .capsule)
-                .frame(minHeight: 48)
-                .contentShape(Capsule())
-            }
-            .buttonStyle(PressScale())
-            GlassIconButton(icon: .shuffle, label: "Shuffle", action: shuffle)
-        }
-    }
-}
-
 /// A round glass button with an icon: 34 across in a 48 target, lit while `lit`.
 struct GlassIconButton: View {
     let icon: OctoIcon
@@ -299,47 +203,6 @@ struct LibrarySourceActions: View {
     }
 }
 
-/// The page title with its buttons at the end of the same line. The title is never shortened or
-/// wrapped: when the two do not fit side by side, the buttons move to their own line under it.
-struct TitleWithButtons<Buttons: View>: View {
-    let title: String
-    @ViewBuilder var buttons: Buttons
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 0) {
-                titleText
-                Spacer(minLength: 0)
-                buttonsBox
-            }
-            VStack(alignment: .trailing, spacing: 0) {
-                titleText.frame(maxWidth: .infinity, alignment: .leading)
-                buttonsBox
-            }
-        }
-    }
-
-    private var titleText: some View {
-        Text(title)
-            .font(.octoDisplay)
-            .tracking(-0.5)
-            .foregroundStyle(.white)
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 16)
-            .accessibilityAddTraits(.isHeader)
-    }
-
-    private var buttonsBox: some View {
-        HStack(spacing: 2) { buttons }
-            .fixedSize()
-            .padding(.trailing, 20)
-            .padding(.bottom, 8)
-    }
-}
-
 /// The order a list is in, as a small glass capsule: the sort mark, what it goes by, and an
 /// arrow for which way it runs. A tap opens the system menu: the two directions on top, then the
 /// options. Picking another option gives it in its own starting direction.
@@ -350,22 +213,7 @@ struct SortButton: View {
     var body: some View {
         let order = library.order(list)
         Menu {
-            // The two directions, the option's own starting one first; another one reorders at once.
-            Picker("Direction", selection: Binding(get: { order.descending },
-                                                   set: { library.setOrder(list, ListOrder(order.by, descending: $0)) })) {
-                ForEach(directionChoices(order.by), id: \.descending) { choice in
-                    Label(choice.label, systemImage: choice.descending ? "arrow.down" : "arrow.up").tag(choice.descending)
-                }
-            }
-            .pickerStyle(.palette)
-            // Another option comes in its own starting direction.
-            Picker("Sort by", selection: Binding(get: { order.by.id }, set: { id in
-                guard let option = list.options.first(where: { $0.id == id }), option.id != order.by.id else { return }
-                library.setOrder(list, order.picking(option))
-            })) {
-                ForEach(list.options, id: \.id) { option in Text(option.label).tag(option.id) }
-            }
-            .pickerStyle(.inline)
+            SortMenuItems(list: list)
         } label: {
             HStack(spacing: 7) {
                 IconView(.sort, size: 16, color: .white.opacity(0.72))
@@ -389,6 +237,55 @@ struct SortButton: View {
         .accessibilityLabel("Sorted by \(order.by.label), \(sortScale(order.by).label(descending: order.descending))")
         .accessibilityHint("Change the order")
         .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// What the sort menu holds: the two directions, the option's own starting one first, then the
+/// options. Another option comes in its own starting direction; another direction reorders at
+/// once.
+struct SortMenuItems: View {
+    let list: SortList
+    @Environment(LibraryState.self) private var library
+
+    var body: some View {
+        let order = library.order(list)
+        Picker("Direction", selection: Binding(get: { order.descending },
+                                               set: { library.setOrder(list, ListOrder(order.by, descending: $0)) })) {
+            ForEach(directionChoices(order.by), id: \.descending) { choice in
+                Label(choice.label, systemImage: choice.descending ? "arrow.down" : "arrow.up").tag(choice.descending)
+            }
+        }
+        .pickerStyle(.palette)
+        Picker("Sort by", selection: Binding(get: { order.by.id }, set: { id in
+            guard let option = list.options.first(where: { $0.id == id }), option.id != order.by.id else { return }
+            library.setOrder(list, order.picking(option))
+        })) {
+            ForEach(list.options, id: \.id) { option in Text(option.label).tag(option.id) }
+        }
+        .pickerStyle(.inline)
+    }
+}
+
+/// Sort as a row in More, once the line has no room for the button: "Sort: Date liked", opening
+/// the same choices.
+struct SortMoreRow: View {
+    let list: SortList
+    @Environment(LibraryState.self) private var library
+
+    var body: some View {
+        Menu {
+            SortMenuItems(list: list)
+        } label: {
+            Label("Sort: \(library.order(list).by.label)", systemImage: OctoIcon.sort.symbol)
+        }
+        .menuOrder(.fixed)
+    }
+}
+
+extension LineOverflow {
+    /// A list's Sort button, the first thing to move into More.
+    static func sort(_ list: SortList, priority: Int = 1) -> LineOverflow {
+        LineOverflow("sort", priority: priority) { SortButton(list: list) } row: { SortMoreRow(list: list) }
     }
 }
 
@@ -511,33 +408,6 @@ struct FavoriteHeart: View {
     }
 }
 
-/// A filter chip: the selected pill with white words while on, a faint fill with secondary
-/// words while off.
-struct FilterChip: View {
-    let text: String
-    let on: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            chipLabel(text, on: on)
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(on ? [.isSelected, .isToggle] : .isToggle)
-    }
-}
-
-func chipLabel(_ text: String, on: Bool) -> some View {
-    Text(text)
-        .font(LibraryLook.label)
-        .lineLimit(1)
-        .foregroundStyle(on ? Color.white : OctoColor.textSecondary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .frame(minHeight: 36)
-        .background(on ? LibraryLook.accentSelected : Color.white.opacity(0.07), in: Capsule())
-}
-
 /// A few choices side by side, as the system's segmented control.
 struct GlassSegments<Value: Hashable>: View {
     let options: [(value: Value, label: String)]
@@ -549,5 +419,6 @@ struct GlassSegments<Value: Hashable>: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
+        .segmentedAccent()
     }
 }

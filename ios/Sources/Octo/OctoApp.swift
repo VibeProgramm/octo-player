@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @main
 struct OctoApp: App {
@@ -61,6 +64,7 @@ struct OctoApp: App {
         _lyrics = State(initialValue: LyricsStore(session: session, library: data.library, player: player))
         _artworkColors = State(initialValue: ArtworkColorStore(session: session))
         data.start()
+        SegmentedAccent.tint()
         let accounts = Accounts(session: session, router: router)
         _accounts = State(initialValue: accounts)
         let entries = SystemEntries(session: session, player: player, router: router, accounts: accounts)

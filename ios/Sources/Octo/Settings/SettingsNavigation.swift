@@ -154,7 +154,7 @@ struct SettingsDestination: View {
     var body: some View {
         switch route.page {
         case .playback: PlaybackSettingsPage(highlight: route.highlight)
-        case .sound: SoundPage().detailPage()
+        case .sound: SoundPage().detailPage(ownBack: true)
         case .radio: RadioSettingsPage(highlight: route.highlight)
         case .appearance: AppearanceSettingsPage(highlight: route.highlight)
         case .library: LibrarySettingsPage(highlight: route.highlight)
@@ -177,7 +177,7 @@ extension View {
         }
         .navigationDestination(for: SettingsSideRoute.self) { route in
             switch route {
-            case .downloads: DownloadsPage().background { PageBackdrop(page: .downloads, route: nil) }.detailPage()
+            case .downloads: DownloadsPage().background { PageBackdrop(page: .downloads, route: nil) }.detailPage(ownBack: true)
             }
         }
         .accountRoutes()

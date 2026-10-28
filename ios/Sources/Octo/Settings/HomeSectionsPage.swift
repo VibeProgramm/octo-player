@@ -11,8 +11,8 @@ struct HomeSectionsPage: View {
     var body: some View {
         let entries = settings.homeSections
         List {
-            ScreenTitle("Home sections")
-                .padding(.top, detailTopGap)
+            PageHeader("Home sections")
+                .padding(.top, pageTopGap)
                 .plainListRow()
             Section {
                 ForEach(entries) { entry in
