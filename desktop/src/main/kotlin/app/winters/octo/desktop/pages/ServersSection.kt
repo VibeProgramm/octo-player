@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
@@ -35,6 +36,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntRect
 import app.winters.octo.design.ControlHeight
+import app.winters.octo.design.CardFit
 import app.winters.octo.design.Corner
 import app.winters.octo.design.DesktopType
 import app.winters.octo.design.FrameSize
@@ -112,7 +114,7 @@ private fun ServerRow(app: AppState, server: SavedServer, inUse: Boolean) {
     val switching = app.switching?.id == server.id
     val check = app.serverFacts.checks[server.id]
     Box(Modifier.fillMaxWidth().heightIn(min = RowHeight.Roomy).semantics { selected = inUse }) {
-        ChosenFill(inUse, Modifier.matchParentSize().padding(horizontal = Space.S, vertical = Space.Xs))
+        ChosenFill(inUse, Modifier.matchParentSize().padding(CardFit.Fill), Corner.RowShape)
         Row(
             Modifier.fillMaxWidth().padding(horizontal = RowInset, vertical = Space.L),
             verticalAlignment = Alignment.CenterVertically,
@@ -128,7 +130,8 @@ private fun ServerRow(app: AppState, server: SavedServer, inUse: Boolean) {
                 Txt(statusLine(server, check, switching, inUse), DesktopType.meta, if (quiet) OctoColors.SignalOrange else OctoColors.TextMuted, Modifier.padding(top = Space.Xxs))
             }
             when {
-                switching -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+                // Ends where the words of Switch end: the button's own padding.
+                switching -> Row(Modifier.padding(end = Space.L), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
                     Spinner(size = IconSize.Table)
                     Txt("Switching", DesktopType.meta, OctoColors.TextSecondary)
                 }
@@ -164,13 +167,14 @@ private fun ServerMenuButton(app: AppState, server: SavedServer, inUse: Boolean)
                 if (server.signedOut) {
                     MenuRow("Sign in", { close(); signInTo(app, server) }, OctoIcons.Forward)
                 } else {
-                    MenuRow("Sign out", { close(); app.signOutOf(server.id) }, OctoIcons.Back)
+                    MenuRow("Sign out", { close(); app.signOutOf(server.id) }, OctoIcons.SignOut)
                 }
                 MenuSeparator()
                 MenuRow("Remove", { close(); askToRemove(app, server) }, OctoIcons.Delete, destructive = true)
             }
         },
-        Modifier.onGloballyPositioned { anchor = it.windowRect() },
+        // Its dots end on the same line as the text buttons' words.
+        Modifier.offset(x = CardFit.MenuDots).onGloballyPositioned { anchor = it.windowRect() },
         size = ControlHeight.M,
         iconSize = IconSize.Toolbar,
         tint = OctoColors.TextSecondary,
@@ -204,7 +208,7 @@ private fun OverviewRows(app: AppState, connection: Connection) {
     // Octo that knows it runs the newest release says so.
     val kind = upToDateLine(update)?.takeIf { connection.isOcto } ?: overview.kind
     SettingRow(kind, overview.offers ?: "Plays your music, with nothing beyond it.") {
-        overview.answer?.let { Txt(it, DesktopType.meta.copy(fontFeatureSettings = "tnum"), OctoColors.TextSecondary) }
+        overview.answer?.let { Txt(it, DesktopType.meta.copy(fontFeatureSettings = "tnum"), OctoColors.TextSecondary, Modifier.padding(end = RowValueEnd)) }
     }
     SettingRow("In your library", overview.counts ?: if (state is LibraryState.Failed) "Couldn't read the library just now." else "Reading the library.")
     val kept = if (app.accounts.remembersSignIn) "Octo keeps you signed in on this computer." else "You'll sign in again the next time Octo opens."

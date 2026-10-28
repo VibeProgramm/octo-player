@@ -56,7 +56,9 @@ import app.winters.octo.design.CutTxt
 import app.winters.octo.design.DesktopType
 import app.winters.octo.design.GlassField
 import app.winters.octo.design.GlazeCapsule
+import app.winters.octo.design.FitOrElse
 import app.winters.octo.design.GlazeSegments
+import app.winters.octo.desktop.ui.ChoiceButton
 import app.winters.octo.design.Glyph
 import app.winters.octo.design.IconSize
 import app.winters.octo.design.LocalPopups
@@ -394,7 +396,10 @@ private fun AddMember(model: FamilyModel) {
         Card {
             Column(Modifier.fillMaxWidth().padding(horizontal = RowInset, vertical = Space.L), verticalArrangement = Arrangement.spacedBy(Space.M)) {
                 Txt(presetLine(preset), DesktopType.meta, OctoColors.TextMuted, maxLines = 2)
-                GlazeSegments(FamilyPreset.entries, preset, ::presetName, { preset = it })
+                FitOrElse(
+                    { GlazeSegments(FamilyPreset.entries, preset, ::presetName, { preset = it }) },
+                    { ChoiceButton(FamilyPreset.entries, preset, ::presetName, { preset = it }, title = "Role") },
+                )
                 Row(
                     Modifier
                         .fillMaxWidth()

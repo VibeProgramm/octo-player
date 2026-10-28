@@ -142,6 +142,13 @@ fun ChartsPage(app: AppState, visit: Visit) {
 // The widest the country button grows; a longer name shortens inside it.
 private val CountryButtonMax = 220.dp
 
+// What the country menu's first line says when no chart is there to name.
+internal const val COUNTRY_MENU_TITLE = "Choose a country"
+
+// How wide the choice for a picked country is: a little wider than the
+// country list, so none of its lines ends on a word alone.
+private val CountryChoiceWidth = CountryMenuWidth + 24.dp
+
 // Every country, under the button that opened it, the chart's source line
 // at its top: the listener's own first, the server's while they chose one
 // of their own, then every country by name. Their own goes back to their
@@ -158,7 +165,10 @@ internal fun showCountryMenu(app: AppState, charts: Charts, anchor: IntRect, typ
                 else -> askCountry(app, charts, anchor, code, server = row.pick == CountryPick.Server)
             }
         }
-        if (typed != null) CountryMenu(rows, pick, close, typed, title = caption) else CountryMenu(rows, pick, close, title = caption)
+        // The line always shows, so the field under it never moves: with no
+        // chart to name, it says what the menu is for.
+        val line = caption ?: COUNTRY_MENU_TITLE
+        if (typed != null) CountryMenu(rows, pick, close, typed, title = line) else CountryMenu(rows, pick, close, title = line)
     }
 }
 
@@ -168,7 +178,7 @@ internal fun showCountryMenu(app: AppState, charts: Charts, anchor: IntRect, typ
 // and says so when one did not happen; putting it away does nothing.
 internal fun askCountry(app: AppState, charts: Charts, anchor: IntRect, code: String, server: Boolean = false) {
     charts.problemSeen()
-    app.popups.showUnder(anchor, width = CountryMenuWidth) { close ->
+    app.popups.showUnder(anchor, width = CountryChoiceWidth) { close ->
         val own = charts.own ?: return@showUnder
         val name = countryName(code)
         MenuTitle(name)

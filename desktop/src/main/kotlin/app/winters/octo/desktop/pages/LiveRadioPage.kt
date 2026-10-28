@@ -40,6 +40,7 @@ import app.winters.octo.design.DesktopType
 import app.winters.octo.design.FrameSize
 import app.winters.octo.design.GlassField
 import app.winters.octo.design.GlazeCapsule
+import app.winters.octo.design.FitOrElse
 import app.winters.octo.design.GlazeSegments
 import app.winters.octo.design.Glyph
 import app.winters.octo.design.IconAction
@@ -267,7 +268,13 @@ private fun OrderControls(app: AppState, sort: LiveSort, radius: Int, located: B
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.L),
     ) {
-        GlazeSegments(LiveSort.entries, sort, ::sortLabel, app.liveRadio::setSort)
+        FitOrElse(
+            { GlazeSegments(LiveSort.entries, sort, ::sortLabel, app.liveRadio::setSort) },
+            { ChoiceButton(LiveSort.entries, sort, ::sortLabel, app.liveRadio::setSort, title = "Order") },
+            // The distance button is measured first, so the order gets only
+            // the room it leaves.
+            Modifier.weight(1f, fill = false),
+        )
         if (located) {
             ChoiceButton(choices.indices.toList(), radius.coerceIn(choices.indices), { radiusLabel(choices[it], miles) }, app.liveRadio::setRadius, title = "How far")
         }

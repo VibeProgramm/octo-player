@@ -195,6 +195,10 @@ private val ScrollbarWide = 9.dp
 private val ScrollbarInset = 3.dp
 private val ScrollbarMinLength = 36.dp
 
+// The room a scrolling list keeps at its end so a row's fill stops before
+// the bar at its widest, with a little air.
+val ScrollbarGutter = ScrollbarWide + 3.dp
+
 // White, quiet at rest and brighter under the pointer, so it reads on any
 // cover's colours without taking the eye.
 private val ScrollbarInk = Color.White.copy(alpha = 0.28f)

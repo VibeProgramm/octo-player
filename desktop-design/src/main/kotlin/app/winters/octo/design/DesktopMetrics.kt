@@ -66,6 +66,14 @@ object Focus {
     val MinTarget = 24.dp
 }
 
+// How a chosen row's fill sits in its card, and how far a row's menu button
+// moves toward the card's end so its dots end level with the text buttons'
+// words.
+object CardFit {
+    val Fill = 5.dp
+    val MenuDots = 5.dp
+}
+
 // One corner per role.
 object Corner {
     val Row = 6.dp

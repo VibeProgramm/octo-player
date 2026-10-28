@@ -24,7 +24,9 @@ import androidx.compose.ui.unit.dp
 import app.winters.octo.design.ControlHeight
 import app.winters.octo.design.GlazeCapsule
 import app.winters.octo.design.scrollbar
+import app.winters.octo.design.FitOrElse
 import app.winters.octo.design.GlazeSegments
+import app.winters.octo.desktop.ui.ChoiceButton
 import app.winters.octo.design.MenuRow
 import app.winters.octo.design.MenuSeparator
 import app.winters.octo.design.MenuTitle
@@ -192,7 +194,13 @@ fun FavouritesPage(app: AppState, visit: Visit) {
         PageHeader(
             "Favorites",
             detail = detail,
-            control = { GlazeSegments(FavouriteKind.entries, kind, { it.label }, { kind = it; app.navigator.keepTab(visit, it.name) }) },
+            control = {
+                val pick: (FavouriteKind) -> Unit = { kind = it; app.navigator.keepTab(visit, it.name) }
+                FitOrElse(
+                    { GlazeSegments(FavouriteKind.entries, kind, { it.label }, pick) },
+                    { ChoiceButton(FavouriteKind.entries, kind, { it.label }, pick, title = "Show") },
+                )
+            },
             filters = filters,
             actions = actions,
         )

@@ -39,6 +39,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -182,8 +183,8 @@ private fun SectionList(sections: List<PageSection>, current: Int, onPick: (Int)
 // The accent fill behind the chosen row of a choice, drawn only when it is
 // the chosen one.
 @Composable
-internal fun ChosenFill(chosen: Boolean, modifier: Modifier = Modifier) {
-    if (chosen) Box(modifier.background(OctoColors.AccentSelected, Corner.ControlShape))
+internal fun ChosenFill(chosen: Boolean, modifier: Modifier = Modifier, shape: Shape = Corner.ControlShape) {
+    if (chosen) Box(modifier.background(OctoColors.AccentSelected, shape))
 }
 
 // The words of a row in a choice: a heavier weight for the chosen one.
@@ -420,9 +421,14 @@ internal fun SliderRow(
 @Composable
 internal fun InfoRow(title: String, caption: String?, value: String) {
     SettingRow(title, caption) {
-        Txt(value, DesktopType.body, OctoColors.TextSecondary)
+        Txt(value, DesktopType.body, OctoColors.TextSecondary, Modifier.padding(end = RowValueEnd))
     }
 }
+
+// The room after a value at a row's end, so its words end where a text
+// button's words do (the button's own padding, less the offset RowAction
+// gives it).
+internal val RowValueEnd = Space.Xs
 
 // Something to do, with its action in words on the right.
 @Composable

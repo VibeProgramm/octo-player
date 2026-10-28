@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -77,6 +76,7 @@ import app.winters.octo.design.ControlHeight
 import app.winters.octo.design.Corner
 import app.winters.octo.design.CutTxt
 import app.winters.octo.design.DesktopType
+import app.winters.octo.design.FitOrElse
 import app.winters.octo.design.FrameSize
 import app.winters.octo.design.GlassField
 import app.winters.octo.design.GlazeCapsule
@@ -142,8 +142,7 @@ fun ContextPanel(app: AppState, panel: SidePanel, backdrop: HazeState, modifier:
             if (panel == SidePanel.Downloads) {
                 DownloadsHeading(app, Modifier.weight(1f))
             } else {
-                GlazeSegments(SidePanel.entries - SidePanel.Downloads, panel, { it.title }, app::showSidePanel)
-                Spacer(Modifier.weight(1f))
+                PanelTabs(SidePanel.entries - SidePanel.Downloads, panel, { it.title }, app::showSidePanel, Modifier.weight(1f))
             }
             when (panel) {
                 SidePanel.Lyrics -> LyricsMenuButton(app)
@@ -158,6 +157,20 @@ fun ContextPanel(app: AppState, panel: SidePanel, backdrop: HazeState, modifier:
             SidePanel.Info -> InfoPanel(app, Modifier.fillMaxSize())
             SidePanel.Downloads -> DownloadsPanel(app, Modifier.fillMaxSize())
         }
+    }
+}
+
+// The panel's tabs at the start of its header line, in the room the line's
+// own buttons leave them (those are measured first and never squeezed).
+// When the tabs would not fit there whole, they are one button that opens
+// them instead.
+@Composable
+internal fun <T> PanelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier, contentAlignment = Alignment.CenterStart) {
+        FitOrElse(
+            { GlazeSegments(options, selected, label, onSelect) },
+            { ChoiceButton(options, selected, label, onSelect) },
+        )
     }
 }
 
