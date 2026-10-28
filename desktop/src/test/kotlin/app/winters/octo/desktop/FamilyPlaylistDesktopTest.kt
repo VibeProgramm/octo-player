@@ -2,8 +2,11 @@ package app.winters.octo.desktop
 
 import app.winters.octo.desktop.pages.playlistDetails
 import app.winters.octo.desktop.pages.songsLine
+import app.winters.octo.subsonic.Playlist
 import app.winters.octo.subsonic.SubsonicException
+import app.winters.octo.subsonic.access
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -13,6 +16,19 @@ class FamilyPlaylistDesktopTest {
     fun aFamilyPlaylistsDetailsLeaveOutPublicOrPrivate() {
         assertEquals("By Family · " + songsLine(3, 600), playlistDetails("Family", 3, 600, null))
         assertTrue(playlistDetails("alex", 3, 600, true).endsWith(" · Public"))
+    }
+
+    @Test
+    fun aMemberMayRenameButNotDeleteWhereOctoSaysSo() {
+        val row = Playlist(
+            "f1", "Road trip", owner = "Family", octoFamily = true,
+            octoFamilyMayRename = true, octoFamilyMayDelete = false,
+        )
+        val access = row.access("winters", null, removesById = true)
+        assertTrue(access.family)
+        assertTrue(access.rename)
+        assertFalse(access.mayRename)
+        assertFalse(access.delete)
     }
 
     @Test

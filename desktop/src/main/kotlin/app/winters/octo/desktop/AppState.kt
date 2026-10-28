@@ -94,10 +94,11 @@ import app.winters.octo.playback.skippedLine
 import app.winters.octo.server.switchNotice
 import app.winters.octo.sort.SortList
 import app.winters.octo.sort.SortOrder
+import app.winters.octo.subsonic.FAMILY_PLAYLISTS_EXTENSION
 import app.winters.octo.subsonic.FORM_POST_EXTENSION
 import app.winters.octo.subsonic.Playlist
 import app.winters.octo.subsonic.PlaylistAccess
-import app.winters.octo.subsonic.playlistAccess
+import app.winters.octo.subsonic.access
 import app.winters.octo.subsonic.Song
 import app.winters.octo.subsonic.SubsonicException
 import app.winters.octo.ui.family.FamilyModel
@@ -1030,9 +1031,10 @@ class AppState(
     suspend fun albumSongs(id: String): List<Song> = connection?.client?.album(id)?.song.orEmpty()
 
     // What the listener may do with a playlist: their own, a family
-    // playlist under Octo's rules, or nothing (playlistAccess).
+    // playlist under Octo's rules, or nothing (playlistAccess). Octo's own
+    // answers decide where the server gives them.
     fun access(playlist: Playlist): PlaylistAccess =
-        playlistAccess(playlist.owner, playlist.readonly, connection?.client?.username, family.me)
+        playlist.access(connection?.client?.username, family.me, removesById = connection?.supports(FAMILY_PLAYLISTS_EXTENSION) == true)
 
     // Whether the server takes playlist changes in a form body.
     internal val formPost: Boolean

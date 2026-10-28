@@ -230,15 +230,21 @@ class SongActionsTest {
     // Octo with Family on, a family playlist "f1" that the sidebar says holds
     // `held` songs and whose page lists `listed` of them, and a listener who
     // hears every song or only clean ones.
-    private fun familyApp(held: Int, listed: Int, cleanOnly: Boolean = false): AppState {
-        answerFamily(held, listed, cleanOnly)
-        val app = app(extensions = listOf("octoFamily:1"))
+    private fun familyApp(
+        held: Int,
+        listed: Int,
+        cleanOnly: Boolean = false,
+        extensions: List<String> = emptyList(),
+        songs: List<String>? = null,
+    ): AppState {
+        answerFamily(held, listed, cleanOnly, songs)
+        val app = app(extensions = listOf("octoFamily:1") + extensions)
         waitFor { app.playlists.any { it.id == "f1" } }
         runBlocking { app.loadPlaylist("f1") }
         return app
     }
 
-    private fun answerFamily(held: Int, listed: Int, cleanOnly: Boolean = false) {
+    private fun answerFamily(held: Int, listed: Int, cleanOnly: Boolean = false, songs: List<String>? = null) {
         server.answer(
             "getFamily",
             """"family":{"me":{"username":"winters","displayName":"Alex","role":"Listener","managed":false,
@@ -253,7 +259,8 @@ class SongActionsTest {
             "getPlaylists",
             """"playlists":{"playlist":[{"id":"f1","name":"Road trip","owner":"Family","songCount":$held,"readonly":false}]}""",
         )
-        val entries = (1..listed).joinToString(",") { songJson("s$it", "Song $it") }
+        val ids = songs ?: (1..listed).map { "s$it" }
+        val entries = ids.joinToString(",") { songJson(it, "Song $it") }
         server.answer("getPlaylist", """"playlist":{"id":"f1","name":"Road trip","owner":"Family","entry":[$entries]}""")
         server.answer("updatePlaylist")
     }
@@ -294,6 +301,32 @@ class SongActionsTest {
         waitFor { app.notice != null }
         assertTrue(callsTo("updatePlaylist").isEmpty())
         assertEquals(FAMILY_MISCOUNT, app.notice)
+    }
+
+    private val byRule = listOf("octoFamilyPlaylists:1")
+
+    @Test
+    fun aFamilyRemovalGoesBySongOnAServerThatTakesThatWithoutAnyCountCheck() {
+        val app = familyApp(held = 3, listed = 3, extensions = byRule, songs = listOf("s1", "s2", "s1"))
+        val readsBefore = callsTo("getPlaylists").size
+        app.removeFromPlaylist("f1", listOf(2))
+        waitFor { callsTo("updatePlaylist").isNotEmpty() }
+        val call = callsTo("updatePlaylist").single()
+        assertEquals(listOf("s1@2"), call.url.queryParameterValues("octoSongToRemove"))
+        assertTrue(call.url.queryParameterValues("songIndexToRemove").isEmpty())
+        val before = server.calls.takeWhile { it !== call }
+        assertEquals(readsBefore, before.count { it.url.pathSegments.last() == "getPlaylists" })
+        assertNull(app.notice)
+    }
+
+    @Test
+    fun aCleanOnlyListenerTakesSongsOutBySongToo() {
+        val app = familyApp(held = 3, listed = 3, cleanOnly = true, extensions = byRule)
+        app.removeFromPlaylist("f1", listOf(1))
+        waitFor { callsTo("updatePlaylist").isNotEmpty() }
+        val call = callsTo("updatePlaylist").single()
+        assertEquals(listOf("s2@1"), call.url.queryParameterValues("octoSongToRemove"))
+        assertNull(app.notice)
     }
 
     @Test
