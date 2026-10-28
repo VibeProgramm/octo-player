@@ -291,7 +291,7 @@ class ChartsTest {
     @Test
     fun aSaveThatDidNotHappenSaysSo() = runBlocking {
         serveV3()
-        server.answerBy("setChartCountry") { server.failed(0, "Too many countries in an hour. Try again later.") }
+        server.answerBy("setChartCountry") { server.failed(0, "Still loading your other countries. Try again in a moment.") }
         val scope = CoroutineScope(Dispatchers.Default + Job())
         val charts = charts(v3, scope)
         charts.loadChoices()
@@ -302,7 +302,7 @@ class ChartsTest {
         until { charts.problem != null }
 
         // The server's own words when it refused for a reason the listener can act on.
-        assertEquals("Too many countries in an hour. Try again later.", charts.problem)
+        assertEquals("Still loading your other countries. Try again in a moment.", charts.problem)
         assertEquals("jp", charts.country)
         assertFalse(charts.saving)
         scope.cancel()
@@ -348,12 +348,12 @@ class ChartsTest {
         val charts = charts(v3, scope)
         charts.loadChoices()
         until { charts.own != null }
-        server.answerBy("getTopChart") { server.failed(0, "Too many countries in an hour. Try again later.") }
+        server.answerBy("getTopChart") { server.failed(0, "Still loading your other countries. Try again in a moment.") }
 
         charts.pickCountry("jp")
         charts.load("34", "jp")
         until { charts.failures[charts.key("34", "jp")] != null }
-        assertEquals("Too many countries in an hour. Try again later.", charts.failures[charts.key("34", "jp")])
+        assertEquals("Still loading your other countries. Try again in a moment.", charts.failures[charts.key("34", "jp")])
 
         serveV3()
         charts.pickCountry("jp")

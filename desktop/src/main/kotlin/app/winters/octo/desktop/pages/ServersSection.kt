@@ -40,7 +40,6 @@ import app.winters.octo.design.DesktopType
 import app.winters.octo.design.FrameSize
 import app.winters.octo.design.GlassField
 import app.winters.octo.design.GlazeCapsule
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.IconAction
 import app.winters.octo.design.IconSize
 import app.winters.octo.design.MenuRow
@@ -113,6 +112,7 @@ private fun ServerRow(app: AppState, server: SavedServer, inUse: Boolean) {
     val switching = app.switching?.id == server.id
     val check = app.serverFacts.checks[server.id]
     Box(Modifier.fillMaxWidth().heightIn(min = RowHeight.Roomy).semantics { selected = inUse }) {
+        ChosenFill(inUse, Modifier.matchParentSize().padding(horizontal = Space.S, vertical = Space.Xs))
         Row(
             Modifier.fillMaxWidth().padding(horizontal = RowInset, vertical = Space.L),
             verticalAlignment = Alignment.CenterVertically,
@@ -120,7 +120,7 @@ private fun ServerRow(app: AppState, server: SavedServer, inUse: Boolean) {
         ) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.M)) {
-                    Txt(server.name, if (inUse) DesktopType.emphasis else DesktopType.body, if (server.signedOut) OctoColors.TextSecondary else OctoColors.TextPrimary)
+                    Txt(server.name, if (inUse) ChosenWords else DesktopType.body, if (server.signedOut) OctoColors.TextSecondary else OctoColors.TextPrimary)
                     if (inUse) InUseMark()
                 }
                 Txt(accountLine(server), DesktopType.meta, OctoColors.TextMuted, Modifier.padding(top = Space.Xxs))

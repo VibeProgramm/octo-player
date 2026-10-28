@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -49,6 +50,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import app.winters.octo.design.CardEdge
@@ -60,10 +62,11 @@ import app.winters.octo.design.DesktopType
 import app.winters.octo.design.FocusRing
 import app.winters.octo.design.FrameSize
 import app.winters.octo.design.GlazeSegments
-import app.winters.octo.design.GlazeSelected
+import app.winters.octo.design.Glyph
 import app.winters.octo.design.IconSize
 import app.winters.octo.design.LineSlider
 import app.winters.octo.design.OctoColors
+import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoSwitch
 import app.winters.octo.design.RowHeight
 import app.winters.octo.design.SeparatorColor
@@ -176,9 +179,20 @@ private fun SectionList(sections: List<PageSection>, current: Int, onPick: (Int)
     }
 }
 
-// One section to pick: its icon and name.
+// The accent fill behind the chosen row of a choice, drawn only when it is
+// the chosen one.
 @Composable
-private fun SectionPick(section: PageSection, chosen: Boolean, onPick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun ChosenFill(chosen: Boolean, modifier: Modifier = Modifier) {
+    if (chosen) Box(modifier.background(OctoColors.AccentSelected, Corner.ControlShape))
+}
+
+// The words of a row in a choice: a heavier weight for the chosen one.
+internal val ChosenWords = DesktopType.body.copy(fontWeight = FontWeight.Medium)
+
+// One section to pick: its icon and name, the chosen one on the accent
+// fill with a check at its end.
+@Composable
+internal fun SectionPick(section: PageSection, chosen: Boolean, onPick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier
             .height(RowHeight.Nav)
@@ -187,12 +201,16 @@ private fun SectionPick(section: PageSection, chosen: Boolean, onPick: () -> Uni
             .semantics { selected = chosen },
         contentAlignment = Alignment.CenterStart,
     ) {
-        if (chosen) GlazeSelected(Modifier.matchParentSize(), Corner.ControlShape)
-        Row(Modifier.padding(horizontal = Space.M), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.M)) {
+        ChosenFill(chosen, Modifier.matchParentSize())
+        Row(Modifier.fillMaxWidth().padding(horizontal = Space.M), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.M)) {
             section.icon?.let { SectionIcon(it, section.brand, IconSize.Toolbar, if (chosen) OctoColors.TextPrimary else OctoColors.TextSecondary) }
-            Txt(section.name, DesktopType.body, if (chosen) OctoColors.TextPrimary else OctoColors.TextSecondary)
+            Txt(section.name, if (chosen) ChosenWords else DesktopType.body, if (chosen) OctoColors.TextPrimary else OctoColors.TextSecondary)
             section.mark?.let { what ->
                 Box(Modifier.size(FrameSize.NavMark).background(OctoColors.Accent, CircleShape).semantics { contentDescription = what })
+            }
+            if (chosen) {
+                Spacer(Modifier.weight(1f))
+                Glyph(OctoIcons.Check, size = IconSize.Toolbar, tint = OctoColors.TextPrimary)
             }
         }
     }

@@ -22,7 +22,6 @@ import app.winters.octo.design.ControlHeight
 import app.winters.octo.design.Corner
 import app.winters.octo.design.DesktopType
 import app.winters.octo.design.GlazeCapsule
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.IconSize
 import app.winters.octo.design.MenuRow
 import app.winters.octo.design.OctoColors
