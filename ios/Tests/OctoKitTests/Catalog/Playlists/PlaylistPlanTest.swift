@@ -161,9 +161,28 @@ import Testing
         #expect(!playlistsStale(now, now))
     }
 
-    @Test func aFamilyPlaylistIsImportedUnlessReadOnlyOrSomeoneElses() {
-        let all = [listed("fam", owner: "Family"), listed("famRo", owner: "Family", readonly: true), listed("sam", owner: "sam")]
-        #expect(importable(all, stationIds: [], username: "alex").map(\.id) == ["fam"])
+    @Test func aFamilyPlaylistIsImportedEvenReadOnlyButNotSomeoneElses() {
+        let all = [listed("fam", owner: "Family"), listed("famRo", owner: "Family", readonly: true), listed("sam", owner: "sam"),
+                   listed("ownRo", owner: "alex", readonly: true)]
+        #expect(importable(all, stationIds: [], username: "alex").map(\.id) == ["fam", "famRo"])
+    }
+
+    @Test func aPullOnlyPlaylistFollowsTheServerEvenWhenEdited() {
+        let here = LinkedPlaylist("local-s", "s", "s", true, "s", "t1|3", family: true, pullOnly: true)
+        #expect(planLinked(server("s"), here) == .pull(localId: "local-s", serverId: "s", stamp: "t1|3", keepName: false))
+        #expect(planLinked(server("s", stamp: "new"), here) == .pull(localId: "local-s", serverId: "s", stamp: "new", keepName: false))
+        var quiet = here
+        quiet.edited = false
+        #expect(planLinked(server("s"), quiet) == nil)
+    }
+
+    @Test func aLostAnswerIsToldFromCounts() {
+        let add = FamilyChanges(removeAt: [], add: ["c"])
+        #expect(familySendLanded(current: ["a", "b"], after: ["a", "b", "x", "c"], changes: add))
+        #expect(!familySendLanded(current: ["a", "b"], after: ["a", "b"], changes: add))
+        let remove = FamilyChanges(removeAt: [2], add: [])
+        #expect(familySendLanded(current: ["a", "b", "a"], after: ["a", "b"], changes: remove))
+        #expect(!familySendLanded(current: ["a", "b", "a"], after: ["a", "b", "a"], changes: remove))
     }
 
     @Test func aNewPlaylistIsNeverMatchedToAFamilyOne() {

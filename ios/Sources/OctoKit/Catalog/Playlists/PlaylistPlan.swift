@@ -36,9 +36,11 @@ public struct LinkedPlaylist: Sendable, Hashable {
     public var syncedStamp: String?
     /// A family playlist, whose own changes are sent on top of everyone else's.
     public var family: Bool
+    /// A family playlist the listener may not change here: it only follows the server.
+    public var pullOnly: Bool
 
     public init(_ localId: String, _ serverId: String, _ name: String, _ edited: Bool, _ syncedName: String?, _ syncedStamp: String?,
-                family: Bool = false) {
+                family: Bool = false, pullOnly: Bool = false) {
         self.localId = localId
         self.serverId = serverId
         self.name = name
@@ -46,6 +48,7 @@ public struct LinkedPlaylist: Sendable, Hashable {
         self.syncedName = syncedName
         self.syncedStamp = syncedStamp
         self.family = family
+        self.pullOnly = pullOnly
     }
 }
 
@@ -73,16 +76,21 @@ public enum PlaylistStep: Sendable, Hashable {
 public func stampOf(_ changed: String?, _ songCount: Int) -> String { "\(changed ?? "")|\(songCount)" }
 
 /// Server playlists worth a copy on the phone: the signed-in user's own and the family's they may
-/// change, leaving out read-only ones and stations, which the stations shelf shows.
+/// change, leaving out read-only ones and stations, which the stations shelf shows, and the
+/// family's, which a listener without editing keeps as a copy that only follows the server.
 public func importable(_ playlists: [ServerPlaylistInfo], stationIds: Set<String>, username: String) -> [ServerPlaylistInfo] {
-    playlists.filter { !$0.readonly && !stationIds.contains($0.id) && (isFamilyPlaylist(owner: $0.owner, username: username) || ownedBy($0.owner, username)) }
+    playlists.filter {
+        !stationIds.contains($0.id)
+            && (isFamilyPlaylist(owner: $0.owner, username: username, octoFamily: $0.octoFamily)
+                || (!$0.readonly && ownedBy($0.owner, username)))
+    }
 }
 
 /// The playlists a new one made on a server too old to answer with it can be: the user's own
 /// by that name not linked yet, never the family's.
 public func newestNamedCandidates(_ playlists: [ServerPlaylistInfo], name: String, username: String, linked: Set<String>) -> [ServerPlaylistInfo] {
     importable(playlists, stationIds: [], username: username)
-        .filter { $0.name == name && !linked.contains($0.id) && !isFamilyPlaylist(owner: $0.owner, username: username) }
+        .filter { $0.name == name && !linked.contains($0.id) && !isFamilyPlaylist(owner: $0.owner, username: username, octoFamily: $0.octoFamily) }
 }
 
 /// How long the phone's copy of the server's playlists counts as fresh when the playlists come on
@@ -133,6 +141,10 @@ public func planLinked(_ server: ServerPlaylist?, _ playlist: LinkedPlaylist, st
         return playlist.edited || stillThere ? .unlink(localId: playlist.localId) : .remove(localId: playlist.localId)
     }
     let serverChanged = server.stamp != playlist.syncedStamp
+    if playlist.pullOnly {
+        return serverChanged || playlist.edited
+            ? .pull(localId: playlist.localId, serverId: server.id, stamp: server.stamp, keepName: false) : nil
+    }
     if serverChanged && playlist.edited {
         // Both changed: a family playlist sends the phone's own changes on top of everyone else's.
         if playlist.family { return .push(localId: playlist.localId, serverId: server.id) }
@@ -286,6 +298,23 @@ public func familySend(base: [String], phone: [String], current: [String], liste
         return FamilySend(changes: adds, baseAfterSend: base + wanted.add, held: wanted.removeAt.map { current[$0] })
     }
     return FamilySend(changes: wanted, baseAfterSend: phone, held: [])
+}
+
+/// Whether a family send reached the server although its answer was lost: every song it added
+/// is there as many more times as it was added, and every song it took out is there as many
+/// fewer times. Changes by others meanwhile do not hide it.
+public func familySendLanded(current: [String], after: [String], changes: FamilyChanges) -> Bool {
+    func counts(_ ids: [String]) -> [String: Int] {
+        var out: [String: Int] = [:]
+        for id in ids { out[id, default: 0] += 1 }
+        return out
+    }
+    let before = counts(current)
+    let now = counts(after)
+    let added = counts(changes.add)
+    let removed = counts(changes.removeAt.filter { current.indices.contains($0) }.map { current[$0] })
+    return added.allSatisfy { now[$0.key, default: 0] >= before[$0.key, default: 0] + $0.value }
+        && removed.allSatisfy { now[$0.key, default: 0] <= before[$0.key, default: 0] - $0.value }
 }
 
 /// The rows after taking the server's songs, less the songs whose removal waits: for each held

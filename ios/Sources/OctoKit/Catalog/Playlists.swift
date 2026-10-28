@@ -17,9 +17,16 @@ public struct PlaylistSummary: Sendable, Hashable, Identifiable {
     public var octoNotice: String?
     /// A family playlist (its order is the server's).
     public var family: Bool
+    /// What the listener may do with a family playlist, as the last sync found.
+    public var familyMayAdd: Bool
+    public var familyMayRemove: Bool
+    public var familyMayRename: Bool
+    public var familyMayDelete: Bool
 
     public init(id: String, name: String, songCount: Int, durationMs: Int64, covers: [String], onServer: Bool = false,
-                createdAt: Int64 = 0, updatedAt: Int64 = 0, octoNotice: String? = nil, family: Bool = false) {
+                createdAt: Int64 = 0, updatedAt: Int64 = 0, octoNotice: String? = nil, family: Bool = false,
+                familyMayAdd: Bool = false, familyMayRemove: Bool = false, familyMayRename: Bool = false,
+                familyMayDelete: Bool = false) {
         self.id = id
         self.name = name
         self.songCount = songCount
@@ -30,6 +37,10 @@ public struct PlaylistSummary: Sendable, Hashable, Identifiable {
         self.updatedAt = updatedAt
         self.octoNotice = octoNotice
         self.family = family
+        self.familyMayAdd = familyMayAdd
+        self.familyMayRemove = familyMayRemove
+        self.familyMayRename = familyMayRename
+        self.familyMayDelete = familyMayDelete
     }
 }
 
@@ -103,7 +114,11 @@ public func summarize(_ playlists: [PlaylistRow], _ entries: [PlaylistEntry]) ->
             createdAt: playlist.createdAt,
             updatedAt: playlist.updatedAt,
             octoNotice: playlist.octoNotice,
-            family: playlist.family
+            family: playlist.family,
+            familyMayAdd: playlist.familyMayAdd,
+            familyMayRemove: playlist.familyMayRemove,
+            familyMayRename: playlist.familyMayRename,
+            familyMayDelete: playlist.familyMayDelete
         )
     }
 }

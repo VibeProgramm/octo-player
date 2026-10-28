@@ -47,11 +47,34 @@ import Testing
         }
         let db = try SQLiteDatabase(path: path)
         try Schema.open(db)
-        #expect(db.userVersion == 3)
+        #expect(db.userVersion == 4)
         let row = try #require(try db.rows(PlaylistRow.self, "SELECT * FROM playlist").first)
         #expect(row.name == "Mix")
         #expect(!row.family)
         #expect(row.syncedSongs == nil)
+    }
+
+    @Test func aVersionThreeFileGainsTheFamilyRightsColumns() throws {
+        let path = tempPath()
+        defer { for end in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + end) } }
+        do {
+            let db = try SQLiteDatabase(path: path)
+            try db.execute("""
+                CREATE TABLE playlist (
+                    id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL,
+                    serverId TEXT, sourceId TEXT, syncedAt INTEGER, syncedName TEXT, serverStamp TEXT, octoNotice TEXT,
+                    family INTEGER NOT NULL DEFAULT 0, syncedSongs TEXT);
+                INSERT INTO playlist (id, name, createdAt, updatedAt, family) VALUES ('p', 'Mix', 1, 2, 1);
+                """)
+            db.userVersion = 3
+        }
+        let db = try SQLiteDatabase(path: path)
+        try Schema.open(db)
+        #expect(db.userVersion == 4)
+        let row = try #require(try db.rows(PlaylistRow.self, "SELECT * FROM playlist").first)
+        #expect(row.name == "Mix")
+        #expect(row.family)
+        #expect(!row.familyMayAdd && !row.familyMayRemove && !row.familyMayRename && !row.familyMayDelete)
     }
 
     @Test func openingTwiceStaysAtTheCurrentVersionAndKeepsRows() throws {
@@ -64,7 +87,7 @@ import Testing
         }
         let db = try SQLiteDatabase(path: path)
         try Schema.open(db)
-        #expect(db.userVersion == 3)
+        #expect(db.userVersion == 4)
         #expect(try db.rows(PlaylistRow.self, "SELECT * FROM playlist").map(\.id) == ["p"])
     }
 

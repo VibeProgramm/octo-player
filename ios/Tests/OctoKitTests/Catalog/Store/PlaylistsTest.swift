@@ -135,9 +135,15 @@ import Testing
         #expect(stored.family)
         #expect(stored.syncedSongs == "a\nb")
 
+        try await store.markFamilyRights("p", add: true, remove: false, rename: true, delete: false)
+        let rights = try #require(try await store.playlist("p"))
+        #expect(rights.familyMayAdd && !rights.familyMayRemove && rights.familyMayRename && !rights.familyMayDelete)
+        #expect(summarize([rights], []).first?.familyMayRename == true)
+
         try await store.unlinkPlaylist("p")
         let unlinked = try #require(try await store.playlist("p"))
         #expect(!unlinked.family)
         #expect(unlinked.syncedSongs == nil)
+        #expect(!unlinked.familyMayAdd && !unlinked.familyMayRename)
     }
 }

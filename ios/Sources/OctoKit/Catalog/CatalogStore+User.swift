@@ -258,6 +258,14 @@ extension CatalogStore {
         changed(.playlists)
     }
 
+    /// What the listener may do with a family playlist, as the last sync found.
+    public func markFamilyRights(_ id: String, add: Bool, remove: Bool, rename: Bool, delete: Bool) throws {
+        try db.run("""
+            UPDATE playlist SET familyMayAdd = ?, familyMayRemove = ?, familyMayRename = ?, familyMayDelete = ? WHERE id = ?
+            """, [add ? 1 : 0, remove ? 1 : 0, rename ? 1 : 0, delete ? 1 : 0, id])
+        changed(.playlists)
+    }
+
     /// A family playlist's songs as both sides agree once a change from here reached the server,
     /// kept at once so the change is never sent twice.
     public func markFamilyBase(_ id: String, songs: String) throws {
@@ -273,7 +281,8 @@ extension CatalogStore {
     public func unlinkPlaylist(_ id: String) throws {
         try db.run("""
             UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
-                octoNotice = NULL, syncedSongs = NULL, family = 0
+                octoNotice = NULL, syncedSongs = NULL, family = 0, familyMayAdd = 0, familyMayRemove = 0,
+                familyMayRename = 0, familyMayDelete = 0
             WHERE id = ?
             """, [id])
         changed(.playlists)
@@ -283,7 +292,7 @@ extension CatalogStore {
     public func unlinkServer(_ sourceId: String) throws {
         try db.run("""
             UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
-                syncedSongs = NULL, family = 0
+                syncedSongs = NULL, family = 0, familyMayAdd = 0, familyMayRemove = 0, familyMayRename = 0, familyMayDelete = 0
             WHERE sourceId = ?
             """, [sourceId])
         changed(.playlists)
@@ -294,7 +303,7 @@ extension CatalogStore {
         let condition = kept.isEmpty ? "sourceId IS NOT NULL" : "sourceId IS NOT NULL AND sourceId NOT IN (\(marks(kept.count)))"
         try db.run("""
             UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
-                syncedSongs = NULL, family = 0
+                syncedSongs = NULL, family = 0, familyMayAdd = 0, familyMayRemove = 0, familyMayRename = 0, familyMayDelete = 0
             WHERE \(condition)
             """, kept)
         changed(.playlists)
@@ -319,10 +328,12 @@ extension CatalogStore {
     private func writePlaylistRow(_ row: PlaylistRow) throws {
         try db.run("""
             UPDATE playlist SET name = ?, createdAt = ?, updatedAt = ?, serverId = ?, sourceId = ?, syncedAt = ?,
-                syncedName = ?, serverStamp = ?, octoNotice = ?, family = ?, syncedSongs = ?
+                syncedName = ?, serverStamp = ?, octoNotice = ?, family = ?, syncedSongs = ?, familyMayAdd = ?,
+                familyMayRemove = ?, familyMayRename = ?, familyMayDelete = ?
             WHERE id = ?
             """, [row.name, row.createdAt, row.updatedAt, row.serverId, row.sourceId, row.syncedAt, row.syncedName,
-                  row.serverStamp, row.octoNotice, row.family ? 1 : 0, row.syncedSongs, row.id])
+                  row.serverStamp, row.octoNotice, row.family ? 1 : 0, row.syncedSongs, row.familyMayAdd ? 1 : 0,
+                  row.familyMayRemove ? 1 : 0, row.familyMayRename ? 1 : 0, row.familyMayDelete ? 1 : 0, row.id])
     }
 
     /// A server playlist's phone copy, with its songs, in one go.
