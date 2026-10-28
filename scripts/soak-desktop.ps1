@@ -61,10 +61,17 @@
 #                     after it shows (drawn by the window itself, so other
 #                     windows over it do not matter), for comparing builds
 #   -Keep             keeps the test profile afterwards
-#   -SelfTest         checks the script's reading of jcmd's answers
+#   -Gate <mode>      judges the run against 1.10.0's own: full, still, tray,
+#                     minimized or radio fail when private bytes grow more than
+#                     the mode's baseline plus 60 MB/h from minute 26; mini
+#                     fails when the graphics card memory or the median private
+#                     bytes keep climbing after the first minutes. Needs
+#                     -Minutes of at least 40; exits 3 on a failure.
+#   -SelfTest         checks the script's reading of jcmd's answers and its gates
 #
-# Writes samples.csv (a row a sample), summary.txt, the soak plan's events,
-# and gc.log (the JVM's collections) into the run's folder.
+# Writes samples.csv (a row a sample), summary.txt (ending with a GATE line
+# when -Gate is given), the soak plan's events, and gc.log (the JVM's
+# collections) into the run's folder.
 param(
     [string]$App = "",
     [string]$Label = "soak",
@@ -100,10 +107,23 @@ param(
     [int]$Height = 900,
     [string]$Shots = "",
     [switch]$Keep,
+    [ValidateSet("", "full", "still", "tray", "minimized", "radio", "mini")][string]$Gate = "",
     [switch]$SelfTest
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
+
+# Private bytes growth in MB an hour from minute 26 (Get-Slope, regular
+# samples) of 1.10.0's own runs, which a gated run may exceed by 60. The
+# mini mode has no slope baseline: it is judged by Test-PlateauGate.
+#   full      f2-c64 (1.10.0's cap, 45 min): desktop-memory worktree, desktop\build\soak\f2-c64
+#   still     static-45
+#   tray      tray-45
+#   minimized min-45
+#   radio     radio-still (ran 30 min, so its slope rests on minutes 26 to 29)
+# The saved runs are in C:\Users\Brandon\.claude\plans\octo-player-issue-10-ram\evidence\soaks.
+$GateBaselines = @{ full = 203.7; still = 81.5; tray = 130.8; minimized = 47.4; radio = 107.7 }
+if ($Gate -and $Minutes -lt 40 -and -not $SelfTest) { throw "-Gate needs -Minutes of at least 40" }
 
 if (-not ("OctoSoak.Win" -as [type])) {
     Add-Type -Namespace OctoSoak -Name Win -MemberDefinition @'
@@ -223,9 +243,9 @@ function Get-Sample([int]$ProcessId, [double]$Minute, [string]$Note = "") {
     [pscustomobject]$row
 }
 
-# Growth in MB an hour over samples from minute 15 on (least squares).
-function Get-Slope($Samples, [string]$Field) {
-    $points = @($Samples | Where-Object { $_.Minute -ge 15 -and $_.Note -eq "" -and $null -ne $_.$Field })
+# Growth in MB an hour over samples from minute $From on (least squares).
+function Get-Slope($Samples, [string]$Field, [double]$From = 15) {
+    $points = @($Samples | Where-Object { $_.Minute -ge $From -and $_.Note -eq "" -and $null -ne $_.$Field })
     if ($points.Count -lt 3) { return $null }
     $mx = ($points | Measure-Object Minute -Average).Average
     $my = ($points | Measure-Object $Field -Average).Average
@@ -233,6 +253,53 @@ function Get-Slope($Samples, [string]$Field) {
     foreach ($pt in $points) { $num += ($pt.Minute - $mx) * ($pt.$Field - $my); $den += ($pt.Minute - $mx) * ($pt.Minute - $mx) }
     if ($den -eq 0) { return $null }
     [math]::Round($num / $den * 60, 1)
+}
+
+# ---- Gates ----
+
+function Get-Median($Values) {
+    $sorted = @($Values | Sort-Object)
+    if ($sorted.Count -eq 0) { return $null }
+    $mid = [int][math]::Floor($sorted.Count / 2)
+    if ($sorted.Count % 2) { $sorted[$mid] } else { ($sorted[$mid - 1] + $sorted[$mid]) / 2 }
+}
+
+# The regular samples of a field between two minutes.
+function Get-Window($Samples, [string]$Field, [double]$From, [double]$To) {
+    @($Samples | Where-Object { $_.Note -eq "" -and $_.Minute -ge $From -and $_.Minute -le $To -and $null -ne $_.$Field -and "$($_.$Field)" -ne "" } | ForEach-Object { [double]$_.$Field })
+}
+
+# A slope mode passes while private bytes grow no faster than the mode's
+# baseline plus 60 MB/h, from minute 26 on.
+function Test-SlopeGate([string]$Mode, $Samples) {
+    $baseline = $GateBaselines[$Mode]
+    $slope = Get-Slope $Samples "PrivateMB" 26
+    if ($null -eq $slope) { return [pscustomobject]@{ Ok = $false; Text = "too few samples from minute 26" } }
+    $limit = $baseline + 60
+    [pscustomobject]@{ Ok = ($slope -le $limit); Text = "private grew $slope MB/h from minute 26, limit $limit (baseline $baseline + 60)" }
+}
+
+# The mini player mode passes when it levels off: the graphics card memory
+# stays within 32 MB of its first minutes' most, and the median private bytes
+# of the last minutes within 100 MB of the first minutes' median.
+function Test-PlateauGate($Samples) {
+    $gpuEarly = @(Get-Window $Samples "GpuDedicatedMB" 2 8)
+    $gpuLate = @(Get-Window $Samples "GpuDedicatedMB" 30 45)
+    $privEarly = @(Get-Window $Samples "PrivateMB" 2 8)
+    $privLate = @(Get-Window $Samples "PrivateMB" 35 45)
+    if ($gpuEarly.Count -eq 0 -or $gpuLate.Count -eq 0 -or $privEarly.Count -eq 0 -or $privLate.Count -eq 0) {
+        return [pscustomobject]@{ Ok = $false; Text = "too few samples in minutes 2-8, 30-45 or 35-45" }
+    }
+    $gpuFrom = ($gpuEarly | Measure-Object -Maximum).Maximum
+    $gpuTo = ($gpuLate | Measure-Object -Maximum).Maximum
+    $privFrom = Get-Median $privEarly
+    $privTo = Get-Median $privLate
+    $ok = ($gpuTo -le $gpuFrom + 32) -and ($privTo -le $privFrom + 100)
+    [pscustomobject]@{ Ok = $ok; Text = "GPU most $gpuFrom MB (minutes 2-8) to $gpuTo MB (30-45), limit +32; private median $privFrom to $privTo MB (minutes 2-8, 35-45), limit +100" }
+}
+
+function Test-Gate([string]$Mode, $Samples) {
+    if ($Mode -eq "mini") { Test-PlateauGate $Samples } else { Test-SlopeGate $Mode $Samples }
 }
 
 # ---- Self-test ----
@@ -250,6 +317,23 @@ if ($SelfTest) {
     Check "native part with a space in its name" ($nmt["NmtArenaChunk"] -eq 2)
     $points = 0..10 | ForEach-Object { [pscustomobject]@{ Minute = 15 + $_ * 6; Note = ""; PrivateMB = 1000 + $_ * 10 } }
     Check "growth an hour (10 MB each 6 min is 100 MB/h)" ((Get-Slope $points "PrivateMB") -eq 100)
+    $line = { param($slopePerHour, $from) 0..44 | ForEach-Object { [pscustomobject]@{ Minute = $_; Note = ""; PrivateMB = 1000 + ($_ - 0) * $slopePerHour / 60 } } }
+    Check "growth from minute 26 (60 MB/h line)" ((Get-Slope (& $line 60) "PrivateMB" 26) -eq 60)
+    Check "growth from minute 26 ignores earlier jumps" ((Get-Slope ((0..9 | ForEach-Object { [pscustomobject]@{ Minute = $_; Note = ""; PrivateMB = 5000 } }) + (& $line 60)) "PrivateMB" 26) -eq 60)
+    # still's baseline is 81.5, so its limit is 141.5 MB/h.
+    Check "slope above baseline + 60 fails" (-not (Test-SlopeGate "still" (& $line 150)).Ok)
+    Check "slope below baseline + 60 passes" ((Test-SlopeGate "still" (& $line 130)).Ok)
+    Check "a run too short for the slope fails" (-not (Test-SlopeGate "still" @(& $line 100 | Select-Object -First 20)).Ok)
+    # A run shaped like mini-long: graphics memory 196 MB, 260 at minute 9, 388 at 27; private bytes 290 MB up.
+    $grown = 0..45 | ForEach-Object {
+        $gpu = if ($_ -lt 9) { 196 } elseif ($_ -lt 27) { 260 + ($_ - 9) * (388 - 260) / 18 } else { 388 }
+        [pscustomobject]@{ Minute = $_; Note = ""; GpuDedicatedMB = $gpu; PrivateMB = 1000 + [math]::Min($_, 27) * 290 / 27 }
+    }
+    Check "a climbing mini run fails the plateau" (-not (Test-PlateauGate $grown).Ok)
+    # A run shaped like a trimmed one: graphics memory never over the first minutes' most + 32, private flat.
+    $level = 0..45 | ForEach-Object { [pscustomobject]@{ Minute = $_; Note = ""; GpuDedicatedMB = 196 + ($_ % 3) * 10; PrivateMB = 1000 + ($_ % 2) * 20 } }
+    Check "a levelled mini run passes the plateau" ((Test-PlateauGate $level).Ok)
+    Check "a mini run without samples fails the plateau" (-not (Test-PlateauGate @()).Ok)
     $own = Get-Process -Id $PID
     $named = @($own.Threads | ForEach-Object { [OctoSoak.Win]::ThreadName($_.Id) } | Where-Object { $_ -ne $null })
     Check "reading thread names ($($named.Count) of $($own.Threads.Count) here)" ($named.Count -ge 0)
@@ -342,6 +426,7 @@ try {
     $trayed = $false
     $away = $false
     $cycles = 0
+    $gateFailed = $false
     $nextCycle = 120
     $shotsDue = @($Shots -split ',' | Where-Object { $_.Trim() } | ForEach-Object { [int]$_ } | Sort-Object)
     $csv = Join-Path $out "samples.csv"
@@ -420,6 +505,11 @@ try {
         "After GC: working set $($after.WorkingSetMB), heap $($after.HeapUsedMB)/$($after.HeapMB), JVM total $($after.NmtMB), outside the JVM $($after.OutsideJvmMB)",
         "Within 300 MB of the 15-minute mark at the end: $([math]::Abs($last.PrivateMB - $mark.PrivateMB) -le 300)"
     )
+    if ($Gate) {
+        $verdict = Test-Gate $Gate $samples
+        $summary += "GATE $(if ($verdict.Ok) { 'OK' } else { 'FAILED' }) $Gate ($($verdict.Text))"
+        $gateFailed = -not $verdict.Ok
+    }
     $summary | Set-Content -Path (Join-Path $out "summary.txt")
     $summary | ForEach-Object { Write-Host $_ }
 } finally {
@@ -434,3 +524,4 @@ try {
     if (Test-Path "$plan.events") { Copy-Item "$plan.events" (Join-Path $out "events.log") }
     if (-not $Keep) { Remove-Item -Recurse -Force $profileDir -Confirm:$false -ErrorAction SilentlyContinue }
 }
+if ($gateFailed) { exit 3 }
