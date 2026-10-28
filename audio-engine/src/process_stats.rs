@@ -193,20 +193,15 @@ mod tests {
     #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn counts_memory_that_is_touched() {
-        // Other tests run at the same time and free memory of their own, so
-        // the rise is looked for a few times.
-        let mut seen = Vec::new();
-        for _ in 0..5 {
-            let before = process_stats().private_bytes.unwrap();
-            let held = std::hint::black_box(vec![1u8; 64 << 20]);
-            let after = process_stats().private_bytes.unwrap();
-            std::hint::black_box(&held);
-            if after >= before + (60 << 20) {
-                return;
-            }
-            seen.push((before, after));
-        }
-        panic!("never rose by 60 MB: {seen:?}");
+        // A block so large that other threads' allocations and frees cannot
+        // hide its rise.
+        const BLOCK: u64 = 256 << 20;
+        let before = process_stats().private_bytes.unwrap();
+        let held = std::hint::black_box(vec![1u8; BLOCK as usize]);
+        let after = process_stats().private_bytes.unwrap();
+        std::hint::black_box(&held);
+        let rise = after.saturating_sub(before);
+        assert!(rise >= BLOCK / 2, "rose by {rise} of {BLOCK}: {before} to {after}");
     }
 
     // Run alone: `cargo test --release --lib many_calls_keep_nothing -- --ignored --test-threads=1`.
