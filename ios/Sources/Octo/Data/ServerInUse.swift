@@ -15,6 +15,9 @@ struct ServerInUse: @unchecked Sendable {
     /// Whether the server takes a call's params in a form body.
     var formPost: Bool { extensions.contains { $0.hasPrefix(formPostExtension + ":") } }
 
+    /// Whether family playlist rows say who may rename or delete them and the server takes removals by song.
+    var familyRules: Bool { extensions.contains { $0.hasPrefix(familyPlaylistsExtension + ":") } }
+
     func lists(_ name: String, version: Int = 1) -> Bool { extensions.contains("\(name):\(version)") }
 }
 

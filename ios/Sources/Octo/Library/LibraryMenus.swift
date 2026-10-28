@@ -272,7 +272,7 @@ struct AddToPlaylistMenu: View {
                 ForEach(actions.state.pickablePlaylists) { playlist in
                     Button { actions.add(source, to: playlist) } label: {
                         Label(playlist.name, systemImage: (playlist.onServer ? OctoIcon.cloud : OctoIcon.playlists).symbol)
-                        Text(songsCount(playlist.songCount))
+                        Text(playlist.family ? "By Family · \(songsCount(playlist.songCount))" : songsCount(playlist.songCount))
                     }
                 }
             }
@@ -327,8 +327,6 @@ struct CollectionMenuItems: View {
 
     private var state: LibraryState { actions.state }
 
-    /// A family playlist is renamed and deleted only by a family manager.
-    private func manages(_ playlist: PlaylistSummary) -> Bool { !playlist.family || accounts.family.me?.abilities.manageFamily == true }
     private static let quick: Set<CollectionAction> = [.play, .shuffle, .startRadio]
 
     var body: some View {
@@ -420,7 +418,7 @@ struct CollectionMenuItems: View {
                     .disabled(album.artistId.isEmpty)
             }
         case .rename:
-            if case .playlist(let playlist) = subject, manages(playlist) {
+            if case .playlist(let playlist) = subject, !playlist.family || playlist.familyMayRename {
                 item("Rename", .rename) { actions.askRename(playlist) }
             }
         case .duplicate:
@@ -428,7 +426,7 @@ struct CollectionMenuItems: View {
                 item("Duplicate", .copy) { actions.duplicate(playlist) }
             }
         case .delete:
-            if case .playlist(let playlist) = subject, manages(playlist) {
+            if case .playlist(let playlist) = subject, !playlist.family || playlist.familyMayDelete {
                 item("Delete", .delete, role: .destructive) { actions.askDeletePlaylist(playlist) }
             }
         }
@@ -436,7 +434,7 @@ struct CollectionMenuItems: View {
 }
 
 /// A playlist page's options: rename it, save it to the server, download its songs, write it as
-/// an M3U file, or delete it (a family playlist: rename and delete for a family manager only).
+/// an M3U file, or delete it (a family playlist: rename and delete as Octo allows this listener).
 struct PlaylistOptionsItems: View {
     let playlist: PlaylistSummary
     /// Whether some of its songs are only on a server.
@@ -444,14 +442,13 @@ struct PlaylistOptionsItems: View {
     /// Runs once the playlist is gone.
     let deleted: @MainActor () -> Void
     @Environment(LibraryActions.self) private var actions
-    @Environment(Accounts.self) private var accounts
 
-    /// A family playlist is renamed and deleted only by a family manager.
-    private var manages: Bool { !playlist.family || accounts.family.me?.abilities.manageFamily == true }
+    private var mayRename: Bool { !playlist.family || playlist.familyMayRename }
+    private var mayDelete: Bool { !playlist.family || playlist.familyMayDelete }
 
     var body: some View {
         Section(playlist.name) {
-            if manages {
+            if mayRename {
                 item("Rename", .rename) { actions.askRename(playlist) }
             }
             if actions.canSaveToServer(playlist) {
@@ -462,7 +459,7 @@ struct PlaylistOptionsItems: View {
             }
             item("Export as M3U", .share) { actions.exportPlaylist(playlist) }
         }
-        if manages {
+        if mayDelete {
             Section {
                 item("Delete", .delete, role: .destructive) { actions.askDeletePlaylist(playlist, deleted: deleted) }
             }
@@ -658,7 +655,7 @@ private struct PlaylistPickRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(playlist.name).foregroundStyle(.primary).lineLimit(1)
                 HStack(spacing: 4) {
-                    Text(songsCount(playlist.songCount))
+                    Text(playlist.family ? "By Family · \(songsCount(playlist.songCount))" : songsCount(playlist.songCount))
                     if playlist.onServer {
                         Image(systemName: OctoIcon.cloud.symbol).accessibilityLabel("On your server")
                     }

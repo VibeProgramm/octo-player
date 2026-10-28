@@ -646,7 +646,9 @@ struct PlaylistsView: View {
                     }
                     ForEach(shown) { playlist in
                         NavigationLink(value: Route.library(.playlist(id: playlist.id))) {
-                            PlaylistLine(name: playlist.name, subtitle: songsCount(playlist.songCount), onServer: playlist.onServer) {
+                            PlaylistLine(name: playlist.name,
+                                         subtitle: playlist.family ? "By Family · \(songsCount(playlist.songCount))" : songsCount(playlist.songCount),
+                                         onServer: playlist.onServer) {
                                 PlaylistCover(playlist: playlist, size: 56)
                             }
                         }
@@ -918,7 +920,7 @@ struct PlaylistPage: View {
     private var reordering: Bool { editMode.isEditing }
 
     /// Whether songs can be taken out here: not from a family playlist unless the listener is known not to hear only clean songs.
-    private func takesOut(_ playlist: PlaylistSummary) -> Bool { !playlist.family || accounts.family.me?.abilities.cleanOnly == false }
+    private func takesOut(_ playlist: PlaylistSummary) -> Bool { !playlist.family || playlist.familyMayRemove }
 
     var body: some View {
         LibraryList {
@@ -970,7 +972,7 @@ struct PlaylistPage: View {
             HStack(spacing: 8) {
                 Text(playlistDetails(songs: rows.count, length: asLength(length),
                                      kept: keptDownloadedWords(offline, tracks: tracks, playlistId: playlist.id),
-                                     phoneOnly: phoneOnly, onServer: playlist.onServer))
+                                     phoneOnly: phoneOnly, onServer: playlist.onServer, family: playlist.family))
                     .font(.octoCaption)
                     .foregroundStyle(OctoColor.textMuted)
                     .lineLimit(3)

@@ -10,7 +10,10 @@ extension PlaylistRow {
     var edited: Bool { syncedAt == nil || updatedAt > (syncedAt ?? 0) }
 
     var linked: LinkedPlaylist? {
-        serverId.map { LinkedPlaylist(id, $0, name, edited, syncedName, serverStamp, family: family) }
+        serverId.map {
+            LinkedPlaylist(id, $0, name, edited, syncedName, serverStamp, family: family,
+                           pullOnly: family && !familyMayAdd && !familyMayRemove)
+        }
     }
 }
 
@@ -179,12 +182,22 @@ final class PlaylistSync {
             guard let serverId = row.serverId, let notice = notices[serverId], notice != row.octoNotice else { continue }
             try? await store.markNotice(row.id, notice: notice)
         }
-        // Which of them the server lists as the family's.
-        var families: [String: Bool] = [:]
-        for playlist in keep { families[playlist.id] = isFamilyPlaylist(owner: playlist.owner, username: server.username) }
+        // Which of them the server lists as the family's, and what this listener may do with each.
+        let familyRows = keep.filter { isFamilyPlaylist(owner: $0.owner, username: server.username, octoFamily: $0.octoFamily) }
+        let me = familyRows.isEmpty ? nil : await familyPlan()
+        var rights: [String: PlaylistAccess] = [:]
+        for playlist in familyRows {
+            rights[playlist.id] = playlist.access(username: server.username, me: me, removesById: server.familyRules)
+        }
         for row in (try? await store.serverPlaylists(server.sourceId)) ?? [] {
-            guard let serverId = row.serverId, let isFamily = families[serverId], isFamily != row.family else { continue }
-            try? await store.markFamily(row.id, family: isFamily)
+            guard let serverId = row.serverId, keepIds.contains(serverId) else { continue }
+            let access = rights[serverId]
+            if (access != nil) != row.family { try? await store.markFamily(row.id, family: access != nil) }
+            if let access,
+               access.add != row.familyMayAdd || access.remove != row.familyMayRemove
+                || access.rename != row.familyMayRename || access.delete != row.familyMayDelete {
+                try? await store.markFamilyRights(row.id, add: access.add, remove: access.remove, rename: access.rename, delete: access.delete)
+            }
         }
     }
 
@@ -222,13 +235,19 @@ final class PlaylistSync {
         let store = library.store
         let full = try await server.client.fullPlaylist(serverId)
         guard let rows = await rowsOf(full) else { return }
-        let isFamily = isFamilyPlaylist(owner: full.owner, username: server.username)
+        let isFamily = isFamilyPlaylist(owner: full.owner, username: server.username, octoFamily: full.octoFamily)
+        let access = isFamily
+            ? full.access(username: server.username, me: await familyPlan(), removesById: server.familyRules) : PlaylistAccess()
         let songs = syncedSongsText(full.entry.map(\.id))
         for playlist in try await store.phonePlaylists() where playlist.name == full.name {
             if try await store.playlistItems(playlist.id).map(\.trackId) == rows.map(\.trackId) {
                 try await store.linkPlaylist(playlist.id, serverId: serverId, sourceId: server.sourceId, syncedAt: playlist.updatedAt,
                                              name: playlist.name, stamp: stamp)
                 try await store.markFamily(playlist.id, family: isFamily)
+                if isFamily {
+                    try await store.markFamilyRights(playlist.id, add: access.add, remove: access.remove, rename: access.rename,
+                                                     delete: access.delete)
+                }
                 try await store.markFamilyBase(playlist.id, songs: songs)
                 return
             }
@@ -238,7 +257,8 @@ final class PlaylistSync {
         let id = UUID().uuidString.lowercased()
         let row = PlaylistRow(id: id, name: full.name, createdAt: min(epochMs(full.created) ?? at, at), updatedAt: at,
                               serverId: serverId, sourceId: server.sourceId, syncedAt: at, syncedName: full.name, serverStamp: stamp,
-                              family: isFamily, syncedSongs: songs)
+                              family: isFamily, syncedSongs: songs, familyMayAdd: access.add, familyMayRemove: access.remove,
+                              familyMayRename: access.rename, familyMayDelete: access.delete)
         try await store.insertServerPlaylist(row, items: await items(id, rows))
     }
 
@@ -324,20 +344,42 @@ final class PlaylistSync {
         let current = there.entry.map(\.id)
         let phone = try await familySongsToSend(server, playlist.id)
         let base = syncedSongsOf(playlist.syncedSongs) ?? phone
-        let removing = !familyChanges(base: base, phone: phone, current: current).removeAt.isEmpty
-        let cleanOnly: Bool? = removing ? await familyPlan()?.abilities.cleanOnly : false
-        var listedCount: Int?
-        if removing && cleanOnly == false {
-            listedCount = try await client.fullPlaylists().first { $0.id == serverId }?.songCount
+        // A family playlist the listener may only listen to follows the server and sends nothing.
+        let pullOnly = !playlist.familyMayAdd && !playlist.familyMayRemove
+        let send: FamilySend
+        if pullOnly {
+            send = FamilySend(changes: FamilyChanges(removeAt: [], add: []), baseAfterSend: current, held: [])
+        } else if server.familyRules {
+            send = familySend(base: base, phone: phone, current: current, listedCount: current.count, cleanOnly: false)
+        } else {
+            let removing = !familyChanges(base: base, phone: phone, current: current).removeAt.isEmpty
+            let cleanOnly: Bool? = removing ? await familyPlan()?.abilities.cleanOnly : false
+            var listedCount: Int?
+            if removing && cleanOnly == false {
+                listedCount = try await client.fullPlaylists().first { $0.id == serverId }?.songCount
+            }
+            send = familySend(base: base, phone: phone, current: current, listedCount: listedCount, cleanOnly: cleanOnly)
         }
-        let send = familySend(base: base, phone: phone, current: current, listedCount: listedCount, cleanOnly: cleanOnly)
         if !send.changes.none {
-            try await client.updatePlaylist(serverId, songIdsToAdd: send.changes.add, songIndexesToRemove: send.changes.removeAt,
-                                            formPost: server.formPost)
+            do {
+                if server.familyRules {
+                    try await client.updatePlaylist(serverId, songIdsToAdd: send.changes.add, songIndexesToRemove: [],
+                                                    songsToRemove: songsToRemove(current, positions: send.changes.removeAt),
+                                                    formPost: server.formPost)
+                } else {
+                    try await client.updatePlaylist(serverId, songIdsToAdd: send.changes.add,
+                                                    songIndexesToRemove: send.changes.removeAt, formPost: server.formPost)
+                }
+            } catch {
+                // A send whose answer was lost may still have reached Octo; it is checked so the same songs are never added twice.
+                if error is OctoError { throw error }
+                guard let again = try? await client.fullPlaylist(serverId),
+                      familySendLanded(current: current, after: again.entry.map(\.id), changes: send.changes) else { throw error }
+            }
             // Kept before anything else can fail, so nothing is sent twice.
             try await store.markFamilyBase(playlist.id, songs: syncedSongsText(send.baseAfterSend))
         }
-        if playlist.name != playlist.syncedName && playlist.name != there.name {
+        if !pullOnly && playlist.name != playlist.syncedName && playlist.name != there.name {
             do {
                 try await client.updatePlaylist(serverId, name: playlist.name)
             } catch let OctoError.server(code, _) where code == 50 {
