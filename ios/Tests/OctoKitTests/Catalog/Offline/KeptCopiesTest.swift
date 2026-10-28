@@ -99,6 +99,7 @@ import Testing
                     trackId TEXT NOT NULL, sourceId TEXT NOT NULL, serverId TEXT NOT NULL, path TEXT NOT NULL,
                     sizeBytes INTEGER NOT NULL, format TEXT, state TEXT NOT NULL, progress REAL NOT NULL, addedAt INTEGER NOT NULL,
                     reason TEXT NOT NULL, title TEXT NOT NULL, artist TEXT NOT NULL, PRIMARY KEY(sourceId, serverId));
+                CREATE TABLE playlist (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, serverId TEXT, sourceId TEXT, syncedAt INTEGER, syncedName TEXT, serverStamp TEXT, octoNotice TEXT);
                 INSERT INTO download VALUES ('t', 'server:a', 'tr-1', '/d/1.flac', 10, 'audio/flac', 'Done', 1, 0, 'manual', 'One', '');
                 """)
             old.userVersion = 1

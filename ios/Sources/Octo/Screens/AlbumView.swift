@@ -646,7 +646,9 @@ struct PlaylistsView: View {
                     }
                     ForEach(shown) { playlist in
                         NavigationLink(value: Route.library(.playlist(id: playlist.id))) {
-                            PlaylistLine(name: playlist.name, subtitle: songsCount(playlist.songCount), onServer: playlist.onServer) {
+                            PlaylistLine(name: playlist.name,
+                                         subtitle: playlist.family ? "By Family · \(songsCount(playlist.songCount))" : songsCount(playlist.songCount),
+                                         onServer: playlist.onServer) {
                                 PlaylistCover(playlist: playlist, size: 56)
                             }
                         }
@@ -906,6 +908,7 @@ struct PlaylistPage: View {
     @Environment(Library.self) private var library
     @Environment(LibraryState.self) private var state
     @Environment(LibraryActions.self) private var actions
+    @Environment(Accounts.self) private var accounts
     @Environment(OfflineDownloads.self) private var offline
     @Environment(\.dismiss) private var dismiss
     @State private var summary: PlaylistSummary?
@@ -915,6 +918,9 @@ struct PlaylistPage: View {
     @State private var editMode: EditMode = .inactive
 
     private var reordering: Bool { editMode.isEditing }
+
+    /// Whether songs can be taken out here: not from a family playlist unless the listener is known not to hear only clean songs.
+    private func takesOut(_ playlist: PlaylistSummary) -> Bool { !playlist.family || playlist.familyMayRemove }
 
     var body: some View {
         LibraryList {
@@ -935,10 +941,10 @@ struct PlaylistPage: View {
         .inlineTitle(summary?.name ?? "")
         .backAction(reordering ? { editMode = .inactive } : nil)
         .backStopsPicking()
-        .selectableSongs(state.pickables(rows)) { picked in
+        .selectableSongs(state.pickables(rows), onRemove: summary.map(takesOut) == true ? { picked in
             guard let summary else { return }
             actions.remove(picked.compactMap { Int64($0.key) }, from: summary)
-        }
+        } : nil)
         .task(id: "\(id)|\(library.stamp(.playlists, .library))") { await readPage() }
     }
 
@@ -966,12 +972,12 @@ struct PlaylistPage: View {
             HStack(spacing: 8) {
                 Text(playlistDetails(songs: rows.count, length: asLength(length),
                                      kept: keptDownloadedWords(offline, tracks: tracks, playlistId: playlist.id),
-                                     phoneOnly: phoneOnly, onServer: playlist.onServer))
+                                     phoneOnly: phoneOnly, onServer: playlist.onServer, family: playlist.family))
                     .font(.octoCaption)
                     .foregroundStyle(OctoColor.textMuted)
                     .lineLimit(3)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if rows.count > 1 { ReorderButton(editMode: $editMode) }
+                if rows.count > 1 && !playlist.family { ReorderButton(editMode: $editMode) }
                 Menu {
                     KeepDownloadedToggle(tracks: tracks, playlistId: playlist.id)
                     PlaylistOptionsItems(playlist: playlist, serverOnly: tracks.contains { !$0.onPhone && !$0.isFound }) { dismiss() }
@@ -996,9 +1002,9 @@ struct PlaylistPage: View {
     private func playlistRow(_ position: Int, _ row: PlaylistTrack, _ playlist: PlaylistSummary) -> some View {
         TrackRow(
             track: row.track,
-            context: SongMenuContext(playlistId: playlist.id, playlistItemId: row.itemId, selectKey: String(row.itemId)),
+            context: SongMenuContext(playlistId: playlist.id, playlistItemId: takesOut(playlist) ? row.itemId : nil, selectKey: String(row.itemId)),
             selectKey: String(row.itemId),
-            swipe: reordering ? .none : .remove {
+            swipe: reordering || !takesOut(playlist) ? .none : .remove {
                 rows.removeAll { $0.itemId == row.itemId }
                 actions.remove([row.itemId], from: playlist)
             }

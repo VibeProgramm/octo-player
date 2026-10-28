@@ -214,8 +214,11 @@ final class LibraryState {
         recentPlaylists.first.flatMap { id in playlists.first { $0.id == id } }
     }
 
-    /// Every playlist shown with this server, the three added to most recently first.
-    var pickablePlaylists: [PlaylistSummary] { recentFirst(playlists, recent: recentPlaylists, id: \.id) }
+    /// Every playlist shown with this server that songs can go into, the three added to most
+    /// recently first. A family playlist the listener may only listen to is left out.
+    var pickablePlaylists: [PlaylistSummary] {
+        recentFirst(playlists.filter { !($0.family && !$0.familyMayAdd) }, recent: recentPlaylists, id: \.id)
+    }
 
     func markRecent(_ id: String) {
         recentPlaylists = OctoKit.recentPlaylists(recentPlaylists, adding: id)

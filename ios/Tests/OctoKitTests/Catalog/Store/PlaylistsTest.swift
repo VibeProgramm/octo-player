@@ -118,4 +118,32 @@ import Testing
         #expect(summaries.count == 1)
         #expect(summaries.first?.octoNotice == "review")
     }
+
+    @Test func familyColumnsAndKeptRowIdsSurviveATake() async throws {
+        let store = try CatalogStore(path: ":memory:")
+        let row = PlaylistRow(id: "p", name: "Road", createdAt: 1, updatedAt: 1, serverId: "pl9", sourceId: "s")
+        try await store.insertServerPlaylist(row, items: [item(0, 0), item(0, 1), item(0, 2)])
+        #expect(order(try await store.playlistItems("p")) == [1, 2, 3])
+
+        var updated = row
+        updated.family = true
+        updated.syncedSongs = "a\nb"
+        let taken = try await store.takeServerSongs(expected: row, items: [item(1, 0), item(0, 1), item(3, 2)], updated: updated)
+        #expect(taken)
+        #expect(order(try await store.playlistItems("p")) == [1, 4, 3])
+        let stored = try #require(try await store.playlist("p"))
+        #expect(stored.family)
+        #expect(stored.syncedSongs == "a\nb")
+
+        try await store.markFamilyRights("p", add: true, remove: false, rename: true, delete: false)
+        let rights = try #require(try await store.playlist("p"))
+        #expect(rights.familyMayAdd && !rights.familyMayRemove && rights.familyMayRename && !rights.familyMayDelete)
+        #expect(summarize([rights], []).first?.familyMayRename == true)
+
+        try await store.unlinkPlaylist("p")
+        let unlinked = try #require(try await store.playlist("p"))
+        #expect(!unlinked.family)
+        #expect(unlinked.syncedSongs == nil)
+        #expect(!unlinked.familyMayAdd && !unlinked.familyMayRename)
+    }
 }

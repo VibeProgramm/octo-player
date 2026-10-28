@@ -103,10 +103,21 @@ public struct PlaylistRow: TableRow, Hashable, Identifiable {
     public var serverStamp: String?
     /// Which of Octo's notice lists the server copy is ("review", "duplicates").
     public var octoNotice: String?
+    /// A family playlist: anyone in the family may add and take out songs, and its order is the server's.
+    public var family: Bool
+    /// The server's songs as both sides last agreed, one id a line, so a family playlist's own changes
+    /// can be told from everyone else's.
+    public var syncedSongs: String?
+    /// What the listener may do with this family playlist, as the last sync found.
+    public var familyMayAdd: Bool
+    public var familyMayRemove: Bool
+    public var familyMayRename: Bool
+    public var familyMayDelete: Bool
 
     public init(id: String, name: String, createdAt: Int64, updatedAt: Int64, serverId: String? = nil,
                 sourceId: String? = nil, syncedAt: Int64? = nil, syncedName: String? = nil, serverStamp: String? = nil,
-                octoNotice: String? = nil) {
+                octoNotice: String? = nil, family: Bool = false, syncedSongs: String? = nil, familyMayAdd: Bool = false,
+                familyMayRemove: Bool = false, familyMayRename: Bool = false, familyMayDelete: Bool = false) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
@@ -117,13 +128,21 @@ public struct PlaylistRow: TableRow, Hashable, Identifiable {
         self.syncedName = syncedName
         self.serverStamp = serverStamp
         self.octoNotice = octoNotice
+        self.family = family
+        self.syncedSongs = syncedSongs
+        self.familyMayAdd = familyMayAdd
+        self.familyMayRemove = familyMayRemove
+        self.familyMayRename = familyMayRename
+        self.familyMayDelete = familyMayDelete
     }
 
     public static let table = "playlist"
     public static let columns = ["id", "name", "createdAt", "updatedAt", "serverId", "sourceId", "syncedAt", "syncedName",
-                                 "serverStamp", "octoNotice"]
+                                 "serverStamp", "octoNotice", "family", "syncedSongs", "familyMayAdd", "familyMayRemove",
+                                 "familyMayRename", "familyMayDelete"]
     public var values: [any SQLBindable] {
-        [id, name, createdAt, updatedAt, serverId, sourceId, syncedAt, syncedName, serverStamp, octoNotice]
+        [id, name, createdAt, updatedAt, serverId, sourceId, syncedAt, syncedName, serverStamp, octoNotice, family ? 1 : 0, syncedSongs,
+         familyMayAdd ? 1 : 0, familyMayRemove ? 1 : 0, familyMayRename ? 1 : 0, familyMayDelete ? 1 : 0]
     }
 
     public init(row: SQLRow) {
@@ -137,6 +156,12 @@ public struct PlaylistRow: TableRow, Hashable, Identifiable {
         syncedName = row.optionalString("syncedName")
         serverStamp = row.optionalString("serverStamp")
         octoNotice = row.optionalString("octoNotice")
+        family = row.int("family") != 0
+        syncedSongs = row.optionalString("syncedSongs")
+        familyMayAdd = row.int("familyMayAdd") != 0
+        familyMayRemove = row.int("familyMayRemove") != 0
+        familyMayRename = row.int("familyMayRename") != 0
+        familyMayDelete = row.int("familyMayDelete") != 0
     }
 
     /// Whether this playlist shows while this server is in use (nil for none): a phone-only one

@@ -65,13 +65,15 @@ public func addSongsCalls(_ playlistId: String, _ batches: [[String]]) -> [Playl
 /// The calls for updatePlaylist. Removals go by position in the list as it is before the call,
 /// and may repeat; added songs go to the end. Songs past the first batch follow in calls of their own.
 public func updateCalls(_ playlistId: String, name: String?, comment: String?, isPublic: Bool?, songIdsToAdd: [String],
-                        songIndexesToRemove: [Int], formPost: Bool, perCall: Int = playlistSongsPerCall) -> [PlaylistCall] {
+                        songIndexesToRemove: [Int], songsToRemove: [SongToRemove] = [], formPost: Bool,
+                        perCall: Int = playlistSongsPerCall) -> [PlaylistCall] {
     let batches = songBatches(songIdsToAdd, formPost: formPost, perCall: perCall)
     var params: [PlaylistCall.Param] = [.init("playlistId", playlistId)]
     if let name { params.append(.init("name", name)) }
     if let comment { params.append(.init("comment", comment)) }
     if let isPublic { params.append(.init("public", isPublic ? "true" : "false")) }
     params += songIndexesToRemove.map { .init("songIndexToRemove", "\($0)") }
+    params += songsToRemove.map { .init("octoSongToRemove", "\($0.id)@\($0.copy)") }
     params += batches[0].map { .init("songIdToAdd", $0) }
     return [PlaylistCall("updatePlaylist", params)] + addSongsCalls(playlistId, Array(batches.dropFirst()))
 }
@@ -93,11 +95,18 @@ public struct ServerPlaylistInfo: Decodable, Sendable, Hashable, Identifiable {
     public var octoList: String?
     public var octoNotice: String?
     public var octoCoverTitle: String?
+    /// A family playlist as Octo marks it, who made it, and what this listener may do with it
+    /// (servers listing octoFamilyPlaylists).
+    public var octoFamily: Bool?
+    public var octoFamilyCreatedBy: String?
+    public var octoFamilyMayRename: Bool?
+    public var octoFamilyMayDelete: Bool?
     public var entry: [Song]
 
     public init(id: String, name: String = "", owner: String? = nil, songCount: Int = 0, changed: String? = nil,
                 created: String? = nil, readonly: Bool = false, octoList: String? = nil, octoNotice: String? = nil,
-                coverArt: String? = nil, entry: [Song] = []) {
+                coverArt: String? = nil, entry: [Song] = [], octoFamily: Bool? = nil, octoFamilyCreatedBy: String? = nil,
+                octoFamilyMayRename: Bool? = nil, octoFamilyMayDelete: Bool? = nil) {
         self.id = id
         self.name = name
         self.owner = owner
@@ -110,12 +119,17 @@ public struct ServerPlaylistInfo: Decodable, Sendable, Hashable, Identifiable {
         self.readonly = readonly
         self.octoList = octoList
         self.octoNotice = octoNotice
+        self.octoFamily = octoFamily
+        self.octoFamilyCreatedBy = octoFamilyCreatedBy
+        self.octoFamilyMayRename = octoFamilyMayRename
+        self.octoFamilyMayDelete = octoFamilyMayDelete
         self.entry = entry
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, comment, owner, songCount, duration, coverArt, changed, created, readonly, validUntil
         case octoList, octoNotice, octoCoverTitle, entry
+        case octoFamily, octoFamilyCreatedBy, octoFamilyMayRename, octoFamilyMayDelete
         case isPublic = "public"
     }
 
@@ -136,6 +150,10 @@ public struct ServerPlaylistInfo: Decodable, Sendable, Hashable, Identifiable {
         octoList = c.string(.octoList)
         octoNotice = c.string(.octoNotice)
         octoCoverTitle = c.string(.octoCoverTitle)
+        octoFamily = c.bool(.octoFamily)
+        octoFamilyCreatedBy = c.string(.octoFamilyCreatedBy)
+        octoFamilyMayRename = c.bool(.octoFamilyMayRename)
+        octoFamilyMayDelete = c.bool(.octoFamilyMayDelete)
         entry = (try? c.decodeIfPresent([Song].self, forKey: .entry)) ?? []
     }
 }
@@ -222,11 +240,13 @@ extension SubsonicClient {
     }
 
     /// Changes a playlist's details, takes songs out by their place (a place may repeat) and adds
-    /// songs to the end. Only what is given changes.
+    /// songs to the end. Songs of a family playlist can also go by id and copy. Only what is given
+    /// changes.
     public func updatePlaylist(_ id: String, name: String? = nil, comment: String? = nil, isPublic: Bool? = nil,
-                               songIdsToAdd: [String] = [], songIndexesToRemove: [Int] = [], formPost: Bool = false) async throws {
+                               songIdsToAdd: [String] = [], songIndexesToRemove: [Int] = [], songsToRemove: [SongToRemove] = [],
+                               formPost: Bool = false) async throws {
         for call in updateCalls(id, name: name, comment: comment, isPublic: isPublic, songIdsToAdd: songIdsToAdd,
-                                songIndexesToRemove: songIndexesToRemove, formPost: formPost) {
+                                songIndexesToRemove: songIndexesToRemove, songsToRemove: songsToRemove, formPost: formPost) {
             try await runCall(call, formPost: formPost)
         }
     }

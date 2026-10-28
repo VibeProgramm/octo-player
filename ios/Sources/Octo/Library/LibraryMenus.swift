@@ -272,7 +272,7 @@ struct AddToPlaylistMenu: View {
                 ForEach(actions.state.pickablePlaylists) { playlist in
                     Button { actions.add(source, to: playlist) } label: {
                         Label(playlist.name, systemImage: (playlist.onServer ? OctoIcon.cloud : OctoIcon.playlists).symbol)
-                        Text(songsCount(playlist.songCount))
+                        Text(playlist.family ? "By Family · \(songsCount(playlist.songCount))" : songsCount(playlist.songCount))
                     }
                 }
             }
@@ -323,8 +323,10 @@ struct CollectionMenuItems: View {
     let subject: CollectionSubject
     @Environment(LibraryActions.self) private var actions
     @Environment(Router.self) private var router
+    @Environment(Accounts.self) private var accounts
 
     private var state: LibraryState { actions.state }
+
     private static let quick: Set<CollectionAction> = [.play, .shuffle, .startRadio]
 
     var body: some View {
@@ -416,7 +418,7 @@ struct CollectionMenuItems: View {
                     .disabled(album.artistId.isEmpty)
             }
         case .rename:
-            if case .playlist(let playlist) = subject {
+            if case .playlist(let playlist) = subject, !playlist.family || playlist.familyMayRename {
                 item("Rename", .rename) { actions.askRename(playlist) }
             }
         case .duplicate:
@@ -424,7 +426,7 @@ struct CollectionMenuItems: View {
                 item("Duplicate", .copy) { actions.duplicate(playlist) }
             }
         case .delete:
-            if case .playlist(let playlist) = subject {
+            if case .playlist(let playlist) = subject, !playlist.family || playlist.familyMayDelete {
                 item("Delete", .delete, role: .destructive) { actions.askDeletePlaylist(playlist) }
             }
         }
@@ -432,7 +434,7 @@ struct CollectionMenuItems: View {
 }
 
 /// A playlist page's options: rename it, save it to the server, download its songs, write it as
-/// an M3U file, or delete it.
+/// an M3U file, or delete it (a family playlist: rename and delete as Octo allows this listener).
 struct PlaylistOptionsItems: View {
     let playlist: PlaylistSummary
     /// Whether some of its songs are only on a server.
@@ -441,9 +443,14 @@ struct PlaylistOptionsItems: View {
     let deleted: @MainActor () -> Void
     @Environment(LibraryActions.self) private var actions
 
+    private var mayRename: Bool { !playlist.family || playlist.familyMayRename }
+    private var mayDelete: Bool { !playlist.family || playlist.familyMayDelete }
+
     var body: some View {
         Section(playlist.name) {
-            item("Rename", .rename) { actions.askRename(playlist) }
+            if mayRename {
+                item("Rename", .rename) { actions.askRename(playlist) }
+            }
             if actions.canSaveToServer(playlist) {
                 item("Save to server", .cloud) { actions.saveToServer(playlist) }
             }
@@ -452,8 +459,10 @@ struct PlaylistOptionsItems: View {
             }
             item("Export as M3U", .share) { actions.exportPlaylist(playlist) }
         }
-        Section {
-            item("Delete", .delete, role: .destructive) { actions.askDeletePlaylist(playlist, deleted: deleted) }
+        if mayDelete {
+            Section {
+                item("Delete", .delete, role: .destructive) { actions.askDeletePlaylist(playlist, deleted: deleted) }
+            }
         }
     }
 }
@@ -646,7 +655,7 @@ private struct PlaylistPickRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(playlist.name).foregroundStyle(.primary).lineLimit(1)
                 HStack(spacing: 4) {
-                    Text(songsCount(playlist.songCount))
+                    Text(playlist.family ? "By Family · \(songsCount(playlist.songCount))" : songsCount(playlist.songCount))
                     if playlist.onServer {
                         Image(systemName: OctoIcon.cloud.symbol).accessibilityLabel("On your server")
                     }

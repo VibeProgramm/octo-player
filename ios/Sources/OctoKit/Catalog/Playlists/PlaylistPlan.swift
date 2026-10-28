@@ -34,14 +34,21 @@ public struct LinkedPlaylist: Sendable, Hashable {
     public var edited: Bool
     public var syncedName: String?
     public var syncedStamp: String?
+    /// A family playlist, whose own changes are sent on top of everyone else's.
+    public var family: Bool
+    /// A family playlist the listener may not change here: it only follows the server.
+    public var pullOnly: Bool
 
-    public init(_ localId: String, _ serverId: String, _ name: String, _ edited: Bool, _ syncedName: String?, _ syncedStamp: String?) {
+    public init(_ localId: String, _ serverId: String, _ name: String, _ edited: Bool, _ syncedName: String?, _ syncedStamp: String?,
+                family: Bool = false, pullOnly: Bool = false) {
         self.localId = localId
         self.serverId = serverId
         self.name = name
         self.edited = edited
         self.syncedName = syncedName
         self.syncedStamp = syncedStamp
+        self.family = family
+        self.pullOnly = pullOnly
     }
 }
 
@@ -68,10 +75,22 @@ public enum PlaylistStep: Sendable, Hashable {
 
 public func stampOf(_ changed: String?, _ songCount: Int) -> String { "\(changed ?? "")|\(songCount)" }
 
-/// Server playlists worth a copy on the phone: the signed-in user's own, leaving out read-only
-/// ones and stations, which the stations shelf shows.
+/// Server playlists worth a copy on the phone: the signed-in user's own and the family's they may
+/// change, leaving out read-only ones and stations, which the stations shelf shows, and the
+/// family's, which a listener without editing keeps as a copy that only follows the server.
 public func importable(_ playlists: [ServerPlaylistInfo], stationIds: Set<String>, username: String) -> [ServerPlaylistInfo] {
-    playlists.filter { !$0.readonly && !stationIds.contains($0.id) && ownedBy($0.owner, username) }
+    playlists.filter {
+        !stationIds.contains($0.id)
+            && (isFamilyPlaylist(owner: $0.owner, username: username, octoFamily: $0.octoFamily)
+                || (!$0.readonly && ownedBy($0.owner, username)))
+    }
+}
+
+/// The playlists a new one made on a server too old to answer with it can be: the user's own
+/// by that name not linked yet, never the family's.
+public func newestNamedCandidates(_ playlists: [ServerPlaylistInfo], name: String, username: String, linked: Set<String>) -> [ServerPlaylistInfo] {
+    importable(playlists, stationIds: [], username: username)
+        .filter { $0.name == name && !linked.contains($0.id) && !isFamilyPlaylist(owner: $0.owner, username: username, octoFamily: $0.octoFamily) }
 }
 
 /// How long the phone's copy of the server's playlists counts as fresh when the playlists come on
@@ -122,7 +141,13 @@ public func planLinked(_ server: ServerPlaylist?, _ playlist: LinkedPlaylist, st
         return playlist.edited || stillThere ? .unlink(localId: playlist.localId) : .remove(localId: playlist.localId)
     }
     let serverChanged = server.stamp != playlist.syncedStamp
+    if playlist.pullOnly {
+        return serverChanged || playlist.edited
+            ? .pull(localId: playlist.localId, serverId: server.id, stamp: server.stamp, keepName: false) : nil
+    }
     if serverChanged && playlist.edited {
+        // Both changed: a family playlist sends the phone's own changes on top of everyone else's.
+        if playlist.family { return .push(localId: playlist.localId, serverId: server.id) }
         // Both changed: the server's songs, and the phone's name if it was renamed here.
         let renamedHere = playlist.name != playlist.syncedName && playlist.name != server.name
         return .pull(localId: playlist.localId, serverId: server.id, stamp: server.stamp, keepName: renamedHere)
@@ -187,4 +212,117 @@ public func phoneOnlyNote(_ count: Int) -> String {
     count == 1
         ? "1 song is only on this phone and is not in the server's copy"
         : "\(count) songs are only on this phone and are not in the server's copy"
+}
+
+/// What the phone changed in a family playlist, as Octo takes it: songs taken out by their place
+/// in the server's list now, and songs added at the end. `base` is the server's songs when both
+/// last agreed, `phone` the songs the phone holds now, `current` the server's songs now. Only
+/// counts matter (a family playlist keeps the server's order): a song the phone has fewer of than
+/// `base` comes out of `current` that many times, last places first, unless someone else took it
+/// out already; a song the phone has more of goes on the end.
+public struct FamilyChanges: Equatable, Sendable {
+    public var removeAt: [Int]
+    public var add: [String]
+    public init(removeAt: [Int], add: [String]) {
+        self.removeAt = removeAt
+        self.add = add
+    }
+    public var none: Bool { removeAt.isEmpty && add.isEmpty }
+}
+
+public func familyChanges(base: [String], phone: [String], current: [String]) -> FamilyChanges {
+    var had: [String: Int] = [:]
+    for id in base { had[id, default: 0] += 1 }
+    var has: [String: Int] = [:]
+    for id in phone { has[id, default: 0] += 1 }
+    var removeAt: [Int] = []
+    for (id, count) in had {
+        let out = count - (has[id] ?? 0)
+        guard out > 0 else { continue }
+        removeAt += current.indices.filter { current[$0] == id }.suffix(out)
+    }
+    var seen: [String: Int] = [:]
+    let add = phone.filter { id in
+        seen[id, default: 0] += 1
+        return seen[id, default: 0] > (had[id] ?? 0)
+    }
+    return FamilyChanges(removeAt: removeAt.sorted(), add: add)
+}
+
+/// The songs both sides last agreed on, as the phone keeps them, or nil when none were kept.
+public func syncedSongsOf(_ stored: String?) -> [String]? {
+    stored.map { $0.split(separator: "\n").map(String.init) }
+}
+
+public func syncedSongsText(_ ids: [String]) -> String { ids.joined(separator: "\n") }
+
+/// The ids rows keep when a playlist's songs are swapped for the server's: each new row takes the
+/// id of the first unused phone row of the same song, in order, so a row that is picked, or that
+/// Undo is about to take back out, is still there. Nil for a row new to the phone.
+public func keptRowIds(_ local: [(id: Int64, trackId: String)], _ rows: [PlaylistSyncRow]) -> [Int64?] {
+    var free: [String: [Int64]] = [:]
+    for row in local { free[row.trackId, default: []].append(row.id) }
+    return rows.map { row in
+        guard var ids = free[row.trackId], !ids.isEmpty else { return nil }
+        let id = ids.removeFirst()
+        free[row.trackId] = ids
+        return id
+    }
+}
+
+/// What a family push sends and keeps. `changes` go to the server; `baseAfterSend` is kept as the
+/// songs both sides agree on once they are there; `held` are the songs (one entry per copy) whose
+/// removal waits.
+public struct FamilySend: Equatable, Sendable {
+    public var changes: FamilyChanges
+    public var baseAfterSend: [String]
+    public var held: [String]
+    public init(changes: FamilyChanges, baseAfterSend: [String], held: [String]) {
+        self.changes = changes
+        self.baseAfterSend = baseAfterSend
+        self.held = held
+    }
+}
+
+/// Decides a family push. Removals count places over the list Octo shows, so they wait while Octo
+/// lists fewer songs than it holds (`listedCount`, the playlist's count in the list of playlists,
+/// nil when not read) and while it is not known whether the listener hears only clean songs
+/// (`cleanOnly` nil). A listener who hears only clean songs is shown too few songs to count from,
+/// so their removals are dropped and the songs come back with the server's list.
+public func familySend(base: [String], phone: [String], current: [String], listedCount: Int?, cleanOnly: Bool?) -> FamilySend {
+    let wanted = familyChanges(base: base, phone: phone, current: current)
+    if wanted.removeAt.isEmpty { return FamilySend(changes: wanted, baseAfterSend: phone, held: []) }
+    let adds = FamilyChanges(removeAt: [], add: wanted.add)
+    if cleanOnly == true { return FamilySend(changes: adds, baseAfterSend: phone, held: []) }
+    if cleanOnly == nil || listedCount != current.count {
+        return FamilySend(changes: adds, baseAfterSend: base + wanted.add, held: wanted.removeAt.map { current[$0] })
+    }
+    return FamilySend(changes: wanted, baseAfterSend: phone, held: [])
+}
+
+/// Whether a family send reached the server although its answer was lost: every song it added
+/// is there as many more times as it was added, and every song it took out is there as many
+/// fewer times. Changes by others meanwhile do not hide it.
+public func familySendLanded(current: [String], after: [String], changes: FamilyChanges) -> Bool {
+    func counts(_ ids: [String]) -> [String: Int] {
+        var out: [String: Int] = [:]
+        for id in ids { out[id, default: 0] += 1 }
+        return out
+    }
+    let before = counts(current)
+    let now = counts(after)
+    let added = counts(changes.add)
+    let removed = counts(changes.removeAt.filter { current.indices.contains($0) }.map { current[$0] })
+    return added.allSatisfy { now[$0.key, default: 0] >= before[$0.key, default: 0] + $0.value }
+        && removed.allSatisfy { now[$0.key, default: 0] <= before[$0.key, default: 0] - $0.value }
+}
+
+/// The rows after taking the server's songs, less the songs whose removal waits: for each held
+/// song, its last row from the server goes.
+public func withoutHeld(_ rows: [PlaylistSyncRow], _ held: [String]) -> [PlaylistSyncRow] {
+    var out = rows
+    for id in held {
+        if let at = out.lastIndex(where: { $0.serverSongId == id }) { out.remove(at: at) }
+    }
+    return out
 }
