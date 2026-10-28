@@ -91,6 +91,10 @@ class PlaylistViewModel @AssistedInject constructor(
     val serverAvailable: StateFlow<Boolean> =
         sync.available.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    // Whether songs can be taken out of this playlist here: not from a family
+    // playlist unless the last sync found the listener may.
+    fun takesOut(playlist: PlaylistEntity): Boolean = !playlist.family || playlist.familyMayRemove
+
     private fun ids() = page.value?.tracks.orEmpty().map { it.track.id }
 
     fun play(index: Int) = playback.playTracks(ids(), index, source = page.value?.playlist?.name)
@@ -125,8 +129,9 @@ class PlaylistViewModel @AssistedInject constructor(
 
 private val RowShape = RoundedCornerShape(12.dp)
 
-// One playlist: its songs in order. Drag a song by its handle to move it,
-// swipe it left to take it out, tap it to play from there.
+// One playlist: its songs in order. Drag a song by its handle to move it
+// (not in a family playlist, which keeps the server's order), swipe it left
+// to take it out, tap it to play from there.
 @Composable
 fun PlaylistScreen(
     id: String,
@@ -146,6 +151,7 @@ fun PlaylistScreen(
         val playlist = current?.playlist
         if (current != null && playlist != null) {
             val tracks = current.tracks
+            val takesOut = vm.takesOut(playlist)
             // The rows as drawn. A drag moves them at once; the playlist catches up on drop.
             var rows by remember(tracks) { mutableStateOf(tracks) }
             val haptics = LocalHapticFeedback.current
@@ -161,11 +167,18 @@ fun PlaylistScreen(
 
             // Songs are picked by their row, since a song can be here twice.
             val pickable = remember(rows) { rows.map { Pickable(it.itemId.toString(), it.track) } }
-            SelectableSongs(pickable, onRemove = { picked ->
-                val gone = picked.mapNotNull { it.key.toLongOrNull() }.toSet()
-                rows = rows.filterNot { it.itemId in gone }
-                vm.removeMany(gone.toList())
-            }) {
+            SelectableSongs(
+                pickable,
+                onRemove = if (!takesOut) {
+                    null
+                } else {
+                    ({ picked ->
+                        val gone = picked.mapNotNull { it.key.toLongOrNull() }.toSet()
+                        rows = rows.filterNot { it.itemId in gone }
+                        vm.removeMany(gone.toList())
+                    })
+                },
+            ) {
                 val selecting = LocalSongSelection.current?.active == true
                 LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = screenPadding(extraTop = DetailTopGap)) {
                     item(key = "header") {
@@ -186,12 +199,16 @@ fun PlaylistScreen(
                                         canSave = serverAvailable && !onServer,
                                         canDownload = canDownload,
                                         keep = tracks.map { it.track },
+                                        family = playlist.family,
+                                        canRename = !playlist.family || playlist.familyMayRename,
+                                        canDelete = !playlist.family || playlist.familyMayDelete,
                                     ),
                                 )
                             },
                             // How far Keep downloaded has got, and the songs the
                             // server's copy lacks, join the size and length.
                             facts = listOfNotNull(
+                                if (playlist.family) "By Family" else null,
                                 keepPlaylistProgress(playlist.id, tracks.map { it.track }),
                                 if (playlist.sourceId != null && phoneOnly > 0) phoneOnlyNote(phoneOnly) else null,
                             ),
@@ -216,7 +233,7 @@ fun PlaylistScreen(
                             SwipeToDismissBox(
                                 state = swipe,
                                 enableDismissFromStartToEnd = false,
-                                gesturesEnabled = !dragging && !selecting,
+                                gesturesEnabled = !dragging && !selecting && takesOut,
                                 onDismiss = {
                                     rows = rows - entry
                                     vm.remove(entry.itemId)
@@ -240,9 +257,9 @@ fun PlaylistScreen(
                                 ) {
                                     SongRow(
                                         entry.track,
-                                        // No moving songs while picking them.
-                                        trailing = if (selecting) null else ({ DragHandle(Modifier.draggableHandle(onDragStopped = drop)) }),
-                                        menuContext = SongMenuContext(playlistId = playlist.id, playlistItemId = entry.itemId),
+                                        // No moving songs while picking them, or in a family playlist.
+                                        trailing = if (selecting || playlist.family) null else ({ DragHandle(Modifier.draggableHandle(onDragStopped = drop)) }),
+                                        menuContext = SongMenuContext(playlistId = playlist.id, playlistItemId = entry.itemId.takeIf { takesOut }),
                                         selectKey = entry.itemId.toString(),
                                         // A swipe left takes the song out here.
                                         queueSwipe = false,

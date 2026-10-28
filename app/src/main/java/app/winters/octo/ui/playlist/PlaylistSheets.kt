@@ -98,6 +98,8 @@ sealed interface PlaylistSheet {
     // server when `canSave`. `onServer` is one kept with the server.
     // `canDownload` when some of its songs are only on a server. `keep`,
     // the playlist's songs, offers its Keep downloaded switch, from its page.
+    // A family playlist (`family`) is renamed and deleted only by a manager
+    // (`canRename`, `canDelete`).
     data class Options(
         val id: String,
         val name: String,
@@ -105,9 +107,12 @@ sealed interface PlaylistSheet {
         val canSave: Boolean = false,
         val canDownload: Boolean = false,
         val keep: List<TrackEntity>? = null,
+        val family: Boolean = false,
+        val canRename: Boolean = true,
+        val canDelete: Boolean = true,
     ) : PlaylistSheet
     data class Rename(val id: String, val name: String) : PlaylistSheet
-    data class Delete(val id: String, val name: String, val onServer: Boolean = false) : PlaylistSheet
+    data class Delete(val id: String, val name: String, val onServer: Boolean = false, val family: Boolean = false) : PlaylistSheet
 
     // A live list's options: edit its rules, rename, copy, save what it
     // holds now as a playlist, delete (asked).
@@ -273,7 +278,9 @@ fun PlaylistSheetsHost(sheets: PlaylistSheets, vm: PlaylistSheetsViewModel = hil
                     sheets.close()
                 })
                 is PlaylistSheet.Options -> GlassMenuPage(header = { GlassMenuHeading(sheet.name) }) {
-                    GlassMenuAction(OctoIcons.Rename, "Rename", opensPage = true, onClick = { sheets.show(PlaylistSheet.Rename(sheet.id, sheet.name)) })
+                    if (sheet.canRename) {
+                        GlassMenuAction(OctoIcons.Rename, "Rename", opensPage = true, onClick = { sheets.show(PlaylistSheet.Rename(sheet.id, sheet.name)) })
+                    }
                     if (sheet.canSave) {
                         GlassMenuAction(OctoIcons.Cloud, "Save to server", onClick = {
                             vm.saveToServer(sheet.id)
@@ -292,19 +299,21 @@ fun PlaylistSheetsHost(sheets: PlaylistSheets, vm: PlaylistSheetsViewModel = hil
                         sheets.close()
                         exportTo.launch(playlistFileName(sheet.name))
                     })
-                    GlassMenuAction(
-                        OctoIcons.Delete,
-                        "Delete",
-                        opensPage = true,
-                        destructive = true,
-                        onClick = { sheets.show(PlaylistSheet.Delete(sheet.id, sheet.name, sheet.onServer)) },
-                    )
+                    if (sheet.canDelete) {
+                        GlassMenuAction(
+                            OctoIcons.Delete,
+                            "Delete",
+                            opensPage = true,
+                            destructive = true,
+                            onClick = { sheets.show(PlaylistSheet.Delete(sheet.id, sheet.name, sheet.onServer, sheet.family)) },
+                        )
+                    }
                 }
                 is PlaylistSheet.Rename -> PopupNameForm("Rename playlist", "Playlist name", "Save", onBack = back, initial = sheet.name, onDone = { name ->
                     vm.rename(sheet.id, name)
                     sheets.close()
                 })
-                is PlaylistSheet.Delete -> ConfirmDelete(sheet.name, sheet.onServer, onCancel = back ?: sheets::close) {
+                is PlaylistSheet.Delete -> ConfirmDelete(sheet.name, sheet.onServer, family = sheet.family, onCancel = back ?: sheets::close) {
                     vm.delete(sheet.id)
                     sheets.close()
                 }
@@ -361,7 +370,8 @@ fun PlaylistPickerPage(
 ) {
     val all by vm.playlists.collectAsStateWithLifecycle()
     val recent by vm.recentIds.collectAsStateWithLifecycle()
-    val playlists = remember(all, recent) { recentFirst(all, recent) { it.id } }
+    // A family playlist the listener may only listen to takes no songs.
+    val playlists = remember(all, recent) { recentFirst(all.filterNot { it.family && !it.familyMayAdd }, recent) { it.id } }
     val holdings by remember(trackIds) { vm.holdings(trackIds) }.collectAsStateWithLifecycle(null)
     var asking by remember { mutableStateOf<Pair<PlaylistSummary, AddPlan>?>(null) }
     var naming by remember { mutableStateOf(false) }
@@ -441,7 +451,7 @@ private fun PickLine(playlist: PlaylistSummary, onClick: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Text(playlist.name, style = OctoType.bodySmall, color = OctoColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(songs(playlist.songCount), style = OctoType.caption, color = OctoColors.TextMuted, maxLines = 1)
+                Text(if (playlist.family) "By Family · ${songs(playlist.songCount)}" else songs(playlist.songCount), style = OctoType.caption, color = OctoColors.TextMuted, maxLines = 1)
                 if (playlist.onServer) CloudMark("On your server")
             }
         }
@@ -470,13 +480,18 @@ private fun ConfirmAgain(question: String, plan: AddPlan, onCancel: () -> Unit, 
 @Composable
 fun NewPlaylistForm(onCreate: (String) -> Unit) = PopupNameForm("New playlist", "Playlist name", "Create", onBack = null, onDone = onCreate)
 
-// Asks before a playlist is deleted. Its songs stay in the library. One
-// kept with the server goes from the server too.
+// Asks before a playlist is deleted. Its songs stay in the library. One kept
+// with the server goes from the server too; a family playlist goes for the
+// whole family.
 @Composable
-internal fun ConfirmDelete(name: String, onServer: Boolean, onCancel: () -> Unit, onDelete: () -> Unit) {
+internal fun ConfirmDelete(name: String, onServer: Boolean, family: Boolean = false, onCancel: () -> Unit, onDelete: () -> Unit) {
     PopupQuestion(
         "Delete \"$name\"?",
-        if (onServer) "It is deleted from your server too. The songs stay in your library." else "The songs stay in your library.",
+        when {
+            family -> "It's deleted for everyone in the family. The songs stay in your library."
+            onServer -> "It is deleted from your server too. The songs stay in your library."
+            else -> "The songs stay in your library."
+        },
         "Delete",
         onConfirm = onDelete,
         onCancel = onCancel,

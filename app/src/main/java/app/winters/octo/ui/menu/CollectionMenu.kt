@@ -132,13 +132,14 @@ fun artistActions(radio: Boolean, favourite: Boolean = false, pin: PinSpot = Pin
 }
 
 // An empty playlist has nothing to play, only itself to pin, rename, copy
-// or delete.
-fun playlistActions(empty: Boolean, pin: PinSpot = PinSpot.None): List<CollectionAction> = buildList {
+// or delete. A family playlist is renamed and deleted only by a family
+// manager (`renames`, `deletes`).
+fun playlistActions(empty: Boolean, pin: PinSpot = PinSpot.None, renames: Boolean = true, deletes: Boolean = true): List<CollectionAction> = buildList {
     if (!empty) addAll(Playing)
     pin(pin)
-    add(CollectionAction.Rename)
+    if (renames) add(CollectionAction.Rename)
     add(CollectionAction.Duplicate)
-    add(CollectionAction.Delete)
+    if (deletes) add(CollectionAction.Delete)
 }
 
 // How a collection's menu groups its actions: playing it, keeping it,

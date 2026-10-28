@@ -204,6 +204,23 @@ interface UserDao {
     @Query("UPDATE playlist SET octoNotice = :notice WHERE id = :id")
     suspend fun markNotice(id: String, notice: String?)
 
+    // Whether the server lists its copy of a playlist as a family playlist.
+    @Query("UPDATE playlist SET family = :family WHERE id = :id")
+    suspend fun markFamily(id: String, family: Boolean)
+
+    // What the listener may do with a family playlist, as Octo's rows said at
+    // the last sync.
+    @Query(
+        "UPDATE playlist SET familyMayAdd = :add, familyMayRemove = :remove, familyMayRename = :rename, " +
+            "familyMayDelete = :delete WHERE id = :id",
+    )
+    suspend fun markFamilyRights(id: String, add: Boolean, remove: Boolean, rename: Boolean, delete: Boolean)
+
+    // The songs a family playlist's next changes are worked out from, kept at
+    // once after a change reaches the server so it is never sent twice.
+    @Query("UPDATE playlist SET syncedSongs = :songs WHERE id = :id")
+    suspend fun markFamilyBase(id: String, songs: String)
+
     // Both sides now agree on what the playlist was at `syncedAt`.
     @Query("UPDATE playlist SET syncedAt = :syncedAt, syncedName = :name, serverStamp = :stamp WHERE id = :id")
     suspend fun markSynced(id: String, syncedAt: Long, name: String, stamp: String)
@@ -212,7 +229,8 @@ interface UserDao {
     @Query(
         """
         UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
-            octoNotice = NULL
+            octoNotice = NULL, syncedSongs = NULL, family = 0,
+            familyMayAdd = 0, familyMayRemove = 0, familyMayRename = 0, familyMayDelete = 0
         WHERE id = :id
         """,
     )
@@ -221,7 +239,9 @@ interface UserDao {
     // Every playlist kept with this server goes back to being only on the phone.
     @Query(
         """
-        UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL
+        UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
+            syncedSongs = NULL, family = 0,
+            familyMayAdd = 0, familyMayRemove = 0, familyMayRename = 0, familyMayDelete = 0
         WHERE sourceId = :sourceId
         """,
     )
@@ -231,7 +251,9 @@ interface UserDao {
     // only on the phone.
     @Query(
         """
-        UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL
+        UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
+            syncedSongs = NULL, family = 0,
+            familyMayAdd = 0, familyMayRemove = 0, familyMayRename = 0, familyMayDelete = 0
         WHERE sourceId IS NOT NULL AND sourceId NOT IN (:kept)
         """,
     )

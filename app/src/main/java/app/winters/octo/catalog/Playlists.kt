@@ -17,6 +17,12 @@ data class PlaylistSummary(
     val updatedAt: Long = 0,
     // Which of Octo's notice lists it is, as the server marks it.
     val octoNotice: String? = null,
+    // A family playlist (its order is the server's).
+    val family: Boolean = false,
+    val familyMayAdd: Boolean = false,
+    val familyMayRemove: Boolean = false,
+    val familyMayRename: Boolean = false,
+    val familyMayDelete: Boolean = false,
 )
 
 // A song on a playlist, as far as asking before adding it again goes.
@@ -66,6 +72,11 @@ fun summarize(playlists: List<PlaylistEntity>, entries: List<PlaylistEntry>): Li
             createdAt = playlist.createdAt,
             updatedAt = playlist.updatedAt,
             octoNotice = playlist.octoNotice,
+            family = playlist.family,
+            familyMayAdd = playlist.familyMayAdd,
+            familyMayRemove = playlist.familyMayRemove,
+            familyMayRename = playlist.familyMayRename,
+            familyMayDelete = playlist.familyMayDelete,
         )
     }
 }

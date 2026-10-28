@@ -144,7 +144,9 @@ private fun PlaylistMenu(target: CollectionTarget.Playlist, state: CollectionMen
     val pinned by vm.pinned.collectAsStateWithLifecycle()
     val shown = playlist ?: return
     val pin = PinKey(PinKind.Playlist, target.id)
-    val actions = playlistActions(empty = shown.songCount == 0, pin = pinSpot(pinned, pin))
+    val renames = !shown.family || shown.familyMayRename
+    val deletes = !shown.family || shown.familyMayDelete
+    val actions = playlistActions(empty = shown.songCount == 0, pin = pinSpot(pinned, pin), renames = renames, deletes = deletes)
     CollectionActionsPage(
         shown.name,
         songs(shown.songCount),
@@ -282,7 +284,7 @@ private fun PlaylistDelete(
     val playlist = target as? CollectionTarget.Playlist ?: return
     val shown by remember(playlist) { vm.playlist(playlist.id) }.collectAsStateWithLifecycle(null)
     val summary = shown ?: return
-    ConfirmDelete(summary.name, summary.onServer, onCancel = onBack) {
+    ConfirmDelete(summary.name, summary.onServer, family = summary.family, onCancel = onBack) {
         sheets.delete(summary.id)
         onDone()
     }

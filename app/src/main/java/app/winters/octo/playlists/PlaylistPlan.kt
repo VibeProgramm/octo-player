@@ -3,6 +3,7 @@ package app.winters.octo.playlists
 import app.winters.octo.catalog.FIND_PREFIX
 import app.winters.octo.catalog.isFind
 import app.winters.octo.subsonic.Playlist
+import app.winters.octo.subsonic.isFamilyPlaylist
 
 // Keeps playlists on the phone and on the server the same, both ways.
 //
@@ -32,6 +33,10 @@ data class LinkedPlaylist(
     val edited: Boolean,
     val syncedName: String?,
     val syncedStamp: String?,
+    // A family playlist, whose own changes are sent on top of everyone else's.
+    val family: Boolean = false,
+    // A family playlist the listener may not change here: it only follows the server.
+    val pullOnly: Boolean = false,
 )
 
 sealed interface PlaylistStep {
@@ -64,10 +69,20 @@ sealed interface PlaylistStep {
 
 fun stampOf(changed: String?, songCount: Int) = "${changed.orEmpty()}|$songCount"
 
-// Server playlists worth a copy on the phone: the signed-in user's own,
-// leaving out read-only ones and stations, which the stations shelf shows.
+// Server playlists worth a copy on the phone: the signed-in user's own and
+// the family's, leaving out other read-only ones and stations, which the
+// stations shelf shows. A family playlist a listener without editing may not
+// change is kept as a copy that only follows the server.
 fun importable(playlists: List<Playlist>, stationIds: Set<String>, username: String): List<Playlist> =
-    playlists.filter { !it.readonly && it.id !in stationIds && ownedBy(it.owner, username) }
+    playlists.filter {
+        it.id !in stationIds &&
+            (isFamilyPlaylist(it.owner, username, it.octoFamily) || (!it.readonly && ownedBy(it.owner, username)))
+    }
+
+// The playlists a new one made on a server too old to answer with it
+// can be: the user's own by that name not linked yet, never the family's.
+fun newestNamedCandidates(playlists: List<Playlist>, name: String, username: String, linked: Set<String>): List<Playlist> =
+    importable(playlists, emptySet(), username).filter { it.name == name && it.id !in linked && !isFamilyPlaylist(it.owner, username, it.octoFamily) }
 
 // How long the phone's copy of the server's playlists counts as fresh when
 // the playlists come on screen.
@@ -114,8 +129,19 @@ fun planLinked(server: ServerPlaylist?, playlist: LinkedPlaylist, stillThere: Bo
         return if (playlist.edited || stillThere) PlaylistStep.Unlink(playlist.localId) else PlaylistStep.Remove(playlist.localId)
     }
     val serverChanged = server.stamp != playlist.syncedStamp
+    if (playlist.pullOnly) {
+        return if (serverChanged || playlist.edited) {
+            PlaylistStep.Pull(playlist.localId, server.id, server.stamp, keepName = false)
+        } else {
+            null
+        }
+    }
     return when {
-        serverChanged && playlist.edited -> {
+        serverChanged && playlist.edited -> if (playlist.family) {
+            // Both changed: a family playlist sends the phone's own changes on
+            // top of everyone else's.
+            PlaylistStep.Push(playlist.localId, server.id)
+        } else {
             // Both changed: the server's songs, and the phone's name if it was renamed here.
             val renamedHere = playlist.name != playlist.syncedName && playlist.name != server.name
             PlaylistStep.Pull(playlist.localId, server.id, server.stamp, keepName = renamedHere)
@@ -167,4 +193,95 @@ fun withPhoneOnly(server: List<Row>, local: List<Row>, phoneOnly: (Row) -> Boole
             after[index]?.let(::addAll)
         }
     }
+}
+
+// What the phone changed in a family playlist, as Octo takes it: songs
+// taken out by their place in the server's list now, and songs added at
+// the end. `base` is the server's songs when both last agreed, `phone`
+// the songs the phone holds now, `current` the server's songs now. Only
+// counts matter (a family playlist keeps the server's order): a song the
+// phone has fewer of than `base` comes out of `current` that many times,
+// last places first, unless someone else took it out already; a song the
+// phone has more of goes on the end.
+data class FamilyChanges(val removeAt: List<Int>, val add: List<String>) {
+    val none: Boolean get() = removeAt.isEmpty() && add.isEmpty()
+}
+
+fun familyChanges(base: List<String>, phone: List<String>, current: List<String>): FamilyChanges {
+    val had = base.groupingBy { it }.eachCount()
+    val has = phone.groupingBy { it }.eachCount()
+    val removeAt = had.flatMap { (id, count) ->
+        val out = count - (has[id] ?: 0)
+        if (out <= 0) emptyList() else current.indices.filter { current[it] == id }.takeLast(out)
+    }.sorted()
+    val seen = HashMap<String, Int>()
+    val add = phone.filter { id ->
+        val n = (seen[id] ?: 0) + 1
+        seen[id] = n
+        n > (had[id] ?: 0)
+    }
+    return FamilyChanges(removeAt, add)
+}
+
+// The songs both sides last agreed on, as the phone keeps them, or null
+// when none were kept.
+fun syncedSongsOf(stored: String?): List<String>? = stored?.split('\n')?.filter { it.isNotEmpty() }
+
+fun syncedSongsText(ids: List<String>): String = ids.joinToString("\n")
+
+// The ids rows keep when a playlist's songs are swapped for the
+// server's: each new row takes the id of the first unused phone row of
+// the same song, in order, so a row that is picked, or that Undo is
+// about to take back out, is still there. Null for a row new to the phone.
+fun keptRowIds(local: List<Pair<Long, String>>, rows: List<Row>): List<Long?> {
+    val free = HashMap<String, ArrayDeque<Long>>()
+    local.forEach { (id, trackId) -> free.getOrPut(trackId) { ArrayDeque() }.addLast(id) }
+    return rows.map { free[it.trackId]?.removeFirstOrNull() }
+}
+
+// What a family push sends and keeps. `changes` go to the server;
+// `baseAfterSend` is kept as the songs both sides agree on once they are
+// there; `held` are the songs (one entry per copy) whose removal waits.
+data class FamilySend(val changes: FamilyChanges, val baseAfterSend: List<String>, val held: List<String>)
+
+// Decides a family push. Removals count places over the list Octo shows,
+// so they wait while Octo lists fewer songs than it holds (`listedCount`,
+// the playlist's count in the list of playlists, null when not read) and
+// while it is not known whether the listener hears only clean songs
+// (`cleanOnly` null). A listener who hears only clean songs is shown too
+// few songs to count from, so their removals are dropped and the songs
+// come back with the server's list.
+fun familySend(base: List<String>, phone: List<String>, current: List<String>, listedCount: Int?, cleanOnly: Boolean?): FamilySend {
+    val wanted = familyChanges(base, phone, current)
+    if (wanted.removeAt.isEmpty()) return FamilySend(wanted, phone, emptyList())
+    val adds = wanted.copy(removeAt = emptyList())
+    if (cleanOnly == true) return FamilySend(adds, phone, emptyList())
+    if (cleanOnly == null || listedCount != current.size) {
+        return FamilySend(adds, base + wanted.add, wanted.removeAt.map { current[it] })
+    }
+    return FamilySend(wanted, phone, emptyList())
+}
+
+// Whether a family send reached the server although its answer was lost:
+// every song it added is there as many more times as it was added, and
+// every song it took out as many fewer. Changes by others meanwhile do not
+// hide it.
+fun familySendLanded(current: List<String>, after: List<String>, changes: FamilyChanges): Boolean {
+    val before = current.groupingBy { it }.eachCount()
+    val now = after.groupingBy { it }.eachCount()
+    val added = changes.add.groupingBy { it }.eachCount()
+    val removed = changes.removeAt.map { current[it] }.groupingBy { it }.eachCount()
+    return added.all { (id, n) -> (now[id] ?: 0) >= (before[id] ?: 0) + n } &&
+        removed.all { (id, n) -> (now[id] ?: 0) <= (before[id] ?: 0) - n }
+}
+
+// The rows after taking the server's songs, less the songs whose removal
+// waits: for each held song, its last row from the server goes.
+fun withoutHeld(rows: List<Row>, held: List<String>): List<Row> {
+    val out = rows.toMutableList()
+    for (id in held) {
+        val at = out.indexOfLast { it.serverSongId == id }
+        if (at >= 0) out.removeAt(at)
+    }
+    return out
 }

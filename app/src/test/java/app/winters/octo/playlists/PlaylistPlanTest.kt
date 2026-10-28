@@ -7,6 +7,7 @@ import app.winters.octo.subsonic.Playlist
 import app.winters.octo.subsonic.Song
 import app.winters.octo.ui.playlist.phoneOnlyNote
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -151,6 +152,144 @@ class PlaylistPlanTest {
     @Test
     fun anUnknownUserOwnsEverything() {
         assertEquals(1, importable(listOf(listed("x", owner = "someone")), emptySet(), username = "").size)
+    }
+
+    @Test
+    fun theFamilysPlaylistsComeOverReadOnlyOnesToo() {
+        val all = listOf(
+            listed("fam", owner = "Family"),
+            listed("famRo", owner = "Family", readonly = true),
+            listed("theirs", owner = "sam"),
+            listed("ownRo", owner = "alex", readonly = true),
+        )
+        assertEquals(listOf("fam", "famRo"), importable(all, emptySet(), username = "alex").map { it.id })
+    }
+
+    @Test
+    fun theServersFamilyFlagDecidesOverTheOwner() {
+        val flagged = Playlist(id = "f", name = "f", owner = "sam", octoFamily = true)
+        val notFlagged = Playlist(id = "n", name = "n", owner = "Family", octoFamily = false)
+        assertEquals(listOf("f"), importable(listOf(flagged, notFlagged), emptySet(), username = "alex").map { it.id })
+    }
+
+    @Test
+    fun aPullOnlyFamilyPlaylistFollowsTheServerEvenWhenEdited() {
+        val same = ServerPlaylist("s", "n", "old")
+        val link = LinkedPlaylist("l", "s", "n", edited = true, syncedName = "n", syncedStamp = "old", family = true, pullOnly = true)
+        assertEquals(PlaylistStep.Pull("l", "s", "old", keepName = false), planLinked(same, link))
+        assertNull(planLinked(same, link.copy(edited = false)))
+    }
+
+    @Test
+    fun aFamilySendThatLandedIsRecognizedByCounts() {
+        assertTrue(familySendLanded(listOf("a", "b"), listOf("a", "b", "x", "c"), FamilyChanges(emptyList(), listOf("c"))))
+        assertFalse(familySendLanded(listOf("a", "b"), listOf("a", "b"), FamilyChanges(emptyList(), listOf("c"))))
+        assertTrue(familySendLanded(listOf("a", "b", "a"), listOf("a", "b"), FamilyChanges(listOf(2), emptyList())))
+        assertFalse(familySendLanded(listOf("a", "b", "a"), listOf("a", "b", "a"), FamilyChanges(listOf(2), emptyList())))
+    }
+
+    @Test
+    fun aNewPlaylistsCandidatesAreTheUsersOwnByThatName() {
+        val own = Playlist(id = "own", name = "Road trip", owner = "alex")
+        val family = Playlist(id = "fam", name = "Road trip", owner = "Family")
+        val found = newestNamedCandidates(listOf(own, family), "Road trip", "alex", emptySet())
+        assertEquals(listOf("own"), found.map { it.id })
+        assertEquals(emptyList<Playlist>(), newestNamedCandidates(listOf(own, family), "Road trip", "alex", setOf("own")))
+    }
+
+    @Test
+    fun aFamilyPlaylistChangedOnBothSidesIsPushedNotPulled() {
+        val newer = ServerPlaylist("s", "n", "new")
+        val family = LinkedPlaylist("l", "s", "n", edited = true, syncedName = "n", syncedStamp = "old", family = true)
+        assertEquals(PlaylistStep.Push("l", "s"), planLinked(newer, family))
+        val step = planLinked(newer, family.copy(family = false))
+        assertTrue(step is PlaylistStep.Pull)
+    }
+
+    @Test
+    fun familyChangesAreTheCountsTheListenerChanged() {
+        val a = familyChanges(listOf("a", "b", "c"), listOf("a", "c", "d"), listOf("a", "b", "c", "e"))
+        assertEquals(FamilyChanges(listOf(1), listOf("d")), a)
+        assertTrue(familyChanges(listOf("a", "b"), listOf("a"), listOf("a")).none)
+        assertEquals(FamilyChanges(listOf(2), emptyList()), familyChanges(listOf("a", "a"), listOf("a"), listOf("a", "x", "a")))
+        assertTrue(familyChanges(listOf("a", "b"), listOf("b", "a"), listOf("a", "b")).none)
+        assertEquals(FamilyChanges(emptyList(), listOf("a", "a")), familyChanges(emptyList(), listOf("a", "a"), listOf("a")))
+        assertEquals(FamilyChanges(emptyList(), listOf("b")), familyChanges(listOf("a"), listOf("a", "b"), listOf("x", "a", "y")))
+    }
+
+    @Test
+    fun aSecondPushStartsFromWhatTheFirstKept() {
+        val first = familySend(listOf("a", "b"), listOf("a", "b", "d"), listOf("a", "b", "Y"), 3, false)
+        assertEquals(FamilyChanges(emptyList(), listOf("d")), first.changes)
+        assertEquals(listOf("a", "b", "d"), first.baseAfterSend)
+        val second = familySend(first.baseAfterSend, listOf("a", "b", "d", "e"), listOf("a", "b", "Y", "d"), 4, false)
+        assertEquals(FamilyChanges(emptyList(), listOf("e")), second.changes)
+    }
+
+    @Test
+    fun aRemovalIsSentWhenTheCountsAgree() {
+        val send = familySend(listOf("a", "b"), listOf("a"), listOf("a", "b"), 2, false)
+        assertEquals(FamilyChanges(listOf(1), emptyList()), send.changes)
+        assertEquals(listOf("a"), send.baseAfterSend)
+        assertTrue(send.held.isEmpty())
+    }
+
+    @Test
+    fun aRemovalWaitsWhenOctoListsFewerSongsThanItHolds() {
+        val send = familySend(listOf("a", "b"), listOf("a", "c"), listOf("a", "b"), 3, false)
+        assertEquals(FamilyChanges(emptyList(), listOf("c")), send.changes)
+        assertEquals(listOf("a", "b", "c"), send.baseAfterSend)
+        assertEquals(listOf("b"), send.held)
+    }
+
+    @Test
+    fun aRemovalWaitsWhenTheCountIsNotRead() {
+        val send = familySend(listOf("a", "b"), listOf("a"), listOf("a", "b"), null, false)
+        assertTrue(send.changes.none)
+        assertEquals(listOf("a", "b"), send.baseAfterSend)
+        assertEquals(listOf("b"), send.held)
+    }
+
+    @Test
+    fun aRemovalWaitsWhileItIsNotKnownIfTheListenerHearsOnlyCleanSongs() {
+        val send = familySend(listOf("a", "b"), listOf("a"), listOf("a", "b"), 2, null)
+        assertTrue(send.changes.none)
+        assertEquals(listOf("b"), send.held)
+    }
+
+    @Test
+    fun aListenerWhoHearsOnlyCleanSongsHasRemovalsDropped() {
+        val send = familySend(listOf("a", "b"), listOf("a"), listOf("a", "b"), 2, true)
+        assertTrue(send.changes.none)
+        assertEquals(listOf("a"), send.baseAfterSend)
+        assertTrue(send.held.isEmpty())
+    }
+
+    @Test
+    fun withoutARemovalNothingIsHeld() {
+        val send = familySend(listOf("a"), listOf("a", "b"), listOf("a"), null, null)
+        assertEquals(FamilyChanges(emptyList(), listOf("b")), send.changes)
+        assertEquals(listOf("a", "b"), send.baseAfterSend)
+        assertTrue(send.held.isEmpty())
+    }
+
+    @Test
+    fun aHeldSongLosesItsLastRowFromTheServer() {
+        val rows = listOf(Row("t1", "a"), Row("t2", "b"), Row("t3", "a"))
+        assertEquals(listOf(Row("t1", "a"), Row("t2", "b")), withoutHeld(rows, listOf("a")))
+    }
+
+    @Test
+    fun keptSongsReadBackAsTheyWereWritten() {
+        assertNull(syncedSongsOf(null))
+        assertEquals(listOf("a", "b"), syncedSongsOf("a\n\nb"))
+        assertEquals(listOf("a", "b"), syncedSongsOf(syncedSongsText(listOf("a", "b"))))
+    }
+
+    @Test
+    fun rowsKeepTheIdsOfTheSameSongInOrder() {
+        val ids = keptRowIds(listOf(1L to "t1", 2L to "t2", 3L to "t1"), listOf(Row("t1"), Row("t3"), Row("t1"), Row("t2")))
+        assertEquals(listOf<Long?>(1L, null, 3L, 2L), ids)
     }
 
     @Test

@@ -206,7 +206,7 @@ fun PlaylistsScreen(onOpen: (NavKey) -> Unit, onBack: () -> Unit, vm: PlaylistsV
             sortedRows(playlists?.items.orEmpty(), key = { it.id }) { playlist ->
                 PlaylistLine(
                     playlist.name,
-                    songs(playlist.songCount),
+                    if (playlist.family) "By Family · ${songs(playlist.songCount)}" else songs(playlist.songCount),
                     onClick = { onOpen(PlaylistRoute(playlist.id)) },
                     onServer = playlist.onServer,
                     onLongClick = { menus.open(CollectionTarget.Playlist(playlist.id)) },
