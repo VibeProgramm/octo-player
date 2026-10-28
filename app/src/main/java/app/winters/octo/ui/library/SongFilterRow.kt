@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -122,8 +123,8 @@ internal fun SongFilterRow(
     }
 }
 
-// One filter as a filled chip, no border: the darker pill with white words
-// while on, a faint fill with quieter words while off. Live lists show
+// One filter as a filled chip, no border: the accent with dark words and a
+// check while on, a faint fill with quieter words while off. Live lists show
 // their rules the same way.
 @Composable
 internal fun FilterChip(text: String, on: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
@@ -131,13 +132,16 @@ internal fun FilterChip(text: String, on: Boolean, modifier: Modifier = Modifier
         modifier
             .heightIn(min = 36.dp)
             .clip(CircleShape)
-            .background(if (on) OctoColors.AccentSelected else OctoColors.TextPrimary.copy(alpha = 0.07f))
+            .background(if (on) OctoColors.Accent else OctoColors.TextPrimary.copy(alpha = 0.07f))
             .clickable(role = Role.Checkbox, onClick = onClick)
             .semantics { selected = on }
             .padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = OctoType.label, color = if (on) OctoColors.TextPrimary else OctoColors.TextSecondary, maxLines = 1)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (on) Icon(painterResource(OctoIcons.Check), contentDescription = null, tint = OctoColors.OnAccent, modifier = Modifier.size(14.dp))
+            Text(text, style = OctoType.label, color = if (on) OctoColors.OnAccent else OctoColors.TextSecondary, maxLines = 1)
+        }
     }
 }
 

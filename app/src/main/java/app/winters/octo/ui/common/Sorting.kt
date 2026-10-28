@@ -76,7 +76,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.winters.octo.design.FloatingGlaze
 import app.winters.octo.design.Glaze
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.GlowIcon
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
@@ -225,7 +224,7 @@ internal fun SortChoices(request: SortRequest, close: () -> Unit) {
 private val UnchosenTint = Color.White.copy(alpha = 0.45f)
 
 // The two directions side by side in one glaze, named for what they mean
-// here ("A to Z", "Newest"). The chosen one is the darker pill with white
+// here ("A to Z", "Newest"). The chosen one is the accent-tinted pill with white
 // words and its arrow lit; the other is muted, so which is on reads at once.
 @Composable
 private fun DirectionPair(option: SortOption, descending: Boolean, modifier: Modifier = Modifier, onPick: (Boolean) -> Unit) {
@@ -235,11 +234,12 @@ private fun DirectionPair(option: SortOption, descending: Boolean, modifier: Mod
         BoxWithConstraints(Modifier.fillMaxSize().padding(4.dp)) {
             val half = maxWidth / 2
             val x by animateDpAsState(half * selected, spring(dampingRatio = 0.8f, stiffness = 350f), label = "direction")
-            GlazeSelected(
+            Box(
                 Modifier
                     .offset { IntOffset(x.roundToPx(), 0) }
                     .width(half)
-                    .fillMaxHeight(),
+                    .fillMaxHeight()
+                    .background(OctoColors.AccentSelected, OptionShape),
             )
             Row(Modifier.fillMaxSize().selectableGroup()) {
                 choices.forEachIndexed { index, choice ->
@@ -284,9 +284,9 @@ private val OptionLine = OctoColors.TextPrimary.copy(alpha = 0.08f)
 private val OtherOptionTint = Color.White.copy(alpha = 0.7f)
 
 // What a list can be ordered by, one above the other with hairlines
-// between, as in the other glass menus. On the popup's dark film the darker
-// pill alone is faint, so the chosen option also has white words and a
-// white check, and the others are dimmed a little.
+// between, as in the other glass menus. The chosen option sits in the
+// accent-tinted pill with white words and a white check, and the others are
+// dimmed a little.
 @Composable
 private fun SortOptions(options: List<SortOption>, selected: Int, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
     val looks = remember(options.size, selected) { menuRowLooks(options.size, selected) }
@@ -311,7 +311,7 @@ private fun SortOptions(options: List<SortOption>, selected: Int, onPick: (Int) 
                     .selectable(selected = chosen, role = Role.RadioButton) { onPick(index) },
                 contentAlignment = Alignment.CenterStart,
             ) {
-                if (chosen) GlazeSelected(Modifier.matchParentSize(), shape = OptionShape)
+                if (chosen) Box(Modifier.matchParentSize().background(OctoColors.AccentSelected, OptionShape))
                 Row(
                     Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,

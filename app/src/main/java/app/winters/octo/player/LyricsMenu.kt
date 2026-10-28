@@ -51,7 +51,6 @@ import androidx.lifecycle.viewModelScope
 import app.winters.octo.catalog.matchKey
 import app.winters.octo.design.GlassInput
 import app.winters.octo.design.GlassPopup
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.PopupPager
 import app.winters.octo.design.rememberPopupPages
 import app.winters.octo.design.OctoColors
@@ -548,7 +547,7 @@ private fun CandidateRow(
             .semantics { if (showing) stateDescription = "Showing now" },
         contentAlignment = Alignment.CenterStart,
     ) {
-        if (showing) GlazeSelected(Modifier.matchParentSize(), shape = RowShape)
+        if (showing) Box(Modifier.matchParentSize().background(OctoColors.AccentSelected, RowShape))
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,

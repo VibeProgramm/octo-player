@@ -41,7 +41,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.MenuRowHeight
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.menuRowPress
@@ -137,7 +136,7 @@ private fun MenuOption(option: Choice, selected: Boolean, pickable: Boolean, onC
             ),
         contentAlignment = Alignment.CenterStart,
     ) {
-        if (selected) GlazeSelected(Modifier.matchParentSize(), shape = OptionShape)
+        if (selected) Box(Modifier.matchParentSize().background(OctoColors.AccentSelected, OptionShape))
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -145,7 +144,7 @@ private fun MenuOption(option: Choice, selected: Boolean, pickable: Boolean, onC
         ) {
             option.leading?.invoke()
             Column(Modifier.weight(1f)) {
-                Text(option.label, style = OctoType.bodySmall, color = if (option.enabled) OctoColors.TextPrimary else OctoColors.TextMuted)
+                Text(option.label, style = OctoType.bodySmall.copy(fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal), color = if (option.enabled) OctoColors.TextPrimary else OctoColors.TextMuted)
                 option.detail?.let { Text(it, style = OctoType.caption, color = OctoColors.TextMuted) }
             }
             // The check's room is kept on every line, so the menu's width
