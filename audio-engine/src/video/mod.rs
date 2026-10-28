@@ -16,6 +16,8 @@ use crate::error::{EngineError, ErrorKind, Failure};
 
 #[cfg(all(unix, not(target_os = "macos")))]
 mod gstreamer;
+#[cfg(all(test, windows))]
+mod handle_types;
 #[cfg(target_os = "macos")]
 mod mac;
 #[cfg(windows)]
@@ -115,9 +117,42 @@ impl Timeline {
     }
 }
 
+/// The clock the loop paces its frames by: real time, except where a test
+/// sets its own.
+pub(crate) trait Clock: Send + Sync {
+    /// The time now.
+    fn now(&self) -> Instant;
+
+    /// Waits on `wake` for up to `timeout`, giving the guard back.
+    fn wait<'a>(
+        &self,
+        wake: &Condvar,
+        guard: MutexGuard<'a, Control>,
+        timeout: Duration,
+    ) -> MutexGuard<'a, Control>;
+}
+
+/// The system's clock.
+struct RealClock;
+
+impl Clock for RealClock {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+
+    fn wait<'a>(
+        &self,
+        wake: &Condvar,
+        guard: MutexGuard<'a, Control>,
+        timeout: Duration,
+    ) -> MutexGuard<'a, Control> {
+        wake.wait_timeout(guard, timeout).unwrap_or_else(|e| e.into_inner()).0
+    }
+}
+
 /// What the app has asked of the loop.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Control {
+pub(crate) enum Control {
     Play,
     Hold,
     Stop,
@@ -229,7 +264,7 @@ impl Shared {
 
 /// The decode thread: frames are decoded one ahead and shown at their
 /// time; held, it waits without decoding; at the end it starts over.
-fn run(shared: &Shared, mut source: Box<dyn FrameSource>) {
+fn run(shared: &Shared, mut source: Box<dyn FrameSource>, clock: &dyn Clock) {
     let mut back = vec![0u8; shared.width as usize * shared.height as usize * 4];
     let mut timeline = Timeline::default();
     // The decoded frame waiting for its time, by its place on the clock.
@@ -277,7 +312,7 @@ fn run(shared: &Shared, mut source: Box<dyn FrameSource>) {
                 }
             },
         };
-        let (then, then_at) = *anchor.get_or_insert_with(|| (Instant::now(), due));
+        let (then, then_at) = *anchor.get_or_insert_with(|| (clock.now(), due));
         let at = then + due.saturating_sub(then_at);
         {
             let mut control = shared.control();
@@ -285,17 +320,17 @@ fn run(shared: &Shared, mut source: Box<dyn FrameSource>) {
                 if *control != Control::Play {
                     break;
                 }
-                let now = Instant::now();
+                let now = clock.now();
                 if now >= at {
                     break;
                 }
-                control = shared.wake.wait_timeout(control, at - now).unwrap_or_else(|e| e.into_inner()).0;
+                control = clock.wait(&shared.wake, control, at - now);
             }
             if *control != Control::Play {
                 continue;
             }
         }
-        if Instant::now().saturating_duration_since(at) > LATE_RESYNC {
+        if clock.now().saturating_duration_since(at) > LATE_RESYNC {
             anchor = None;
         }
         shared.publish(&mut back);
@@ -314,6 +349,11 @@ pub struct LoopVideo {
 
 impl LoopVideo {
     fn start(opener: Opener) -> Result<Arc<Self>, Failure> {
+        Self::start_on(opener, Arc::new(RealClock))
+    }
+
+    /// As `start`, pacing the frames by `clock`.
+    fn start_on(opener: Opener, clock: Arc<dyn Clock>) -> Result<Arc<Self>, Failure> {
         let (sizes, size) = std::sync::mpsc::sync_channel::<Result<(u32, u32), Failure>>(1);
         let (shares, shared_rx) = std::sync::mpsc::sync_channel::<Arc<Shared>>(1);
         let thread = thread::Builder::new()
@@ -330,7 +370,7 @@ impl LoopVideo {
                     return;
                 }
                 let Ok(shared) = shared_rx.recv() else { return };
-                run(&shared, source);
+                run(&shared, source, clock.as_ref());
             })
             .map_err(|e| Failure::new(ErrorKind::Other, format!("could not start the video thread: {e}")))?;
         let (width, height) = match size.recv() {

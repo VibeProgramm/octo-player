@@ -2,7 +2,7 @@
 //! with its video processing on, giving 32-bit RGB frames in the size
 //! asked for. Everything is made and used on the loop's own thread.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use windows::Win32::Foundation::HMODULE;
@@ -18,7 +18,7 @@ use windows::Win32::Media::MediaFoundation::{
     MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
     MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR, MF_VERSION, MFCreateAttributes,
     MFCreateDXGIDeviceManager, MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Video,
-    MFSTARTUP_NOSOCKET, MFShutdown, MFStartup, MFVideoArea, MFVideoFormat_RGB32,
+    MFSTARTUP_NOSOCKET, MFStartup, MFVideoArea, MFVideoFormat_RGB32,
 };
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
@@ -52,8 +52,7 @@ pub(crate) struct MfSource {
     /// The rows' distance in a buffer that is not two-dimensional.
     stride: isize,
     /// The graphics card decoding, when it does; kept until the reader
-    /// has gone, and Media Foundation and COM after that (fields drop in
-    /// order).
+    /// has gone, and COM after that (fields drop in order).
     gpu: Option<Arc<Gpu>>,
     _started: Started,
 }
@@ -139,51 +138,57 @@ impl Gpu {
     }
 }
 
-/// Media Foundation (and COM, when this thread had none) started for one
-/// reader, and stopped again when it goes.
+/// The result of the one Media Foundation start this process makes; an
+/// error is kept as its text and returned the same way every time.
+static MEDIA_FOUNDATION: OnceLock<Result<(), String>> = OnceLock::new();
+
+/// Starts Media Foundation the first time anything needs it and holds it
+/// until the process ends. It is never shut down on purpose: every start
+/// and stop pair left memory behind, which grew with each video opened.
+fn hold_media_foundation() -> Result<(), Failure> {
+    let started = MEDIA_FOUNDATION.get_or_init(|| {
+        // SAFETY: a plain start call, made once for the process.
+        unsafe { MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET) }.map_err(|e| e.to_string())
+    });
+    started
+        .clone()
+        .map_err(|e| Failure::new(ErrorKind::Decode, format!("Media Foundation could not start: {e}")))
+}
+
+/// Media Foundation (held for the whole process) and COM, when this thread
+/// had none, which is uninitialized again when this goes.
 struct Started {
     com: bool,
-    live: bool,
 }
 
 impl Started {
     fn new() -> Result<Self, Failure> {
-        // SAFETY: plain start calls, paired in drop.
-        unsafe {
-            let com = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
-            if let Err(e) = MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET) {
-                if com {
-                    CoUninitialize();
-                }
-                return Err(failed("start", e));
+        // SAFETY: a plain start call, paired in drop.
+        let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.is_ok();
+        if let Err(failure) = hold_media_foundation() {
+            if com {
+                // SAFETY: pairs the call above.
+                unsafe { CoUninitialize() };
             }
-            Ok(Self { com, live: true })
+            return Err(failure);
         }
+        Ok(Self { com })
     }
-}
 
-impl Started {
     /// Media Foundation alone, on a thread that has COM already: what the
     /// shared device keeps, so it stays usable after the loop that made it
     /// closes, and lets go of from whichever thread drops it.
     fn media_only() -> Result<Self, Failure> {
-        // SAFETY: a plain start call, paired in drop.
-        unsafe { MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET) }.map_err(|e| failed("start", e))?;
-        Ok(Self { com: false, live: true })
+        hold_media_foundation()?;
+        Ok(Self { com: false })
     }
 }
 
 impl Drop for Started {
     fn drop(&mut self) {
-        if !self.live {
-            return;
-        }
-        // SAFETY: pairs the calls in `new`.
-        unsafe {
-            let _ = MFShutdown();
-            if self.com {
-                CoUninitialize();
-            }
+        if self.com {
+            // SAFETY: pairs the COM start in `new`.
+            unsafe { CoUninitialize() };
         }
     }
 }
@@ -219,7 +224,11 @@ impl MfSource {
 
     /// A source on `path`, decoding on `gpu` when given. Started and given
     /// back its device separately, so a failure lets both go.
-    unsafe fn with(path: &str, target: (u32, u32), gpu: Option<Arc<Gpu>>) -> Result<(Self, Option<Arc<Gpu>>), Failure> {
+    unsafe fn with(
+        path: &str,
+        target: (u32, u32),
+        gpu: Option<Arc<Gpu>>,
+    ) -> Result<(Self, Option<Arc<Gpu>>), Failure> {
         unsafe {
             let reader = open_reader(path, gpu.as_ref().map(|g| &g.manager))?;
             let mut source = Self {
@@ -229,7 +238,7 @@ impl MfSource {
                 area: Area { x: 0, y: 0, width: 0, height: 0 },
                 stride: 0,
                 gpu: None,
-                _started: Started { com: false, live: false },
+                _started: Started { com: false },
             };
             source.choose_output(target)?;
             if gpu.is_some() {
