@@ -41,6 +41,9 @@ final class Discovery {
     @ObservationIgnored private var offered: [String: Bool] = [:]
     @ObservationIgnored private var chartsOfferedLive: [String: Bool] = [:]
     @ObservationIgnored private var chartCountriesOfferedLive: [String: Bool] = [:]
+    /// The reads of other countries' charts on their way; a server still loading some is asked
+    /// again when one finishes.
+    @ObservationIgnored private let countryReads = CountryReads()
     @ObservationIgnored private var chart: (server: String, at: Date, list: RankedSongs<Song>)?
     @ObservationIgnored private var choices: [String: (at: Date, value: ChartChoices)] = [:]
     @ObservationIgnored private var chartLists: [String: (at: Date, value: ChartList<Song>)] = [:]
@@ -163,7 +166,7 @@ final class Discovery {
         let key = chartChoicesKey(server: asked, country: country)
         if !fresh, let kept = choices[key], Date().timeIntervalSince(kept.at) < chartChoicesKeptSeconds { return kept.value }
         guard await offersCharts() else { return nil }
-        let value = try await client.charts(country: country)
+        let value = try await countryReads.read(country: country) { try await client.charts(country: country) }
         guard session.activeId == asked else { return nil }
         // The listener's own country changed elsewhere: their own charts kept here are another's.
         if country == nil, let old = choices[key]?.value, old.country != value.country {
@@ -215,7 +218,10 @@ final class Discovery {
         guard let client = session.client, let asked = session.activeId else { return nil }
         let key = chartListKey(server: asked, country: country, chart: id)
         if let kept = chartLists[key], Date().timeIntervalSince(kept.at) < chartSongsKeptSeconds { return kept.value }
-        guard await offersCharts(), let list = try? await client.topChart(count: chartSongs(id), chart: id, country: country) else { return nil }
+        let count = chartSongs(id)
+        guard await offersCharts(),
+              let list = try? await countryReads.read(country: country, { try await client.topChart(count: count, chart: id, country: country) })
+        else { return nil }
         // Another server in use by the time it came: not this one's chart.
         guard session.activeId == asked else { return nil }
         let entries = list.entry.filter { $0.song != nil }

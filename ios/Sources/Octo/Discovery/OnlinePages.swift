@@ -501,7 +501,7 @@ struct ChartsView: View {
         }
     }
 
-    /// What the server said when it refused, such as too many countries in an hour.
+    /// What the server said when it refused, such as a pin it does not take.
     private func serverWords(_ error: Error) -> String? {
         guard case .server(_, let message)? = error as? OctoError else { return nil }
         let words = message.trimmingCharacters(in: .whitespacesAndNewlines)

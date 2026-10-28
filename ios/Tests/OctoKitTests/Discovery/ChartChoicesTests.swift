@@ -124,12 +124,12 @@ import Testing
     @Test func aRefusalThrowsTheServersWords() async {
         let server = FakeServer()
         server.error(10, "You can pin at most 3 countries.")
-        server.error(0, "Too many countries in an hour. Try again later.")
+        server.error(0, "Still loading your other countries. Try again in a moment.")
         let client = server.client()
         await #expect(throws: OctoError.server(code: 10, message: "You can pin at most 3 countries.")) {
             _ = try await client.pinChartCountry("de", pinned: true)
         }
-        await #expect(throws: OctoError.server(code: 0, message: "Too many countries in an hour. Try again later.")) {
+        await #expect(throws: OctoError.server(code: 0, message: "Still loading your other countries. Try again in a moment.")) {
             _ = try await client.charts(country: "de")
         }
     }
