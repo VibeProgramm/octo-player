@@ -208,4 +208,24 @@ mod tests {
         }
         panic!("never rose by 60 MB: {seen:?}");
     }
+
+    // Run alone: `cargo test --release --lib many_calls_keep_nothing -- --ignored --test-threads=1`.
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn many_calls_keep_nothing() {
+        for _ in 0..200 {
+            std::hint::black_box(process_stats());
+        }
+        let before = process_stats();
+        for _ in 0..5000 {
+            std::hint::black_box(process_stats());
+        }
+        let after = process_stats();
+        let bytes = after.private_bytes.unwrap().saturating_sub(before.private_bytes.unwrap());
+        let handles = after.handles.unwrap().saturating_sub(before.handles.unwrap());
+        println!("private bytes +{bytes}, handles +{handles}");
+        assert!(handles <= 5, "handles grew by {handles}");
+        assert!(bytes <= 4 << 20, "private bytes grew by {bytes}");
+    }
 }
