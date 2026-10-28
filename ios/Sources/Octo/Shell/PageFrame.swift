@@ -58,6 +58,7 @@ struct TitlePlace: ViewModifier {
                 top?.titleSeen(onScreen: y + inset)
             }
             .opacity(Double(top?.titleShown ?? 1))
+            .onAppear { top?.titleShowings &+= 1 }
     }
 }
 
@@ -202,11 +203,15 @@ final class BarMetrics {
             height = saved[2]
             measured = true
         } else {
-            back = CGPoint(x: 38, y: 21.7)
-            height = 54
+            back = Self.firstBack
+            height = Self.firstHeight
             measured = false
         }
     }
+
+    /// What a phone starts from before its bar has been read.
+    private static let firstBack = CGPoint(x: 38, y: 21.7)
+    private static let firstHeight: CGFloat = 54
 
     /// A reading from a bar at full size, kept when it differs from what is held or nothing has
     /// been read on this phone yet.
@@ -222,6 +227,8 @@ final class BarMetrics {
     #if DEBUG
     /// Forgets this phone's bar, as on a first launch.
     func forget() {
+        back = Self.firstBack
+        height = Self.firstHeight
         measured = false
         UserDefaults.standard.removeObject(forKey: Self.key)
     }
@@ -283,6 +290,9 @@ final class PageTop {
     /// The page has scrolled its big title away, and how much of the title still shows.
     private(set) var gone = false
     private(set) var titleShown: CGFloat = 1
+    /// Counts the big title's appearances, so the page's scroll view is looked for again when a
+    /// page swaps it.
+    var titleShowings = 0
     /// The page showed before it was measured, after waiting too long.
     var waited = false
     #if DEBUG
@@ -383,9 +393,11 @@ final class PageTop {
             if titleShown != 1 { titleShown = 1 }
             return
         }
+        // The fade takes the last 8 points, or the whole way when the title starts nearer.
+        let fade = min(8, max(0, titleRest - nameLine))
         let left = titleRest - scrolled - nameLine
         let nowGone = left < 0
-        let nowShown = min(1, max(0, left / 8))
+        let nowShown: CGFloat = left >= fade ? 1 : (fade > 0 ? max(0, left / fade) : 0)
         if nowGone != gone { gone = nowGone }
         if nowShown != titleShown { titleShown = nowShown }
     }
@@ -439,7 +451,7 @@ private struct PageBar: ViewModifier {
                     .ignoresSafeArea()
             }
             .background {
-                BarFrameProbe { reading in
+                BarFrameProbe(showings: top.titleShowings) { reading in
                     if top.status == 0, reading.windowTop > 0 { top.status = reading.windowTop }
                     if barOnScreen != reading { barOnScreen = reading }
                 } scrolled: { offset in
@@ -528,6 +540,8 @@ struct ProbeReading: Equatable {
 /// Reads the system bar's frame on screen, from the navigation controller showing the page, and
 /// how far the page's own scroll view has scrolled from its top.
 private struct BarFrameProbe: UIViewRepresentable {
+    /// The big title's appearances: a new one may come with a new scroll view.
+    var showings = 0
     let report: (ProbeReading) -> Void
     let scrolled: (CGFloat) -> Void
 
@@ -537,11 +551,17 @@ private struct BarFrameProbe: UIViewRepresentable {
         view.report = report
         view.scrolled = scrolled
         view.measure()
+        if view.showings != showings {
+            view.showings = showings
+            // The new scroll view joins the window after this update.
+            DispatchQueue.main.async { view.measure() }
+        }
     }
 
     final class ProbeView: UIView {
         var report: (ProbeReading) -> Void
         var scrolled: (CGFloat) -> Void
+        var showings = 0
         private var last: ProbeReading?
         private weak var scroll: UIScrollView?
         private var watch: NSKeyValueObservation?
@@ -599,9 +619,18 @@ private struct BarFrameProbe: UIViewRepresentable {
             return nil
         }
 
-        /// Watches a page's scroll view, reporting how far it has scrolled from its top.
+        /// Watches a page's scroll view, reporting how far it has scrolled from its top; one that
+        /// is gone, or no longer in the window, is let go.
         private func follow(_ found: UIScrollView?) {
-            guard let found, found !== scroll else { return }
+            guard let found else {
+                if scroll != nil || watch != nil {
+                    scroll = nil
+                    watch = nil
+                    scrolled(0)
+                }
+                return
+            }
+            guard found !== scroll || scroll?.window == nil else { return }
             scroll = found
             watch = found.observe(\.contentOffset, options: [.initial, .new]) { [weak self] view, _ in
                 MainActor.assumeIsolated {
