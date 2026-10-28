@@ -230,6 +230,29 @@ class ChartsViewModelTest {
         assertEquals(2, calls("getTopChart").size)
     }
 
+    // The listener's own choices landing with a chart list that lacks the
+    // chart in view move the page to Popular right now and read that one.
+    @Test
+    fun a_chart_that_keepSelected_changes_is_reloaded() = runBlocking {
+        val choicesHeld = CountDownLatch(1)
+        holdOwnChoices = choicesHeld
+        val vm = page(lists())
+        until { calls("getCharts").isNotEmpty() }
+        // Changed on another device while the choices are on their way.
+        setting = "jp"
+        // The own chart is read while the country is Japan, which has no
+        // chart 18.
+        vm.pick("18")
+        until { vm.list?.chart == "18" }
+        choicesHeld.countDown()
+        holdOwnChoices = null
+
+        until { vm.selected == "34" }
+        until { vm.list?.chart == "34" }
+        assertEquals("34", vm.selected)
+        assertEquals("34", vm.list?.chart)
+    }
+
     @Test
     fun theOwnCountryStopsLookingAtAnother() = runBlocking {
         val vm = page(lists())
