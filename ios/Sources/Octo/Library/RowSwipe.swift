@@ -43,6 +43,15 @@ private struct RowSwipeModifier: ViewModifier {
                     offset = right ? max(0, dx) : min(0, dx)
                 }, ended: finish))
                 .sensoryFeedback(.success, trigger: confirmed)
+                #if DEBUG
+                .modifier(SwipeDriveMark(run: enabled && right ? { if case .queue(_, let run) = swipe { run() } } : nil, peek: {
+                    withAnimation(.easeOut(duration: 0.2)) { offset = width / 3 }
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(4))
+                        withAnimation(.spring) { offset = 0 }
+                    }
+                }))
+                #endif
         }
     }
 

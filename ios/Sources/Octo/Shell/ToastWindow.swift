@@ -1,4 +1,5 @@
 import Observation
+import OctoKit
 import SwiftUI
 import UIKit
 
@@ -7,11 +8,13 @@ import UIKit
 @Observable
 final class ToastSpot {
     @ObservationIgnored var frame: CGRect?
+    /// The place the pill has just left, still taking taps for a moment.
+    @ObservationIgnored var lateTap = LateTapGuard()
 }
 
 /// The message line's own window, just above the app's, so a message shows over the system
-/// sheets, popovers, menus and questions the app opens. It takes a touch only on the pill
-/// itself, and the status bar follows the app under it.
+/// sheets, popovers, menus and questions the app opens. It takes a touch only on the pill (and,
+/// for a moment after it leaves, on its place), and the status bar follows the app under it.
 @MainActor
 final class ToastWindow {
     private static var shared: ToastWindow?
@@ -47,8 +50,10 @@ private final class ToastPassWindow: UIWindow {
     weak var spot: ToastSpot?
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        guard let frame = spot?.frame, frame.contains(point) else { return nil }
-        return super.hitTest(point, with: event)
+        if let frame = spot?.frame, frame.contains(point) { return super.hitTest(point, with: event) }
+        // Just after the pill has gone, a tap on its place is taken here and does nothing.
+        if spot?.lateTap.takes(point) == true { return rootViewController?.view }
+        return nil
     }
 }
 
@@ -90,3 +95,23 @@ struct ToastWindowProbe: UIViewRepresentable {
         }
     }
 }
+
+#if DEBUG
+extension ToastWindow {
+    /// What the message window does with a tap on a pill's place 0.3 s and 0.7 s after the pill
+    /// has gone, in words.
+    static func lateTapCheck(router: Router) async -> String {
+        guard let window = shared?.window, let spot = window.spot else { return "No message window" }
+        router.show("Checking a late tap")
+        while spot.frame == nil { try? await Task.sleep(for: .milliseconds(50)) }
+        while spot.frame != nil { try? await Task.sleep(for: .milliseconds(50)) }
+        guard let place = spot.lateTap.frame else { return "No place kept" }
+        let point = CGPoint(x: place.midX, y: place.midY)
+        try? await Task.sleep(for: .milliseconds(300))
+        let early = window.hitTest(point, with: nil) != nil
+        try? await Task.sleep(for: .milliseconds(400))
+        let late = window.hitTest(point, with: nil) != nil
+        return "Late tap at 0.3 s: \(early ? "taken" : "passed"). At 0.7 s: \(late ? "taken" : "passed")."
+    }
+}
+#endif

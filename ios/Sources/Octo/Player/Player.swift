@@ -566,8 +566,8 @@ final class Player {
     }
 
     /// Play next with an undo: undo finds the run of those songs nearest where they went in and
-    /// takes it out.
-    func playNextUndoable(_ songs: [Song], inserted: @escaping (@escaping () -> Void) -> Void) {
+    /// takes it out. It hands on how many songs went in (songs that cannot play are left out).
+    func playNextUndoable(_ songs: [Song], inserted: @escaping (_ count: Int, _ undo: @escaping () -> Void) -> Void) {
         Task { [weak self] in
             guard let self else { return }
             let items = await self.playable.items(songs, source: .you).compactMap { $0 }
@@ -576,12 +576,12 @@ final class Player {
         }
     }
 
-    private func putNextUndoable(_ items: [QueueItem], inserted: @escaping (@escaping () -> Void) -> Void) {
+    private func putNextUndoable(_ items: [QueueItem], inserted: @escaping (_ count: Int, _ undo: @escaping () -> Void) -> Void) {
         // Where the songs go in the list, which is where undo looks first.
         let near = min(engine.queue.current + 1, engine.queue.count)
         engine.addNext(items)
         let ids = items.map(\.trackId)
-        inserted { [weak self] in
+        inserted(items.count) { [weak self] in
             guard let self else { return }
             if let first = findInserted(self.engine.queue.trackIds, ids, insertedAt: near) {
                 self.engine.remove(from: first, to: first + ids.count)
@@ -590,8 +590,9 @@ final class Player {
     }
 
     /// Add to queue with an undo: the songs go at the end, before any Autoplay songs still to come,
-    /// and undo finds the run of those songs nearest there and takes it out.
-    func appendUndoable(_ songs: [Song], inserted: @escaping (@escaping () -> Void) -> Void) {
+    /// and undo finds the run of those songs nearest there and takes it out. It hands on how many
+    /// songs went in (songs that cannot play are left out).
+    func appendUndoable(_ songs: [Song], inserted: @escaping (_ count: Int, _ undo: @escaping () -> Void) -> Void) {
         Task { [weak self] in
             guard let self else { return }
             let items = await self.playable.items(songs, source: .you).compactMap { $0 }
@@ -600,13 +601,13 @@ final class Player {
         }
     }
 
-    private func putLastUndoable(_ items: [QueueItem], inserted: @escaping (@escaping () -> Void) -> Void) {
+    private func putLastUndoable(_ items: [QueueItem], inserted: @escaping (_ count: Int, _ undo: @escaping () -> Void) -> Void) {
         // Where the songs go, which is where undo looks first.
         let queue = engine.queue
         let near = ownSongsAt(queue.count, upcoming: queue.upcoming(), autoplay: queue.items.map { $0.source == .autoplay })
         engine.add(items)
         let ids = items.map(\.trackId)
-        inserted { [weak self] in
+        inserted(items.count) { [weak self] in
             guard let self else { return }
             if let first = findInserted(self.engine.queue.trackIds, ids, insertedAt: near) {
                 self.engine.remove(from: first, to: first + ids.count)

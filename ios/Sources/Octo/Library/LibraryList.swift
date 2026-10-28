@@ -74,6 +74,12 @@ private struct SongSwipes: ViewModifier {
                         Button(role: .destructive, action: run) { Label("Remove", systemImage: OctoIcon.delete.symbol) }
                     }
                 }
+                #if DEBUG
+                .modifier(SwipeDriveMark(run: {
+                    if enabled, case .queue(_, let run) = swipe { return run }
+                    return nil
+                }()))
+                #endif
         } else {
             content.rowSwipe(swipe, enabled: enabled)
         }

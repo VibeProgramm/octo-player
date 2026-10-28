@@ -150,28 +150,45 @@ final class LibraryActions {
     }
 
     func playNext(_ tracks: [LibraryTrack]) {
-        if !tracks.isEmpty { player.playNext(tracks.map(\.queueSong)) }
+        playNextUndoable(tracks.map(\.queueSong))
     }
 
     func addToQueue(_ tracks: [LibraryTrack]) {
-        if !tracks.isEmpty { player.append(tracks.map(\.queueSong)) }
+        addToQueueUndoable(tracks.map(\.queueSong))
     }
 
-    /// Plays a song next, from a swipe or a screen reader, with an Undo that takes that one song
-    /// back out.
+    #if DEBUG
+    /// The library's first songs, for drive steps.
+    func driveSongs(_ count: Int) async -> [LibraryTrack] {
+        Array(await library.tracks().prefix(count))
+    }
+    #endif
+
+    /// Plays a song next, with an Undo that takes that one song back out.
     func playNextUndoable(_ song: Song) {
+        playNextUndoable([song])
+    }
+
+    /// Adds a song to the queue, with an Undo that takes that one song back out.
+    func addToQueueUndoable(_ song: Song) {
+        addToQueueUndoable([song])
+    }
+
+    /// Plays songs next, saying how many went in, with an Undo that takes them back out.
+    func playNextUndoable(_ songs: [Song]) {
+        guard !songs.isEmpty else { return }
         let router = router
-        player.playNextUndoable([song]) { undo in
-            router.show("Playing next", action: "Undo") { undo() }
+        player.playNextUndoable(songs) { count, undo in
+            router.show(queueAddWords(count: count, next: true), action: "Undo") { undo() }
         }
     }
 
-    /// Adds a song to the queue, from a swipe or a screen reader, with an Undo that takes that one
-    /// song back out.
-    func addToQueueUndoable(_ song: Song) {
+    /// Adds songs to the queue, saying how many went in, with an Undo that takes them back out.
+    func addToQueueUndoable(_ songs: [Song]) {
+        guard !songs.isEmpty else { return }
         let router = router
-        player.appendUndoable([song]) { undo in
-            router.show("Added to queue", action: "Undo") { undo() }
+        player.appendUndoable(songs) { count, undo in
+            router.show(queueAddWords(count: count, next: false), action: "Undo") { undo() }
         }
     }
 
