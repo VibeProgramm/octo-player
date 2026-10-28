@@ -144,7 +144,7 @@ private struct PillLayer: View, Animatable {
             let left = CGFloat(pill) * cell
             let rect = CGRect(x: left, y: 0, width: cell, height: size.height)
             let shape = Path(roundedRect: rect, cornerRadius: size.height / 2)
-            context.fill(shape, with: .color(OctoColor.glazeSelected))
+            context.fill(shape, with: .color(OctoColor.accent))
             let travel = min(1, max(0, abs(pill - Double(selected)) * 2))
             let lit = OctoColor.accent.opacity(0.10 + 0.12 * travel)
             let from = way > 0 ? left : left + cell
@@ -164,19 +164,107 @@ private struct PillLayer: View, Animatable {
     }
 }
 
-/// A few word choices in glass tabs filling the width: the chosen label in the accent, the
-/// others white.
+extension OctoColor {
+    /// The words and checks on a full accent fill.
+    static let onAccent = Color(OctoPalette.onAccent)
+}
+
+/// A segment's words: white, or on the accent pill dark with a check before them. Never cut or
+/// wrapped; the row it sits in changes to a menu when they do not fit.
+struct SegmentLabel: View {
+    let text: String
+    let chosen: Bool
+    var font: Font = .octoLabel
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if chosen {
+                Image(systemName: "checkmark").font(.caption.weight(.bold))
+            }
+            Text(text).font(font)
+        }
+        .foregroundStyle(chosen ? OctoColor.onAccent : Color.white)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+/// Lays its children out in equal cells as wide as the widest, for measuring how wide a segment
+/// row needs to be.
+private struct EqualCells: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let widest = subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+        return CGSize(width: widest * CGFloat(subviews.count) + 8, height: 40)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for subview in subviews {
+            subview.place(at: bounds.origin, proposal: .unspecified)
+        }
+    }
+}
+
+/// A row of segments when every label fits in its cell with the check, else a menu showing the
+/// current choice and listing the options with a check on the chosen one.
+struct SegmentsOrMenu<Row: View>: View {
+    let options: [String]
+    let selected: Int
+    let onSelect: (Int) -> Void
+    var font: Font = .octoLabel
+    @ViewBuilder let row: Row
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            ZStack {
+                EqualCells {
+                    ForEach(options.indices, id: \.self) { index in
+                        SegmentLabel(text: options[index], chosen: true, font: font).padding(.horizontal, 4)
+                    }
+                }
+                .hidden()
+                .accessibilityHidden(true)
+                row
+            }
+            menu
+        }
+    }
+
+    private var menu: some View {
+        Menu {
+            ForEach(options.indices, id: \.self) { index in
+                Button { onSelect(index) } label: {
+                    if index == selected {
+                        Label(options[index], systemImage: "checkmark")
+                    } else {
+                        Text(options[index])
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(options.indices.contains(selected) ? options[selected] : "").font(font)
+                Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.bold))
+            }
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .frame(height: 40)
+            .octoGlass(Capsule())
+        }
+    }
+}
+
+/// A few word choices in glass tabs filling the width: the chosen one in a full accent pill with
+/// dark words and a check, the others white.
 struct Segmented: View {
     let options: [String]
     @Binding var selected: Int
 
     var body: some View {
-        GlazeTabs(count: options.count, selected: selected, onSelect: { selected = $0 }) { index, chosen in
-            Text(options[index])
-                .font(.octoLabel)
-                .foregroundStyle(chosen ? OctoColor.accent : .white)
-                .lineLimit(1)
-                .animation(.octo(OctoSprings.state), value: chosen)
+        SegmentsOrMenu(options: options, selected: selected, onSelect: { selected = $0 }) {
+            GlazeTabs(count: options.count, selected: selected, onSelect: { selected = $0 }) { index, chosen in
+                SegmentLabel(text: options[index], chosen: chosen)
+                    .animation(.octo(OctoSprings.state), value: chosen)
+            }
         }
         .frame(maxWidth: .infinity)
     }

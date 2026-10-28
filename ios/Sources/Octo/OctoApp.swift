@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @main
 struct OctoApp: App {
@@ -61,6 +64,7 @@ struct OctoApp: App {
         _lyrics = State(initialValue: LyricsStore(session: session, library: data.library, player: player))
         _artworkColors = State(initialValue: ArtworkColorStore(session: session))
         data.start()
+        Self.tintSegmentedControls()
         let accounts = Accounts(session: session, router: router)
         _accounts = State(initialValue: accounts)
         let entries = SystemEntries(session: session, player: player, router: router, accounts: accounts)
@@ -76,9 +80,21 @@ struct OctoApp: App {
         #endif
     }
 
+    /// The system segmented control's chosen segment in the accent fill with dark words, the
+    /// others white. Applies to controls made after the call.
+    private static func tintSegmentedControls() {
+        #if canImport(UIKit)
+        let control = UISegmentedControl.appearance()
+        control.selectedSegmentTintColor = UIColor(OctoColor.accent)
+        control.setTitleTextAttributes([.foregroundColor: UIColor(OctoColor.onAccent)], for: .selected)
+        control.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .normal)
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
+                .onChange(of: AccentState.shared.rgba) { Self.tintSegmentedControls() }
                 .environment(session)
                 .environment(player)
                 .environment(router)
