@@ -244,6 +244,8 @@ fun <T> GlazeSegments(
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
     enabled: (T) -> Boolean = { true },
+    labelWidth: Boolean = false,
+    tabPadding: Dp = 14.dp,
 ) {
     GlazeTabs(
         count = options.size,
@@ -254,6 +256,8 @@ fun <T> GlazeSegments(
         fillWidth = false,
         indication = FocusRing(CircleShape),
         enabled = { enabled(options[it]) },
+        labelWidth = labelWidth,
+        tabPadding = tabPadding,
     ) { index, chosen ->
         val color = when {
             !enabled(options[index]) -> OctoColors.TextMuted

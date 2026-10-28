@@ -63,10 +63,8 @@ import app.winters.octo.discovery.CountryPick
 import app.winters.octo.discovery.CountryRow
 import app.winters.octo.discovery.chartCountryRows
 import app.winters.octo.discovery.countryChoices
-import app.winters.octo.discovery.rankedBy
 import app.winters.octo.subsonic.CHART_OVERALL
 import app.winters.octo.subsonic.TopSongs
-import java.util.Locale
 
 // The charts and new songs an Octo server reads from Apple Music: a
 // country's most played songs, Best New Songs, Trending Songs and a chart
@@ -101,7 +99,7 @@ fun ChartsPage(app: AppState, visit: Visit) {
                             GlazeCapsule(
                                 OctoIcons.Globe,
                                 countryName(country),
-                                { showCountryMenu(app, charts, anchor, caption = top?.let(::caption)) },
+                                { showCountryMenu(app, charts, anchor) },
                                 Modifier.widthIn(max = CountryButtonMax).onGloballyPositioned { anchor = it.boundsInWindow().roundToIntRect() },
                                 height = ControlHeight.L,
                                 quiet = true,
@@ -142,7 +140,7 @@ fun ChartsPage(app: AppState, visit: Visit) {
 // The widest the country button grows; a longer name shortens inside it.
 private val CountryButtonMax = 220.dp
 
-// What the country menu's first line says when no chart is there to name.
+// What the country menu's first line says, in every state.
 internal const val COUNTRY_MENU_TITLE = "Choose a country"
 
 // How wide the choice for a picked country is: a little wider than the
@@ -154,7 +152,7 @@ private val CountryChoiceWidth = CountryMenuWidth + 24.dp
 // of their own, then every country by name. Their own goes back to their
 // charts; any other asks what to do with it. `typed` starts the search
 // with words already in it.
-internal fun showCountryMenu(app: AppState, charts: Charts, anchor: IntRect, typed: MutableState<String>? = null, caption: String? = null) {
+internal fun showCountryMenu(app: AppState, charts: Charts, anchor: IntRect, typed: MutableState<String>? = null) {
     app.popups.showUnder(anchor, width = CountryMenuWidth, scrollsItself = true) { close ->
         val own = charts.own ?: return@showUnder
         val rows = chartCountryRows(own, charts.country, ::countryName)
@@ -165,10 +163,9 @@ internal fun showCountryMenu(app: AppState, charts: Charts, anchor: IntRect, typ
                 else -> askCountry(app, charts, anchor, code, server = row.pick == CountryPick.Server)
             }
         }
-        // The line always shows, so the field under it never moves: with no
-        // chart to name, it says what the menu is for.
-        val line = caption ?: COUNTRY_MENU_TITLE
-        if (typed != null) CountryMenu(rows, pick, close, typed, title = line) else CountryMenu(rows, pick, close, title = line)
+        // The line always shows and always says what the menu is for, so
+        // the field under it never moves.
+        if (typed != null) CountryMenu(rows, pick, close, typed, title = COUNTRY_MENU_TITLE) else CountryMenu(rows, pick, close, title = COUNTRY_MENU_TITLE)
     }
 }
 
@@ -211,14 +208,6 @@ private fun ChoiceLine(label: String, detail: String, enabled: Boolean, onClick:
         Txt(label, OctoType.bodySmall, OctoColors.TextPrimary, maxLines = 2)
         Txt(detail, OctoType.caption, OctoColors.TextMuted, maxLines = 2)
     }
-}
-
-// Who ranked the chart and for which country: "Most played on Apple Music
-// in United States".
-private fun caption(top: TopSongs): String? {
-    val by = rankedBy(top.source, top.chart) ?: return null
-    val country = top.country?.takeIf { it.length == 2 }?.let { Locale("", it.uppercase()).displayCountry }
-    return if (country.isNullOrBlank()) by else "$by in $country"
 }
 
 // A chart's songs; `shown` keeps only the first few (Home's row).

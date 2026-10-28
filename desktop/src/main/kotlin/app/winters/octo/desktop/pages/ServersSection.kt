@@ -107,6 +107,11 @@ internal fun ServerRows(app: AppState) {
     if (connection != null) Group("This server") { OverviewRows(app, connection) }
 }
 
+// The ink of the lines under the name of the server in use, and of its "In
+// use" mark: white eased back so it stays quieter than the name, yet over
+// 4.5:1 on the chosen fill, where the muted ink is under it.
+internal val InUseSubtitle = OctoColors.TextPrimary.copy(alpha = 0.78f)
+
 // One kept server: its name, who is signed in where, and how it answered;
 // Switch (or Sign in) and its menu on the right.
 @Composable
@@ -125,9 +130,10 @@ private fun ServerRow(app: AppState, server: SavedServer, inUse: Boolean) {
                     Txt(server.name, if (inUse) ChosenWords else DesktopType.body, if (server.signedOut) OctoColors.TextSecondary else OctoColors.TextPrimary)
                     if (inUse) InUseMark()
                 }
-                Txt(accountLine(server), DesktopType.meta, OctoColors.TextMuted, Modifier.padding(top = Space.Xxs))
+                val subtitle = if (inUse) InUseSubtitle else OctoColors.TextMuted
+                Txt(accountLine(server), DesktopType.meta, subtitle, Modifier.padding(top = Space.Xxs))
                 val quiet = check?.reach == Reach.Unreachable || check?.reach == Reach.WrongPassword
-                Txt(statusLine(server, check, switching, inUse), DesktopType.meta, if (quiet) OctoColors.SignalOrange else OctoColors.TextMuted, Modifier.padding(top = Space.Xxs))
+                Txt(statusLine(server, check, switching, inUse), DesktopType.meta, if (quiet) OctoColors.SignalOrange else subtitle, Modifier.padding(top = Space.Xxs))
             }
             when {
                 // Ends where the words of Switch end: the button's own padding.
@@ -147,7 +153,7 @@ private fun ServerRow(app: AppState, server: SavedServer, inUse: Boolean) {
 private fun InUseMark() {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.Xs)) {
         Box(Modifier.size(Space.S).clip(CircleShape).background(OctoColors.SignalGreen))
-        Txt("In use", DesktopType.meta, OctoColors.TextSecondary)
+        Txt("In use", DesktopType.meta, InUseSubtitle)
     }
 }
 

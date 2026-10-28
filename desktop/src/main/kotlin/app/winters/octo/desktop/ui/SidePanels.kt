@@ -168,7 +168,7 @@ fun ContextPanel(app: AppState, panel: SidePanel, backdrop: HazeState, modifier:
 internal fun <T> PanelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
     Box(modifier, contentAlignment = Alignment.CenterStart) {
         FitOrElse(
-            { GlazeSegments(options, selected, label, onSelect) },
+            { GlazeSegments(options, selected, label, onSelect, labelWidth = true, tabPadding = Space.M + Space.Xxs) },
             { ChoiceButton(options, selected, label, onSelect) },
         )
     }

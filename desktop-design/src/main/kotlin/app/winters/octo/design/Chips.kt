@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -89,8 +90,11 @@ fun SideScroll(modifier: Modifier = Modifier, spacing: Dp = 8.dp, content: @Comp
 fun FitOrElse(wide: @Composable () -> Unit, narrow: @Composable () -> Unit, modifier: Modifier = Modifier) {
     SubcomposeLayout(modifier) { constraints ->
         val loose = constraints.copy(minWidth = 0)
-        val whole = subcompose("wide", wide).map { it.measure(loose.copy(maxWidth = Constraints.Infinity)) }
-        val shown = if ((whole.maxOfOrNull { it.width } ?: 0) <= constraints.maxWidth) whole else subcompose("narrow", narrow).map { it.measure(loose) }
+        // The wide form is measured first, with nothing in it reachable by a
+        // screen reader; if it fits it is composed again to be shown.
+        val probe = subcompose("probe") { Box(Modifier.clearAndSetSemantics {}) { wide() } }.map { it.measure(loose.copy(maxWidth = Constraints.Infinity)) }
+        val fits = (probe.maxOfOrNull { it.width } ?: 0) <= constraints.maxWidth
+        val shown = if (fits) subcompose("wide", wide).map { it.measure(loose.copy(maxWidth = Constraints.Infinity)) } else subcompose("narrow", narrow).map { it.measure(loose) }
         val width = shown.maxOfOrNull { it.width } ?: 0
         val height = shown.maxOfOrNull { it.height } ?: 0
         layout(width, height) { shown.forEach { it.place(0, (height - it.height) / 2) } }
