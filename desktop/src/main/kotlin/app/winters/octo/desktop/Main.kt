@@ -64,6 +64,7 @@ import app.winters.octo.desktop.system.letRunningOctoComeForward
 import app.winters.octo.desktop.system.preloadStartClasses
 import app.winters.octo.desktop.system.rendererText
 import app.winters.octo.desktop.system.startMemoryLog
+import app.winters.octo.desktop.ui.GpuCacheTrim
 import app.winters.octo.desktop.system.soakRun
 import app.winters.octo.desktop.system.startsInTray
 import app.winters.octo.desktop.system.useAppNatives
@@ -342,6 +343,7 @@ fun main(args: Array<String>) {
                         },
                         reopens = { (app.player as? EnginePlayer)?.engine?.deviceReopens() },
                     )
+                    GpuCacheTrim.start(app.scope)
                     // Music the server took in is looked for now and then
                     // while Octo runs, and on coming back to it; the library
                     // decides whether a look is due.
@@ -377,9 +379,13 @@ fun main(args: Array<String>) {
             // Remembers the window's own size and place as it changes, and
             // saves it once it settles, so a crash does not lose it.
             LaunchedEffect(Unit) {
+                var wasMinimized = false
                 snapshotFlow { Triple(windowState.position, windowState.size, maximizedNow() || windowState.placement != WindowPlacement.Floating) to windowState.isMinimized }
                     .debounce(700)
                     .collect { (where, minimized) ->
+                        // A window just minimized has its graphics card cache emptied soon.
+                        if (minimized && !wasMinimized) GpuCacheTrim.soon()
+                        wasMinimized = minimized
                         val (position, size, filled) = where
                         if (position is WindowPosition.Absolute && keepsSpot(minimized, filled, position.x.value, position.y.value)) {
                             floating = WindowSpot(position.x.value, position.y.value, size.width.value, size.height.value)

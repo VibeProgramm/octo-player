@@ -43,8 +43,11 @@
 #   -Output <name>    plays to the first output whose name holds this
 #   -MiniOnly         hands over to the mini player once playing (the window
 #                     goes away, as the mini player button does)
-#   -PurgeEvery <s>   empties every Direct3D window's GPU cache every that many
-#                     seconds (under skiko's draw lock)
+#   -PurgeEvery <s>   empties every window's GPU cache every that many seconds
+#                     (each renderer on its own thread, Direct3D under skiko's
+#                     draw lock)
+#   -ToggleMiniEvery <s> hands over to the mini player and back every that many
+#                     seconds (0, never)
 #   -SwitchOutputs <s> moves the music to the next output (Octo's own
 #                     choice, not Windows') every that many seconds
 #   -CycleResize <s>  from minute 2, switches the window between two sizes
@@ -87,6 +90,7 @@ param(
     [string]$Output = "",
     [switch]$MiniOnly,
     [int]$PurgeEvery = 0,
+    [int]$ToggleMiniEvery = 0,
     [int]$CycleResize = 0,
     [int]$Every = 60,
     [string]$Queue = "",
@@ -290,7 +294,7 @@ foreach ($place in "config\settings.json", "Roaming\Octo\settings.json") {
     [IO.File]::WriteAllText($file, ($settings | ConvertTo-Json -Depth 32), (New-Object System.Text.UTF8Encoding($false)))
 }
 $plan = Join-Path $profileDir "soak.properties"
-$planText = "source=$Source`nlyrics=$Lyrics`nfull=$Full`npauseAfter=$PauseAfter`ncacheAfter=$CacheAfter`nadvance=$Advance`nswitchOutputs=$SwitchOutputs`noutput=$Output`nminiOnly=$(if ($MiniOnly) { 'true' } else { 'false' })`npurgeEvery=$PurgeEvery`nqueue=$($Queue -replace '\\', '/')`n"
+$planText = "source=$Source`nlyrics=$Lyrics`nfull=$Full`npauseAfter=$PauseAfter`ncacheAfter=$CacheAfter`nadvance=$Advance`nswitchOutputs=$SwitchOutputs`noutput=$Output`nminiOnly=$(if ($MiniOnly) { 'true' } else { 'false' })`npurgeEvery=$PurgeEvery`ntoggleMiniEvery=$ToggleMiniEvery`nqueue=$($Queue -replace '\\', '/')`n"
 [IO.File]::WriteAllText($plan, $planText)
 
 $gcLog = Join-Path $out "gc.log"

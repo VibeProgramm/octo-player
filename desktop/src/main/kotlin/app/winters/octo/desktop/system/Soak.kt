@@ -9,6 +9,9 @@ import app.winters.octo.desktop.animated.clip
 import app.winters.octo.desktop.player.RepeatMode
 import app.winters.octo.desktop.playStations
 import app.winters.octo.desktop.radioId
+import app.winters.octo.desktop.ui.limitOfFirst
+import app.winters.octo.desktop.ui.setLimitAll
+import app.winters.octo.desktop.ui.trimAllWindows
 import app.winters.octo.liveradio.radioId
 import app.winters.octo.subsonic.Song
 import kotlinx.coroutines.CoroutineScope
@@ -45,7 +48,9 @@ import kotlin.random.Random
 //   advance=45       seconds a song plays before the next
 //   output=XG270     plays to the first output whose name holds this
 //   miniOnly=true    hands over to the mini player (the window goes away)
-//   purgeEvery=300   seconds between emptying every Direct3D window's GPU cache
+//   purgeEvery=300   seconds between emptying every window's GPU cache
+//   toggleMiniEvery=0 seconds between handing over to the mini player and
+//                    back (0, never)
 //   switchOutputs=30 seconds between moving the music to the next output
 //                    (0, never)
 //   queue=<file>     the songs picked, written by the first run and read by
@@ -87,18 +92,29 @@ suspend fun soakRun(app: AppState, plan: File) {
         app.play(songs, 0, source = "Soak")
     }
     app.player.setRepeat(RepeatMode.All)
-    // Every `purgeEvery` seconds, each Direct3D window's graphics card cache
-    // is emptied (its limit set to nothing, then back), so the spares it
-    // holds go and the blocks they sat in can be let go. It runs under the
-    // window's own draw lock, as skiko's drawing does, never on the window's
-    // thread: done there it raced a frame and crashed.
+    // Every `purgeEvery` seconds, each window's graphics card cache is emptied
+    // (its limit set to nothing, then back), so the spares it holds go and
+    // the blocks they sat in can be let go. Each renderer is reached the way
+    // it draws (see GpuCacheTrim), never Direct3D on the window's thread:
+    // done there it raced a frame and crashed.
     val purgeEvery = wants.getProperty("purgeEvery", "0").toLong()
     if (purgeEvery > 0) CoroutineScope(Dispatchers.Default).launch {
         var purges = 0
         while (true) {
             delay(purgeEvery * 1_000)
-            val trimmed = trimGpuCaches()
+            val trimmed = trimAllWindows()
             if (++purges % 10 == 1 || purgeEvery >= 60) note("purged $trimmed windows' caches ($purges)")
+        }
+    }
+    // Hands the window over to the mini player and back every `toggleMiniEvery`
+    // seconds.
+    val toggleMiniEvery = wants.getProperty("toggleMiniEvery", "0").toLong()
+    if (toggleMiniEvery > 0) CoroutineScope(Dispatchers.Default).launch {
+        var toggles = 0
+        while (true) {
+            delay(toggleMiniEvery * 1_000)
+            withContext(Dispatchers.Main) { app.toggleMiniPlayer?.invoke() }
+            note("mini player toggled (${++toggles})")
         }
     }
     // Hands over to the mini player, which puts the window away.
@@ -134,7 +150,7 @@ suspend fun soakRun(app: AppState, plan: File) {
     while (true) {
         if (cacheAfter != null && !cacheSet && System.currentTimeMillis() - started >= cacheAfter[0] * 60_000) {
             cacheSet = true
-            windowContext()?.resourceCacheLimit = cacheAfter[1] * 1024 * 1024
+            withContext(Dispatchers.Default) { setLimitAll(cacheAfter[1] * 1024 * 1024) }
             note("cache limit set to ${cacheAfter[1]} MB, now ${gpuCacheLimit()}")
         }
         if (pauseAfter > 0 && System.currentTimeMillis() - started >= pauseAfter) {
@@ -164,52 +180,10 @@ suspend fun soakRun(app: AppState, plan: File) {
 }
 
 // The graphics card cache limit of the window's drawing, in bytes, as Skia
-// has it: skiko keeps the context out of reach, so it is read by reflection
-// (null when its insides differ, or it draws without the card).
-private fun gpuCacheLimit(): Long? = windowContext()?.resourceCacheLimit
-
-// Empties the graphics card cache of every window drawn with Direct3D, each
-// under its redrawer's draw lock (skiko replays frames and disposes under it),
-// skipping one already disposed. How many it emptied. OpenGL draws in
-// whichever context is current, so its windows are left alone.
-private fun trimGpuCaches(): Int {
-    fun layers(component: java.awt.Component): List<org.jetbrains.skiko.SkiaLayer> = when (component) {
-        is org.jetbrains.skiko.SkiaLayer -> listOf(component)
-        is java.awt.Container -> component.components.flatMap(::layers)
-        else -> emptyList()
-    }
-    val layerList = runCatching { java.awt.Window.getWindows().flatMap(::layers) }.getOrDefault(emptyList())
-    return layerList.count { layer ->
-        runCatching {
-            val redrawer = layer.javaClass.getMethod("getRedrawer\$skiko").invoke(layer) ?: return@runCatching false
-            if (redrawer.javaClass.name != "org.jetbrains.skiko.redrawer.Direct3DRedrawer") return@runCatching false
-            val lock = redrawer.javaClass.getDeclaredField("drawLock").apply { isAccessible = true }.get(redrawer) ?: return@runCatching false
-            val awt = Class.forName("org.jetbrains.skiko.redrawer.AWTRedrawer")
-            synchronized(lock) {
-                if (awt.getDeclaredMethod("isDisposed").apply { isAccessible = true }.invoke(redrawer) == true) return@runCatching false
-                val handler = redrawer.javaClass.getDeclaredField("contextHandler").apply { isAccessible = true }.get(redrawer) ?: return@runCatching false
-                val context = Class.forName("org.jetbrains.skiko.context.ContextHandler").getDeclaredMethod("getContext").apply { isAccessible = true }.invoke(handler) as? org.jetbrains.skia.DirectContext ?: return@runCatching false
-                val limit = context.resourceCacheLimit
-                context.resourceCacheLimit = 0
-                context.resourceCacheLimit = limit
-                true
-            }
-        }.getOrDefault(false)
-    }
-}
-
-private fun windowContext(): org.jetbrains.skia.DirectContext? = runCatching {
-    fun find(component: java.awt.Component): org.jetbrains.skiko.SkiaLayer? {
-        if (component is org.jetbrains.skiko.SkiaLayer) return component
-        if (component is java.awt.Container) component.components.forEach { child -> find(child)?.let { return it } }
-        return null
-    }
-    val layer = java.awt.Window.getWindows().firstNotNullOfOrNull(::find) ?: return null
-    val redrawer = layer.javaClass.getMethod("getRedrawer\$skiko").invoke(layer) ?: return null
-    val handler = redrawer.javaClass.getDeclaredField("contextHandler").apply { isAccessible = true }.get(redrawer) ?: return null
-    val context = Class.forName("org.jetbrains.skiko.context.ContextHandler").getDeclaredMethod("getContext").apply { isAccessible = true }.invoke(handler)
-    context as? org.jetbrains.skia.DirectContext
-}.getOrNull()
+// has it: skiko keeps the context out of reach, so it is read by reflection,
+// each renderer on its own thread (null when its insides differ, or it draws
+// without the card).
+private suspend fun gpuCacheLimit(): Long? = withContext(Dispatchers.Default) { limitOfFirst() }
 
 // The songs a library run plays: the ones picked by an earlier run, or one
 // song from each album with a tall loop, the rest from any album.

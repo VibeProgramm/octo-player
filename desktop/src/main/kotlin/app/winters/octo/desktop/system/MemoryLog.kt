@@ -7,6 +7,7 @@ import app.winters.octo.desktop.copyWords
 import app.winters.octo.desktop.settings.AppPlaces
 import app.winters.octo.desktop.settings.AppSettings
 import app.winters.octo.desktop.settings.DesktopOs
+import app.winters.octo.desktop.ui.GpuCacheTrim
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -61,10 +62,19 @@ fun readMemory(reopens: () -> Long?): MemoryReading {
 }
 
 // One log line for a reading, as the memory log writes it.
-fun memoryLine(time: String, minute: Long, r: MemoryReading, window: String, playing: Boolean): String =
+fun memoryLine(
+    time: String,
+    minute: Long,
+    r: MemoryReading,
+    window: String,
+    playing: Boolean,
+    trims: Long,
+    trimFreedMb: Long?,
+): String =
     "$time min=$minute private=${r.privateMb ?: "?"} ws=${r.workingSetMb ?: "?"} handles=${r.handles ?: "?"} " +
         "threads=${r.threads ?: "?"} gpu=${r.gpuDedicatedMb ?: "?"}/${r.gpuSharedMb ?: "?"} cpu=${r.cpuSeconds ?: "?"} " +
         "io=${r.ioOtherMb ?: "?"} heap=${r.heapUsedMb}/${r.heapCommittedMb} reopens=${r.deviceReopens ?: "?"} " +
+        "trims=$trims trimFreed=${trimFreedMb ?: "?"} " +
         "window=$window playing=${if (playing) "yes" else "no"}"
 
 // A rolling log file in a folder: when memory.log passes the cap it becomes
@@ -138,7 +148,7 @@ fun bugDetails(
     logLines: List<String>,
 ): String {
     val minutes = uptimeMs / 60_000
-    val fields = memoryLine("", 0, reading, "", false).substringAfter("private=").substringBefore(" window=")
+    val fields = memoryLine("", 0, reading, "", false, GpuCacheTrim.trims.get(), GpuCacheTrim.lastFreedMb).substringAfter("private=").substringBefore(" window=")
     return buildString {
         appendLine("Octo ${version ?: "unknown"}")
         appendLine("${System.getProperty("os.name")} ${System.getProperty("os.version")}, Java ${System.getProperty("java.version")}")
@@ -214,7 +224,7 @@ fun startMemoryLog(
                 runCatching {
                     val (window, playing) = state()
                     val minute = (System.currentTimeMillis() - started) / 60_000
-                    log.append(memoryLine(nowText(), minute, readMemory(reopens), window, playing))
+                    log.append(memoryLine(nowText(), minute, readMemory(reopens), window, playing, GpuCacheTrim.trims.get(), GpuCacheTrim.lastFreedMb))
                     if (!rendererLogged) {
                         renderer()?.let {
                             log.append("${nowText()} renderer $it")
