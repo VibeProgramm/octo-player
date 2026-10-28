@@ -48,12 +48,18 @@ public struct TitleNumbers: Decodable, Sendable {
     public var wrapMinPx: Float
     public var minSize: Float
     public var minPx: Float
+    /// When the name does not fit at its usual smallest even without the light line and the foot
+    /// line, it may go this small (the larger of `floorPx` and `floorSize` of the side) before
+    /// the cover is its artwork alone.
+    public var floorPx: Float
+    public var floorSize: Float
     public var maxLines: Int
     public var lineHeight: Float
     public var tracking: Float
 
     enum CodingKeys: String, CodingKey {
-        case top, weight, size, oneLineDownTo, oneLineMinPx, wrapSize, wrapMinPx, minSize, minPx, maxLines, lineHeight, tracking
+        case top, weight, size, oneLineDownTo, oneLineMinPx, wrapSize, wrapMinPx, minSize, minPx, floorPx, floorSize, maxLines, lineHeight,
+             tracking
     }
 
     public init(from decoder: Decoder) throws {
@@ -67,6 +73,8 @@ public struct TitleNumbers: Decodable, Sendable {
         wrapMinPx = try c.decodeIfPresent(Float.self, forKey: .wrapMinPx) ?? 0
         minSize = try c.decode(Float.self, forKey: .minSize)
         minPx = try c.decode(Float.self, forKey: .minPx)
+        floorPx = try c.decode(Float.self, forKey: .floorPx)
+        floorSize = try c.decode(Float.self, forKey: .floorSize)
         maxLines = try c.decode(Int.self, forKey: .maxLines)
         lineHeight = try c.decode(Float.self, forKey: .lineHeight)
         tracking = try c.decode(Float.self, forKey: .tracking)
