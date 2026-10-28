@@ -61,6 +61,9 @@ class ChartLists internal constructor(
         { songs -> discovery.resolveInPlace(songs) },
     )
 
+    // The reads of other countries on their way: a server still loading
+    // some is asked again when one finishes.
+    private val reads = CountryReads()
     private val offered = ConcurrentHashMap<String, Boolean>()
     private val countriesOffered = ConcurrentHashMap<String, Boolean>()
     private val lists = ConcurrentHashMap<String, Pair<Long, ChartList>>()
@@ -95,7 +98,7 @@ class ChartLists internal constructor(
         if (kept != null && !fresh) return ChoicesAnswer(kept)
         if (!offers(session)) return ChoicesAnswer(null)
         val got = try {
-            session.client.charts(country)
+            reads.read(country) { session.client.charts(country) }
         } catch (e: SubsonicException) {
             return ChoicesAnswer(kept, chartRefusal(e))
         }
@@ -139,7 +142,7 @@ class ChartLists internal constructor(
             true -> Unit
         }
         val list = try {
-            session.client.topChart(chartSongs(chart), chart, country)
+            reads.read(country) { session.client.topChart(chartSongs(chart), chart, country) }
         } catch (e: SubsonicException) {
             return ChartAnswer.Failed(chartRefusal(e))
         }

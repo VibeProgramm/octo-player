@@ -15,6 +15,9 @@ import app.winters.octo.subsonic.TOP_SONGS_APPLE
 import app.winters.octo.subsonic.TOP_SONGS_DEEZER
 import app.winters.octo.subsonic.TOP_SONGS_LASTFM
 import app.winters.octo.subsonic.lists
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlin.math.roundToLong
 
 // How many of an artist's top songs a search asks the server for, and how
@@ -84,10 +87,46 @@ fun chartsOffered(extensions: List<Extension>): Boolean = extensions.lists(OCTO_
 const val CHART_SAVE_FAILED = "Couldn't save. Try again."
 
 // The server's own words when it refused a chart call for a reason the
-// listener can act on: too many countries looked at in an hour (code 0) or
-// a country or pin it does not take (code 10). Null for anything else.
+// listener can act on: other countries still loading (code 0, "Still
+// loading your other countries. Try again in a moment.") or a country or
+// pin it does not take (code 10). Null for anything else.
 fun chartRefusal(e: SubsonicException): String? =
     (e as? SubsonicException.Server)?.takeIf { it.code == 0 || it.code == 10 }?.message?.takeIf { it.isNotBlank() }
+
+// The reads of other countries' charts this app has on their way. A server
+// that is still loading the countries already asked for refuses one more
+// (code 0); that read waits for another to finish, which is what frees the
+// server, and asks again. With no other read on its way, it asks once more
+// right away and then gives the server's answer.
+class CountryReads {
+    private val onTheWay = MutableStateFlow(0)
+
+    // Runs `call`, a read of `country`'s charts (null is the listener's own,
+    // which is not counted nor asked again).
+    suspend fun <T> read(country: String?, call: suspend () -> T): T {
+        if (country == null) return call()
+        onTheWay.update { it + 1 }
+        try {
+            var alone = false
+            while (true) {
+                try {
+                    return call()
+                } catch (e: SubsonicException.Server) {
+                    if (e.code != 0) throw e
+                    val before = onTheWay.value
+                    if (before <= 1) {
+                        if (alone) throw e
+                        alone = true
+                    } else {
+                        onTheWay.first { it < before }
+                    }
+                }
+            }
+        } finally {
+            onTheWay.update { it - 1 }
+        }
+    }
+}
 
 // Whether a server's extensions offer chart countries: octoTopSongs at the
 // version whose chart calls take a country and that saves the listener's

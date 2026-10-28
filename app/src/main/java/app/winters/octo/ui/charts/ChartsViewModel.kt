@@ -69,8 +69,10 @@ class ChartsViewModel @Inject constructor(
     var problemFor by mutableStateOf<CountryAsked?>(null)
         private set
 
-    // The server's own words when it refused the country in view (too many
-    // countries in an hour, say), shown in place of its chart.
+    // The server's own words when it refused the country in view (a pin it
+    // does not take, say), shown in place of its chart. A refusal that other
+    // countries are still loading is asked again by itself, and the page
+    // keeps its loading state meanwhile.
     var refusal by mutableStateOf<String?>(null)
         private set
 

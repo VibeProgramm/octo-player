@@ -36,7 +36,7 @@ import javax.inject.Provider
 // the listener's own or pinned, and a server that shows no other country.
 class ChartsViewModelTest {
     private companion object {
-        const val TOO_MANY = "Too many countries in an hour. Try again later."
+        const val TOO_MANY = "Still loading your other countries. Try again in a moment."
     }
 
     private val server = MockWebServer()

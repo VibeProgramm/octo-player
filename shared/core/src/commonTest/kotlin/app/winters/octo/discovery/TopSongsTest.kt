@@ -3,6 +3,12 @@ package app.winters.octo.discovery
 import app.winters.octo.subsonic.ChartChoices
 import app.winters.octo.subsonic.TOP_SONGS_DEEZER
 import app.winters.octo.subsonic.TOP_SONGS_LASTFM
+import app.winters.octo.subsonic.SubsonicException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -183,11 +189,74 @@ class TopSongsTest {
 
     @Test
     fun onlyRefusalsTheListenerCanActOnKeepTheServersWords() {
-        val tooMany = app.winters.octo.subsonic.SubsonicException.Server(0, "Too many countries in an hour. Try again later.")
+        val tooMany = app.winters.octo.subsonic.SubsonicException.Server(0, "Still loading your other countries. Try again in a moment.")
         val fourth = app.winters.octo.subsonic.SubsonicException.Server(10, "You can pin at most 3 countries.")
-        assertEquals("Too many countries in an hour. Try again later.", chartRefusal(tooMany))
+        assertEquals("Still loading your other countries. Try again in a moment.", chartRefusal(tooMany))
         assertEquals("You can pin at most 3 countries.", chartRefusal(fourth))
         assertNull(chartRefusal(app.winters.octo.subsonic.SubsonicException.Server(70, "Not found")))
         assertNull(chartRefusal(app.winters.octo.subsonic.SubsonicException.NotFound("gone")))
+    }
+
+    private val stillLoading = SubsonicException.Server(0, "Still loading your other countries. Try again in a moment.")
+
+    @Test
+    fun a_still_loading_refusal_is_asked_again_when_a_read_finishes() = runBlocking {
+        val reads = CountryReads()
+        val loading = AtomicInteger(0)
+        val asked = AtomicInteger(0)
+        // A server loading two countries refuses a third until one is done.
+        suspend fun hold(country: String, gate: CompletableDeferred<Unit>): String {
+            loading.incrementAndGet()
+            try {
+                gate.await()
+            } finally {
+                loading.decrementAndGet()
+            }
+            return country
+        }
+        val gateA = CompletableDeferred<Unit>()
+        val gateB = CompletableDeferred<Unit>()
+        val a = async(start = CoroutineStart.UNDISPATCHED) { reads.read("fr") { hold("fr", gateA) } }
+        val b = async(start = CoroutineStart.UNDISPATCHED) { reads.read("de") { hold("de", gateB) } }
+        val third = async(start = CoroutineStart.UNDISPATCHED) {
+            reads.read("jp") {
+                asked.incrementAndGet()
+                if (loading.get() >= 2) throw stillLoading
+                "jp"
+            }
+        }
+        // Refused once, and now waiting for a read to finish.
+        assertEquals(1, asked.get())
+        assertFalse(third.isCompleted)
+        gateA.complete(Unit)
+        assertEquals("jp", third.await())
+        assertEquals("fr", a.await())
+        assertEquals(2, asked.get())
+        gateB.complete(Unit)
+        assertEquals("de", b.await())
+    }
+
+    @Test
+    fun a_refusal_with_nothing_loading_is_asked_once_more_then_shown() = runBlocking {
+        val reads = CountryReads()
+        val asked = AtomicInteger(0)
+        val refused = runCatching {
+            reads.read("jp") {
+                asked.incrementAndGet()
+                throw stillLoading
+            }
+        }.exceptionOrNull()
+        assertEquals(stillLoading, refused)
+        assertEquals(2, asked.get())
+        // The listener's own charts are never asked again.
+        val own = AtomicInteger(0)
+        val ownRefused = runCatching {
+            reads.read(null) {
+                own.incrementAndGet()
+                throw stillLoading
+            }
+        }.exceptionOrNull()
+        assertEquals(stillLoading, ownRefused)
+        assertEquals(1, own.get())
     }
 }
