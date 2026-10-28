@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use super::*;
@@ -88,26 +88,65 @@ fn frames_are_shown_at_their_times() {
     video.stop();
 }
 
+/// A clock that moves only when the loop waits: each wait jumps it to the
+/// moment waited for, and the moment is logged.
+struct SetClock {
+    base: Instant,
+    elapsed: Mutex<Duration>,
+    waits: Mutex<Vec<Duration>>,
+}
+
+impl Clock for SetClock {
+    fn now(&self) -> Instant {
+        self.base + *self.elapsed.lock().unwrap()
+    }
+
+    fn wait<'a>(
+        &self,
+        _wake: &Condvar,
+        guard: MutexGuard<'a, Control>,
+        timeout: Duration,
+    ) -> MutexGuard<'a, Control> {
+        let mut elapsed = self.elapsed.lock().unwrap();
+        *elapsed += timeout;
+        self.waits.lock().unwrap().push(*elapsed);
+        guard
+    }
+}
+
 #[test]
 fn the_loop_starts_over_without_a_pause() {
-    let (video, rewinds) = counting(3, 15);
-    let start = Instant::now();
+    let rewinds = Arc::new(AtomicU32::new(0));
+    let source = Counting {
+        frames: 3,
+        gap: Duration::from_millis(15),
+        at: 0,
+        round: 0,
+        rewinds: rewinds.clone(),
+        lengths: true,
+    };
+    let clock = Arc::new(SetClock {
+        base: Instant::now(),
+        elapsed: Mutex::new(Duration::ZERO),
+        waits: Mutex::new(Vec::new()),
+    });
+    let video =
+        LoopVideo::start_on(Box::new(move || Ok(Box::new(source) as Box<dyn FrameSource>)), clock.clone())
+            .unwrap();
     video.play();
     let mut seen = 0;
     while seen < 10 {
         seen = video.wait_frame(seen, 1000);
     }
-    let took = start.elapsed();
-    assert!(rewinds.load(Ordering::Relaxed) >= 3);
-    // Ten frames 15 ms apart across three starts over: never quicker than
-    // their times, which the joins add no gap to. How much slower a busy
-    // machine runs them changes nothing here.
-    assert!(took >= Duration::from_millis(130), "too quick: {took:?}");
-    // The tenth frame is the first of the fourth round; a slow machine may
-    // have shown later ones by now, never earlier ones.
-    let pixels = frame_of(&video);
-    assert!(pixels[0] >= 3 * 16, "still in an earlier round: {}", pixels[0]);
     video.stop();
+    assert!(rewinds.load(Ordering::Relaxed) >= 3);
+    // Frame 0 is shown at once; each later frame is waited for until its
+    // place, 15 ms after the one before, across the three starts over.
+    let waits = clock.waits.lock().unwrap();
+    assert!(waits.len() >= 9, "only {} waits", waits.len());
+    for (i, at) in waits.iter().take(9).enumerate() {
+        assert_eq!(*at, Duration::from_millis(15) * (i as u32 + 1), "frame {} off its place", i + 1);
+    }
 }
 
 #[test]
@@ -330,29 +369,63 @@ fn loops_on_the_graphics_card_share_one_device() {
     assert!(second.shares_device_with(&third));
 }
 
-// Run alone: `cargo test --release --lib opening_the_fixture_many_times_keeps_nothing -- --ignored --nocapture --test-threads=1`.
+/// The process counters once they hold still: the same handle count read
+/// twice in a row. Media Foundation finishes closing a reader on its own
+/// threads a moment after the drop, so a reading taken at once still sees
+/// that reader's handles (about 25) open.
+#[cfg(windows)]
+fn settled_stats() -> crate::process_stats::ProcessStats {
+    use crate::process_stats::process_stats;
+
+    let mut last = process_stats();
+    for _ in 0..100 {
+        let now = process_stats();
+        if now.handles == last.handles {
+            return now;
+        }
+        last = now;
+    }
+    last
+}
+
+/// 1,000 software-path opens and closes of the fixture, four times over,
+/// each batch measured from settled counters. The 20 opens before and the
+/// first batch warm up what stays for the process: Media Foundation's work
+/// queue (one more thread, with its Event, IoCompletion and
+/// WaitCompletionPacket handles) and the heap the readers are made in. The
+/// last batch must keep nothing.
+///
+/// Run alone: `cargo test --release --lib opening_the_fixture_many_times_keeps_nothing -- --ignored --nocapture --test-threads=1`.
 #[cfg(windows)]
 #[test]
 #[ignore]
 fn opening_the_fixture_many_times_keeps_nothing() {
-    use crate::process_stats::process_stats;
-
     // SAFETY: this test runs alone, so no other thread reads the variable.
     unsafe { std::env::set_var("OCTO_VIDEO_SOFTWARE", "1") };
     let path = fixture();
     for _ in 0..20 {
         drop(media_foundation::MfSource::open(&path, (0, 0)).unwrap());
     }
-    let before = process_stats();
-    for _ in 0..1000 {
-        drop(std::hint::black_box(media_foundation::MfSource::open(&path, (0, 0)).unwrap()));
+    let types_first = handle_types::handle_types();
+    println!("handles by type after warm-up: {types_first:?}");
+    let mut last = (0, 0);
+    for number in 1..=4 {
+        let before = settled_stats();
+        for _ in 0..1000 {
+            drop(std::hint::black_box(media_foundation::MfSource::open(&path, (0, 0)).unwrap()));
+        }
+        let after = settled_stats();
+        let bytes = after.private_bytes.unwrap().saturating_sub(before.private_bytes.unwrap());
+        let handles = after.handles.unwrap().saturating_sub(before.handles.unwrap());
+        let threads = i64::from(after.threads.unwrap()) - i64::from(before.threads.unwrap());
+        println!("batch {number}: private bytes +{bytes}, handles +{handles}, threads {threads:+}");
+        last = (bytes, handles);
     }
-    let after = process_stats();
-    let bytes = after.private_bytes.unwrap().saturating_sub(before.private_bytes.unwrap());
-    let handles = after.handles.unwrap().saturating_sub(before.handles.unwrap());
-    println!("private bytes +{bytes}, handles +{handles}");
-    assert!(handles < 20, "handles grew by {handles}");
-    assert!(bytes < 5 << 20, "private bytes grew by {bytes}");
+    let types_last = handle_types::handle_types();
+    println!("handle types changed over the batches: {:?}", handle_types::changed(&types_first, &types_last));
+    let (bytes, handles) = last;
+    assert!(handles < 5, "handles grew by {handles}");
+    assert!(bytes < 1 << 20, "private bytes grew by {bytes}");
 }
 
 #[test]
