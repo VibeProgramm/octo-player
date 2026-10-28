@@ -44,6 +44,37 @@ class HomeRouteTest {
         }
     }
 
+    private class FakeChanges : AddressChanges {
+        @Volatile var onChange: (() -> Unit)? = null
+        val closed = AtomicBoolean(false)
+
+        override fun watch(onChange: () -> Unit): AutoCloseable {
+            this.onChange = onChange
+            return AutoCloseable { closed.set(true) }
+        }
+    }
+
+    @Test
+    fun anAddressChangeNoticeChecksAgainWithoutWaitingForALook() {
+        val answers = AtomicInteger()
+        val network = AtomicReference(setOf("192.168.1.10"))
+        val changes = FakeChanges()
+        HomeRoute(main, home, { answers.incrementAndGet(); true }, network = { network.get() }, changes = changes, watchEveryMs = 60_000).use {
+            waitFor { answers.get() == 1 && changes.onChange != null }
+            network.set(setOf("10.20.30.40"))
+            changes.onChange!!.invoke()
+            waitFor { answers.get() == 2 }
+            assertEquals(2, answers.get())
+        }
+    }
+
+    @Test
+    fun closingStopsListeningForAddressChanges() {
+        val changes = FakeChanges()
+        HomeRoute(main, home, { true }, network = { emptySet() }, changes = changes, watchEveryMs = 60_000).close()
+        assertEquals(true, changes.closed.get())
+    }
+
     @Test
     fun aFailedRequestChecksAgainButNotInABurst() {
         val asks = AtomicInteger()
