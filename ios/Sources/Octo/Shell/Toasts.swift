@@ -21,7 +21,10 @@ struct ToastHost: View {
                 if let toast = shown {
                     ToastPill(toast: toast) { router.dismiss(toast) }
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { spot?.frame = $0 }
-                        .onDisappear { spot?.frame = nil }
+                        .onDisappear {
+                            if let frame = spot?.frame { spot?.lateTap.start(at: frame) }
+                            spot?.frame = nil
+                        }
                         .opacity(min(1, max(0, progress)))
                         .scaleEffect(calm ? 1 : 0.92 + 0.08 * progress, anchor: .bottom)
                         .offset(y: calm ? 0 : (1 - progress) * 10)

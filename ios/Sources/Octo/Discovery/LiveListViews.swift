@@ -92,6 +92,7 @@ struct LiveListView: View {
                             .font(.octoTitle)
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
+                            .bigTitle()
                             .padding(.top, 20)
                         // One details line: the size, then what the list picks, with More at its end.
                         HStack {
@@ -125,6 +126,7 @@ struct LiveListView: View {
             }
         }
         .barClearance()
+        .inlineTitle(list?.name ?? "")
         .selectableSongs(playable.map { Pickable($0) })
         .task(id: library.stamp(.library, .likes, .plays)) { await liveLibrary.read() }
         .task(id: PickKey(version: liveLibrary.version, query: list?.query)) { if let list { await liveLibrary.pick(list.query) } }

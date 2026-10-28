@@ -163,6 +163,7 @@ private struct SelectionBar: View {
     @Environment(Player.self) private var player
     @Environment(Session.self) private var session
     @Environment(SelectionActions.self) private var actions
+    @Environment(Router.self) private var router
     @State private var onDisk: [String] = []
 
     var body: some View {
@@ -215,8 +216,8 @@ private struct SelectionBar: View {
             }
             HStack(spacing: 0) {
                 BarButton(icon: .play, label: "Play") { act { player.play(songs, from: 0) } }
-                BarButton(icon: .playNext, label: "Play next") { act { player.playNext(songs) } }
-                BarButton(icon: .addToQueue, label: "Add to queue") { act { player.append(songs) } }
+                BarButton(icon: .playNext, label: "Play next") { act { putInQueue(songs, next: true) } }
+                BarButton(icon: .addToQueue, label: "Add to queue") { act { putInQueue(songs, next: false) } }
                 BarButton(icon: .addToPlaylist, label: "Add to playlist", enabled: !library.isEmpty && actions.addToPlaylist != nil) {
                     act { actions.addToPlaylist?(library) }
                 }
@@ -240,6 +241,20 @@ private struct SelectionBar: View {
         .task(id: library.map(\.id)) {
             onDisk = await actions.deletableFromDisk?(library) ?? []
         }
+        #if DEBUG
+        .onAppear { QueueDrive.bar = { next in putInQueue(songs, next: next) } }
+        #endif
+    }
+
+    /// Puts the picked songs in the queue, next or at its end, saying how many went in, with an
+    /// Undo that takes them back out.
+    private func putInQueue(_ songs: [Song], next: Bool) {
+        guard !songs.isEmpty else { return }
+        let router = router
+        let shown: (Int, @escaping () -> Void) -> Void = { count, undo in
+            router.show(queueAddWords(count: count, next: next), action: "Undo") { undo() }
+        }
+        if next { player.playNextUndoable(songs, inserted: shown) } else { player.appendUndoable(songs, inserted: shown) }
     }
 
     /// Every action ends the picking once done.

@@ -2,73 +2,113 @@ import OctoKit
 import SwiftUI
 import UIKit
 
-/// The top a page whose back button sits on its title's line leaves above that line.
+/// The top a page whose title sits on the back button's line leaves above that line.
 let pageTopGap: CGFloat = 8
 
-/// Line one of a page: on a pushed page the back button, then the big title, alone on its line,
-/// the button on the middle of the title's capitals. `count`, when given, follows the title in
-/// muted words only while both fit on the line; otherwise the title stands alone. The edge swipe
-/// goes back as the button does, and a page busy with something (a selection, a search) closes
-/// that first.
+/// Line one of a page: on a pushed page the room the bar's back button sits over, then the big
+/// title, alone on its line, the button on the middle of the title's capitals. `count`, when
+/// given, follows the title in muted words only while both fit on the line; otherwise the title
+/// stands alone. On a pushed page the header takes no height: its line sits just above its place.
 struct PageHeader: View {
     let title: String
     var count: String?
     var back = true
-    @Environment(\.dismiss) private var dismiss
+    /// Keeps the line's height, for a list whose rows clip what overflows them (an inset-grouped
+    /// one): the page then starts high enough for the line to sit on the button.
+    var holdsHeight = false
     @Environment(PageTop.self) private var top: PageTop?
+    @State private var width: CGFloat = 0
     @ScaledMetric(relativeTo: .largeTitle) private var size: CGFloat = 32
 
-    init(_ title: String, count: String? = nil, back: Bool = true) {
+    init(_ title: String, count: String? = nil, back: Bool = true, holdsHeight: Bool = false) {
         self.title = title
         self.count = count
         self.back = back
+        self.holdsHeight = holdsHeight
     }
 
     var body: some View {
-        HStack(alignment: .pageTitleLine, spacing: 0) {
-            if back {
-                GlazedIconButton(.back, label: "Back", size: 40) { goBack() }
-                    .alignmentGuide(.pageTitleLine) { d in d[VerticalAlignment.center] }
-                    .padding(.leading, 16)
-                    // Once it scrolls away, the page's floating back button stands in for it.
-                    .onScrollVisibilityChange(threshold: 0.5) { shown in top?.gone = !shown }
-                    .onAppear { top?.gone = false }
-                    .onDisappear { top?.gone = true }
-            }
-            if let count {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                        titleText.fixedSize(horizontal: true, vertical: false)
-                        Text(count)
-                            .font(.octoBodySmall)
-                            .foregroundStyle(OctoColor.textMuted)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .padding(.leading, -8)
-                            .padding(.trailing, 20)
-                        Spacer(minLength: 0)
-                    }
-                    titleText
+        // On a pushed page the header takes no height: its line is drawn just above its place,
+        // and the page starts where that puts the title on the button's middle.
+        VStack(alignment: .leading, spacing: 0) {
+            Color.clear
+                .frame(height: 0)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { place in
+                    top?.headerSlot = place.minY
+                    if let top { top.headerLeft = top.ownX(place.minX) }
                 }
-                .alignmentGuide(.pageTitleLine) { d in d[.firstTextBaseline] - capHeight / 2 }
+            if back && !holdsHeight {
+                line
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { top?.lineHeight = $0 }
+                    .padding(.top, -(top?.lineHeight ?? 0))
             } else {
-                titleText
-                    .alignmentGuide(.pageTitleLine) { d in d[.firstTextBaseline] - capHeight / 2 }
+                line
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onChange(of: holdsHeight, initial: true) { _, holds in top?.headerHoldsHeight = holds }
     }
 
-    private var titleText: some View {
-        ScreenTitle(title).padding(.leading, back ? -8 : 0)
+    private var line: some View {
+        HStack(alignment: .pageTitleLine, spacing: 0) {
+            if back {
+                // The bar's back button sits over this room, its middle on the title's capitals.
+                Color.clear
+                    .frame(width: barButtonSide, height: barButtonSide)
+                    .alignmentGuide(.pageTitleLine) { d in d[VerticalAlignment.center] }
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(PageHeader.space)).midY } action: { top?.lineInHeader = $0 }
+                    #if DEBUG
+                    .onGeometryChange(for: CGPoint.self) { CGPoint(x: $0.frame(in: .global).midX, y: $0.frame(in: .global).midY) } action: { top?.roomOnScreen = $0 }
+                    #endif
+                    .padding(.leading, roomLead)
+                    .accessibilityHidden(true)
+            }
+            ScreenTitle(title, maxSize: top?.titleRoom)
+                .padding(.leading, back ? -8 : 0)
+                .fixedSize(horizontal: showsCount, vertical: false)
+                .alignmentGuide(.pageTitleLine) { d in d[.firstTextBaseline] - capHeight / 2 }
+            if showsCount, let count {
+                Text(count)
+                    .font(.octoBodySmall)
+                    .foregroundStyle(OctoColor.textMuted)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .padding(.leading, -8)
+                    .padding(.trailing, 20)
+                    .alignmentGuide(.pageTitleLine) { d in d[.firstTextBaseline] - capHeight / 2 }
+                    // It leaves with the title as the bar's name arrives.
+                    .opacity(Double(top?.titleShown ?? 1))
+                Spacer(minLength: 0)
+            }
+        }
+        .coordinateSpace(.named(PageHeader.space))
     }
 
-    /// The title's cap height, for the back button to sit on the middle of its capitals.
-    private var capHeight: CGFloat { UIFont.systemFont(ofSize: size, weight: .black).capHeight }
+    nonisolated private static let space = "pageHeader"
 
-    private func goBack() {
-        if let handler = BackHandler.current { handler.run() } else { dismiss() }
+    /// The room before the button's place, so the button's middle sits where the bar puts it.
+    private var roomLead: CGFloat { max(0, BarMetrics.shared.back.x - barButtonSide / 2 - (top?.headerLeft ?? 0)) }
+
+    /// Whether the count fits on the title's line beside the whole title.
+    private var showsCount: Bool {
+        guard let count, width > 0 else { return false }
+        let titleFont = UIFont.systemFont(ofSize: min(size, top?.titleRoom ?? size), weight: .black)
+        let titleWidth = (breakableText(title) as NSString).size(withAttributes: [.font: titleFont, .kern: octoDisplayTracking]).width
+        let countFont = UIFontMetrics(forTextStyle: .subheadline).scaledFont(for: .systemFont(ofSize: 14, weight: .regular))
+        let countWidth = (count as NSString).size(withAttributes: [.font: countFont]).width
+        let lead = back ? roomLead + barButtonSide - 8 : 0
+        return lead + 20 + ceil(titleWidth) + 20 - 8 + ceil(countWidth) + 20 <= width
+    }
+
+    /// The title's cap height at the size it is drawn, for the button to sit on the middle of its
+    /// capitals.
+    private var capHeight: CGFloat {
+        UIFont.systemFont(ofSize: top?.titleSize ?? min(size, top?.titleRoom ?? size), weight: .black).capHeight
     }
 }
+
+/// The side of the system bar's round glass buttons.
+private let barButtonSide: CGFloat = 44
 
 extension VerticalAlignment {
     private enum PageTitleLine: AlignmentID {

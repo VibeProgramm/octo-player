@@ -68,7 +68,6 @@ struct SongMenuItems<Extras: View>: View {
     @Environment(LibraryActions.self) private var actions
     @Environment(Router.self) private var router
     @Environment(Downloads.self) private var downloads
-    @Environment(Player.self) private var player
     @Environment(Accounts.self) private var accounts
     @Environment(ServerDownloads.self) private var serverDownloads
 
@@ -139,9 +138,9 @@ struct SongMenuItems<Extras: View>: View {
     private func row(_ action: SongAction) -> some View {
         switch action {
         case .playNext:
-            item("Play next", .playNext) { player.playNext([queued]) }
+            item("Play next", .playNext) { actions.playNextUndoable(queued) }
         case .addToQueue:
-            item("Add to queue", .addToQueue) { player.append([queued]) }
+            item("Add to queue", .addToQueue) { actions.addToQueueUndoable(queued) }
         case .startRadio:
             item("Start radio", .radio) { Task { await actions.startRadio(track, song: queued) } }
         case .download:

@@ -19,7 +19,7 @@ extension View {
         glassEffect(interactive ? Glass.regular.tint(film).interactive() : Glass.regular.tint(film), in: shape)
     }
 
-    /// Glass floating over the page, like the bar, a toast or the back button: the glass, with
+    /// Glass floating over the page, like the bar or a toast: the glass, with
     /// a shadow cast by the shape 12 points smaller on every side, so it pools under the glass
     /// instead of haloing around it. `halo` adds the menu plate's even dark halo, for words
     /// over busy content.

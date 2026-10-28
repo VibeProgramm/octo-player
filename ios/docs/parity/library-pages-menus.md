@@ -17,7 +17,7 @@ Path shorthand used in every reference below:
 - [x] Detail pages pass extraTop = DetailTopGap = 56dp so content clears the floating back button (ui/common/Layout.kt:52)
 - [x] ScreenTitle: OctoType.display, TextPrimary, padding start 20, end 20, top 8, bottom 16 (ui/common/Layout.kt:32)
 - [x] SectionTitle: OctoType.section, TextPrimary, padding 20 horizontal, 10 vertical (ui/common/Layout.kt:42)
-- [x] BackButton: floats over the page, status bar padding, then start 16dp and top 8dp; a 40dp glazed round icon button with the Back icon, accessibility label "Back"; it blurs what is behind (ui/common/Layout.kt:56) (iPhone: a floating Liquid Glass round button with the Back symbol)
+- [x] BackButton: floats over the page, status bar padding, then start 16dp and top 8dp; a 40dp glazed round icon button with the Back icon, accessibility label "Back"; it blurs what is behind (ui/common/Layout.kt:56) (iPhone: the system navigation bar's Liquid Glass back button with the Back symbol, in the bar on every pushed page; content scrolls under the bar's own edge effect)
 - [x] Every detail page draws BackButton last, above its content (ui/library/LibraryScreen.kt:397)
 - [x] Song length as a clock: "m:ss" under an hour, "h:mm:ss" from an hour (ui/common/Layout.kt:69)
 - [x] Album or playlist length in words: minutes = (seconds + 30) / 60 rounded down; at 60 or more "H hr M min", otherwise "M min" (ui/common/Layout.kt:77)

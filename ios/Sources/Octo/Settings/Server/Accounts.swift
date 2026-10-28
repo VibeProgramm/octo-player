@@ -24,7 +24,7 @@ enum AccountRoute: Hashable, Codable {
 }
 
 extension View {
-    /// The account pages a tab can open, each without the system's bar, on the glow of the
+    /// The account pages a tab can open, each under the system bar, on the glow of the
     /// Settings pages.
     func accountRoutes() -> some View {
         navigationDestination(for: AccountRoute.self) { route in
@@ -37,8 +37,8 @@ extension View {
                 case .imports: ImportScreen()
                 }
             }
-            .background { PageBackdrop(page: route.ambientPage, route: nil) }
             .detailPage(ownBack: true)
+            .background { PageBackdrop(page: route.ambientPage, route: nil) }
         }
     }
 }

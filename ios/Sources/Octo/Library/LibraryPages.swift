@@ -36,8 +36,8 @@ extension LibraryPage {
 }
 
 extension LibraryPage {
-    /// Whether the page puts the back button on its title's line; a playlist keeps it floating
-    /// over its cover.
+    /// Whether the page's title sits on the back button's line; a playlist starts under the status
+    /// bar, below its cover.
     var ownsBack: Bool {
         if case .playlist = self { return false }
         return true
@@ -106,7 +106,6 @@ struct SongsPage: View {
                     }
                 }
                 .padding(.top, pageTopGap)
-                .bigTitle()
                 if sorted != nil, searching {
                     searchPanel.transition(calm ? .opacity : .opacity.combined(with: .move(edge: .top)))
                 }
@@ -321,7 +320,6 @@ struct GenresPage: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 PageHeader("Genres", count: genres.flatMap { $0.isEmpty ? nil : countText($0.count, "genre", "genres") })
                     .padding(.top, pageTopGap)
-                    .bigTitle()
                 if let genres {
                     if genres.isEmpty {
                         MutedNote("None of your songs has a genre yet")
@@ -380,7 +378,6 @@ struct GenrePage: View {
                         }
                     }
                     .padding(.top, pageTopGap)
-                    .bigTitle()
                     albumGrid
                     if !songs.isEmpty {
                         FirstRowMark()
@@ -465,7 +462,6 @@ struct HistoryPage: View {
                 }
             }
             .padding(.top, pageTopGap)
-            .bigTitle()
             if mostPlayed { mostPlayedList } else { recentList }
             Color.clear.frame(height: 20)
         }
@@ -622,7 +618,6 @@ struct DownloadsPage: View {
                 }
             }
             .padding(.top, pageTopGap)
-            .bigTitle()
             if rows.isEmpty {
                 MutedNote("Songs you download play without a connection. Long press a song and choose Download, or keep a playlist downloaded from its page.")
             } else {

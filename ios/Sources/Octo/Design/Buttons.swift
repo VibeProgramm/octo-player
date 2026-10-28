@@ -259,33 +259,6 @@ struct ChromeGroup<Content: View>: View {
     }
 }
 
-/// A lone round control over content: floating glass, 56 points by default with a 22 point
-/// icon (20 below 56). Pressed, the glass pops and the icon dips.
-struct GlazedIconButton: View {
-    let icon: OctoIcon
-    let label: String
-    var size: CGFloat = 56
-    let action: () -> Void
-
-    init(_ icon: OctoIcon, label: String, size: CGFloat = 56, action: @escaping () -> Void) {
-        self.icon = icon
-        self.label = label
-        self.size = size
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            IconView(icon, size: size >= 56 ? 22 : 20, color: .white)
-                .frame(width: size, height: size)
-                .contentShape(Circle())
-        }
-        .buttonStyle(ChromePress(lone: true, active: false))
-        .floatingGlass(Circle(), interactive: true)
-        .accessibilityLabel(label)
-    }
-}
-
 /// The turning arc: 270 degrees, once every 900 ms, its stroke 12% of its size.
 struct Spinner: View {
     var size: CGFloat = 18

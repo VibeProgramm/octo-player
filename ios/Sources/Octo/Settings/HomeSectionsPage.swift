@@ -11,7 +11,7 @@ struct HomeSectionsPage: View {
     var body: some View {
         let entries = settings.homeSections
         List {
-            PageHeader("Home sections")
+            PageHeader("Home sections", holdsHeight: true)
                 .padding(.top, pageTopGap)
                 .plainListRow()
             Section {
@@ -48,6 +48,8 @@ struct HomeSectionsPage: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        // The list's own room above its first row would push the page's title off the bar's line.
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollIndicators(.hidden)
         .environment(\.editMode, .constant(.active))
         .tint(OctoColor.accent)

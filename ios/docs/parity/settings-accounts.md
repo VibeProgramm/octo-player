@@ -1913,7 +1913,7 @@ Parts, in order: settings front page, search and shared rows; Playback; Appearan
 
 ### Page frame
 
-- [x] The page uses the standard settings frame: floating round back button (content description "Back", 40 dp glazed icon button, 16 dp from the start, 8 dp below the status bar), large title "Backup and restore" in the display style, groups stacked 24 dp apart, the whole page scrolling vertically, top padding status bar + 8 dp + 56 dp, bottom padding navigation bar + 120 dp (app/src/main/java/app/winters/octo/ui/settings/BackupPage.kt:95, app/src/main/java/app/winters/octo/ui/settings/rows/SettingsPageFrame.kt:28-52, app/src/main/java/app/winters/octo/ui/common/Layout.kt:25-66) (iPhone: the floating back button and the large title "Backup and restore"; groups 24 apart in one scrolling column)
+- [x] The page uses the standard settings frame: floating round back button (content description "Back", 40 dp glazed icon button, 16 dp from the start, 8 dp below the status bar), large title "Backup and restore" in the display style, groups stacked 24 dp apart, the whole page scrolling vertically, top padding status bar + 8 dp + 56 dp, bottom padding navigation bar + 120 dp (app/src/main/java/app/winters/octo/ui/settings/BackupPage.kt:95, app/src/main/java/app/winters/octo/ui/settings/rows/SettingsPageFrame.kt:28-52, app/src/main/java/app/winters/octo/ui/common/Layout.kt:25-66) (iPhone: the system bar's back button with the large title "Backup and restore" on its line; groups 24 apart in one scrolling column)
 - [x] The page's state machine has six states: Idle, Working, Saved(ok), Ready(backup, plan), Restored(plan), Problem(message); it starts at Idle and lives in the page's view model (survives rotation) (app/src/main/java/app/winters/octo/ui/settings/BackupPage.kt:31-49)
 
 ### Idle view (every state except Ready)
@@ -3289,7 +3289,7 @@ The hand-over flow itself (codes, renewal, sealing, the new device's side) is co
 - [x] Place "Found": sections in this order: Health, Stations, Downloads, Library, then the "Open full admin" row (app/src/main/java/app/winters/octo/ui/admin/OctoAdminScreen.kt:95-106)
 - [x] Each section loads and fails on its own: while loading it shows a centered spinner with 8dp vertical padding; on failure it shows its failure message as a note (bodySmall, muted, 20dp horizontal padding); when ready it shows its rows (app/src/main/java/app/winters/octo/ui/admin/OctoAdminScreen.kt:209-229)
 - [x] Section titles use the section style, primary color, 20dp horizontal and 10dp vertical padding (app/src/main/java/app/winters/octo/ui/common/Layout.kt:42-49)
-- [x] The back button floats over the list (app/src/main/java/app/winters/octo/ui/admin/OctoAdminScreen.kt:110) (iPhone: the Liquid Glass back button floats over the list)
+- [x] The back button floats over the list (app/src/main/java/app/winters/octo/ui/admin/OctoAdminScreen.kt:110) (iPhone: the system bar's Liquid Glass back button stays put while the list scrolls under the bar's edge effect)
 
 ### Health section
 

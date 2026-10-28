@@ -28,7 +28,7 @@ Design tokens referenced: TextPrimary = white; Accent = #97B1B9; TextSecondary =
 - [x] One vertically scrolling column filling the screen; padding top = status bar + 8dp + 56dp (DetailTopGap), bottom = navigation bar + 120dp (ui/sound/SoundScreen.kt:109-115, ui/common/Layout.kt:25-29, ui/common/Layout.kt:52)
 - [x] Title "Sound" in `display`, TextPrimary, padding start 20dp, end 20dp, top 8dp, bottom 16dp (ui/sound/SoundScreen.kt:116, ui/common/Layout.kt:32-39)
 - [x] Below the title, five blocks spaced 16dp apart, in this order: output line, Equalizer card, Loudness card, Balance card, Headphone correction card (ui/sound/SoundScreen.kt:117-123)
-- [x] A floating round back button over the page: status bar + 8dp from the top, 16dp from the left, 40dp glass icon button, accessibility "Back" (ui/sound/SoundScreen.kt:125, ui/common/Layout.kt:55-66)
+- [x] A floating round back button over the page: status bar + 8dp from the top, 16dp from the left, 40dp glass icon button, accessibility "Back" (ui/sound/SoundScreen.kt:125, ui/common/Layout.kt:55-66) (iPhone: the system bar's Liquid Glass back button, the title "Sound" on its line)
 - [x] The page shows `vm.draft` when a drag is in flight, otherwise the saved settings of the output playing now (ui/sound/SoundScreen.kt:98-101)
 - [x] A single popup host for the preset sheets sits over the page (ui/sound/SoundScreen.kt:126) (iPhone: the preset questions are a system popover and a confirmation dialog on the page)
 - [x] There are no level meters, spectrum, or live output readouts anywhere on the page; the only live number is "Level now" (ui/sound/SoundScreen.kt:96-128)

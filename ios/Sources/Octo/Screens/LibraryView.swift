@@ -31,7 +31,7 @@ struct LibraryView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ScreenTitle("Library").bigTitle()
+                ScreenTitle("Library")
                 ForEach(Array(librarySections.enumerated()), id: \.offset) { index, section in
                     if index > 0 { LibraryHairline() }
                     NavigationLink(value: section.route) {
@@ -148,15 +148,34 @@ func railTargets(_ headings: [String]?) -> [RailStop] {
 }
 
 extension View {
-    /// The letter rail beside a long list ordered by name, clear of the floating bar.
+    /// The letter rail beside a long list ordered by name, clear of the system bar above and the
+    /// floating bar below.
     func letterRail(_ headings: [String]?, count: Int, byName: Bool, jump: @escaping (Int) -> Void) -> some View {
-        overlay(alignment: .trailing) {
+        modifier(LetterRailPlace(headings: headings, count: count, byName: byName, jump: jump))
+    }
+}
+
+private struct LetterRailPlace: ViewModifier {
+    let headings: [String]?
+    let count: Int
+    let byName: Bool
+    let jump: (Int) -> Void
+    @Environment(PageTop.self) private var top: PageTop?
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .trailing) {
             if byName, count >= railMinItems, let headings {
                 LetterRail(stops: railTargets(headings), jump: jump)
-                    .padding(.top, 8)
+                    .padding(.top, railTop)
                     .padding(.bottom, 132)
             }
         }
+    }
+
+    /// 8 under the system bar: the overlay starts at the content's top, which may sit inside the bar.
+    private var railTop: CGFloat {
+        guard let top else { return 8 }
+        return max(8, top.barBottom - top.contentTop + 8)
     }
 }
 
@@ -190,7 +209,6 @@ struct AlbumsView: View {
                         }
                     }
                     .padding(.top, pageTopGap)
-                    .bigTitle()
                     if let sorted {
                         if sorted.items.isEmpty {
                             EmptyLibraryNote()
@@ -270,7 +288,6 @@ struct ArtistsView: View {
                         }
                     }
                     .padding(.top, pageTopGap)
-                    .bigTitle()
                     if let sorted {
                         if sorted.items.isEmpty {
                             EmptyLibraryNote()
@@ -391,7 +408,6 @@ struct FavoritesView: View {
             }
         }
         .padding(.top, pageTopGap)
-        .bigTitle()
     }
 
     /// Keep downloaded, More's own row on Liked songs while it is offered.

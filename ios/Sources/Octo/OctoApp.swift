@@ -77,6 +77,9 @@ struct OctoApp: App {
         #if DEBUG
         DataDrive.install(data) { router.show($0) }
         AnimatedDrive.install(player: player, session: session)
+        PageBarDrive.install()
+        SwipeDrive.install()
+        QueueDrive.install(router: router)
         #endif
     }
 

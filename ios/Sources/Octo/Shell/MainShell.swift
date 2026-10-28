@@ -297,7 +297,7 @@ struct MainShell: View {
             ForEach(AppTab.allCases, id: \.self) { item in
                 let front = item == tab
                 NavigationStack(path: path(item)) {
-                    TabRoot(item: item).equatable()
+                    TabRoot(item: item).equatable().rootPage(showsBar: item != .search)
                         .background { PageBackdrop(page: item.rootPage, route: nil) }
                         .pageMotion(rootBack: item == .home ? nil : { select(.home) })
                         .routes()
@@ -489,8 +489,7 @@ private struct ScrollTopProbe: UIViewRepresentable {
 }
 
 extension View {
-    /// Every page a tab can open, each without the system's bar: titles scroll with the page and
-    /// a glass back button floats over detail pages.
+    /// Every page a tab can open, each under the system bar with its glass back button.
     func routes() -> some View {
         navigationDestination(for: Route.self) { route in
             Group {
@@ -514,11 +513,10 @@ extension View {
                 case .liveRadioNear: LiveRadioPage()
                 }
             }
-            .background { PageBackdrop(page: route.ambientPage, route: route) }
-            // Pages without artwork at the top put the back button on their title's line.
+            // Pages without artwork at the top have their title on the back button's line.
             .detailPage(ownBack: route.ownsBack)
+            .background { PageBackdrop(page: route.ambientPage, route: route) }
         }
-        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
@@ -581,8 +579,8 @@ private struct TabRoot: View, Equatable {
 }
 
 extension Route {
-    /// Whether the page puts the back button on its title's line. Pages under artwork (an album,
-    /// an artist, a playlist, a live list) keep it floating over the artwork.
+    /// Whether the page's title sits on the back button's line. Pages under artwork (an album, an
+    /// artist, a playlist, a live list) start under the status bar instead.
     var ownsBack: Bool {
         switch self {
         case .album, .artist, .playlist, .onlineAlbum, .onlineArtist, .liveList: false
