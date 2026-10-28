@@ -370,7 +370,8 @@ fun PlaylistPickerPage(
 ) {
     val all by vm.playlists.collectAsStateWithLifecycle()
     val recent by vm.recentIds.collectAsStateWithLifecycle()
-    val playlists = remember(all, recent) { recentFirst(all, recent) { it.id } }
+    // A family playlist the listener may only listen to takes no songs.
+    val playlists = remember(all, recent) { recentFirst(all.filterNot { it.family && !it.familyMayAdd }, recent) { it.id } }
     val holdings by remember(trackIds) { vm.holdings(trackIds) }.collectAsStateWithLifecycle(null)
     var asking by remember { mutableStateOf<Pair<PlaylistSummary, AddPlan>?>(null) }
     var naming by remember { mutableStateOf(false) }
@@ -450,7 +451,7 @@ private fun PickLine(playlist: PlaylistSummary, onClick: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Text(playlist.name, style = OctoType.bodySmall, color = OctoColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(songs(playlist.songCount), style = OctoType.caption, color = OctoColors.TextMuted, maxLines = 1)
+                Text(if (playlist.family) "By Family · ${songs(playlist.songCount)}" else songs(playlist.songCount), style = OctoType.caption, color = OctoColors.TextMuted, maxLines = 1)
                 if (playlist.onServer) CloudMark("On your server")
             }
         }

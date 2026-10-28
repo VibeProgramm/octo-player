@@ -144,8 +144,9 @@ private fun PlaylistMenu(target: CollectionTarget.Playlist, state: CollectionMen
     val pinned by vm.pinned.collectAsStateWithLifecycle()
     val shown = playlist ?: return
     val pin = PinKey(PinKind.Playlist, target.id)
-    val manager = !shown.family || vm.managesFamily()
-    val actions = playlistActions(empty = shown.songCount == 0, pin = pinSpot(pinned, pin), renames = manager, deletes = manager)
+    val renames = !shown.family || shown.familyMayRename
+    val deletes = !shown.family || shown.familyMayDelete
+    val actions = playlistActions(empty = shown.songCount == 0, pin = pinSpot(pinned, pin), renames = renames, deletes = deletes)
     CollectionActionsPage(
         shown.name,
         songs(shown.songCount),

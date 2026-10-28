@@ -150,7 +150,8 @@ private fun SongActionsPage(
     // The playlist added to last, while it is still there.
     val playlists by sheets.playlists.collectAsStateWithLifecycle()
     val recent by sheets.recentIds.collectAsStateWithLifecycle()
-    val last = recent.firstOrNull()?.let { id -> playlists.firstOrNull { it.id == id } }
+    // A family playlist the listener may only listen to is never the quick add.
+    val last = recent.firstOrNull()?.let { id -> playlists.firstOrNull { it.id == id && (!it.family || it.familyMayAdd) } }
     val context = state.lastContext
     val liked by vm.liked.collectAsStateWithLifecycle()
     val downloads by vm.downloadStates.collectAsStateWithLifecycle()

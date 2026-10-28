@@ -35,7 +35,6 @@ import app.winters.octo.catalog.isFind
 import app.winters.octo.catalog.mosaicCovers
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.elevation3
-import app.winters.octo.family.FamilyHub
 import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.playback.PlaylistStore
 import app.winters.octo.playlists.PlaylistSync
@@ -78,7 +77,6 @@ class PlaylistViewModel @AssistedInject constructor(
     private val playback: PlaybackConnection,
     private val feedback: Feedback,
     sync: PlaylistSync,
-    private val family: FamilyHub,
 ) : ViewModel() {
     // Null until first read.
     val page: StateFlow<PlaylistPage?> =
@@ -93,13 +91,9 @@ class PlaylistViewModel @AssistedInject constructor(
     val serverAvailable: StateFlow<Boolean> =
         sync.available.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    // Whether the listener manages the family: only a manager renames or
-    // deletes a family playlist from the phone.
-    fun managesFamily(): Boolean = family.me?.abilities?.manageFamily == true
-
     // Whether songs can be taken out of this playlist here: not from a family
-    // playlist unless the listener is known not to hear only clean songs.
-    fun takesOut(playlist: PlaylistEntity): Boolean = !playlist.family || family.me?.abilities?.cleanOnly == false
+    // playlist unless the last sync found the listener may.
+    fun takesOut(playlist: PlaylistEntity): Boolean = !playlist.family || playlist.familyMayRemove
 
     private fun ids() = page.value?.tracks.orEmpty().map { it.track.id }
 
@@ -206,14 +200,15 @@ fun PlaylistScreen(
                                         canDownload = canDownload,
                                         keep = tracks.map { it.track },
                                         family = playlist.family,
-                                        canRename = !playlist.family || vm.managesFamily(),
-                                        canDelete = !playlist.family || vm.managesFamily(),
+                                        canRename = !playlist.family || playlist.familyMayRename,
+                                        canDelete = !playlist.family || playlist.familyMayDelete,
                                     ),
                                 )
                             },
                             // How far Keep downloaded has got, and the songs the
                             // server's copy lacks, join the size and length.
                             facts = listOfNotNull(
+                                if (playlist.family) "By Family" else null,
                                 keepPlaylistProgress(playlist.id, tracks.map { it.track }),
                                 if (playlist.sourceId != null && phoneOnly > 0) phoneOnlyNote(phoneOnly) else null,
                             ),
