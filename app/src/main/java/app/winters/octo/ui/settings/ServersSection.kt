@@ -1,5 +1,6 @@
 package app.winters.octo.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,7 +33,6 @@ import androidx.navigation3.runtime.NavKey
 import app.winters.octo.data.SessionState
 import app.winters.octo.data.StoredServer
 import app.winters.octo.design.GlassPopup
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
@@ -157,7 +157,7 @@ private fun ServerRow(
 ) {
     val sheet = LocalChoiceSheet.current
     Box(Modifier.fillMaxWidth().semantics { selected = inUse }) {
-        if (inUse) GlazeSelected(Modifier.matchParentSize().padding(horizontal = 6.dp, vertical = 4.dp), shape = PillShape)
+        if (inUse) Box(Modifier.matchParentSize().padding(horizontal = 6.dp, vertical = 4.dp).background(OctoColors.AccentSelected, PillShape))
         RowFrame(searchEntry, minHeight = 64.dp) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

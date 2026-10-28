@@ -38,14 +38,12 @@ import app.winters.octo.design.OctoType
 import app.winters.octo.server.ServerControls
 import app.winters.octo.server.sharingUnavailable
 import app.winters.octo.subsonic.Share
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.LoadState
 import app.winters.octo.ui.common.LocalHaze
 import app.winters.octo.ui.common.PopupQuestion
 import app.winters.octo.ui.common.rememberLast
 import app.winters.octo.ui.common.rememberOpenedBeside
-import app.winters.octo.ui.common.ScreenTitle
 import app.winters.octo.ui.common.screenPadding
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -111,8 +109,8 @@ fun SharesScreen(onBack: () -> Unit, vm: SharesViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val now = System.currentTimeMillis()
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-            item(key = "title") { ScreenTitle("Shared links") }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
+            item(key = "title") { PageHeader("Shared links", onBack) }
             vm.problem?.let { item(key = "problem") { Note(it, OctoColors.Error) } }
             when (val state = vm.shares) {
                 LoadState.Loading -> item(key = "loading") { Spinner(Modifier.padding(top = 24.dp)) }
@@ -137,7 +135,6 @@ fun SharesScreen(onBack: () -> Unit, vm: SharesViewModel = hiltViewModel()) {
                 }
             }
         }
-        BackButton(onBack)
         val deleting = vm.deleting != null
         GlassPopup(
             visible = deleting,

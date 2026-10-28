@@ -30,7 +30,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
@@ -172,7 +171,7 @@ private fun DeviceRow(@DrawableRes icon: Int, label: String, selected: Boolean, 
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
         contentAlignment = Alignment.CenterStart,
     ) {
-        if (selected) GlazeSelected(Modifier.matchParentSize(), shape = RowShape)
+        if (selected) Box(Modifier.matchParentSize().background(OctoColors.AccentSelected, RowShape))
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,

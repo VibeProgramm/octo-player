@@ -2,6 +2,7 @@ package app.winters.octo.ui.imports
 
 import android.content.Context
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -46,21 +47,24 @@ import androidx.lifecycle.viewModelScope
 import app.winters.octo.data.SessionRepository
 import app.winters.octo.data.SessionState
 import app.winters.octo.data.accountId
-import app.winters.octo.design.AccentButton
 import app.winters.octo.design.ButtonSize
 import app.winters.octo.design.GlassInput
+import app.winters.octo.design.GlassPopup
 import app.winters.octo.design.GlazeButton
+import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoColors
-import app.winters.octo.design.OctoSwitch
 import app.winters.octo.design.OctoType
 import app.winters.octo.subsonic.ImportListSummary
 import app.winters.octo.subsonic.ImportOverview
 import app.winters.octo.subsonic.ImportTrack
 import app.winters.octo.subsonic.ImportTrackState
 import app.winters.octo.subsonic.TrickleState
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
-import app.winters.octo.ui.common.ScreenTitle
+import app.winters.octo.ui.common.HeaderMore
+import app.winters.octo.ui.common.LocalHaze
+import app.winters.octo.ui.common.MoreItem
+import app.winters.octo.ui.common.PageHeader
+import app.winters.octo.ui.common.PopupQuestion
+import app.winters.octo.ui.common.rememberOpenedBeside
 import app.winters.octo.ui.common.SectionTitle
 import app.winters.octo.ui.common.screenPadding
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -125,7 +129,8 @@ internal fun openInBrowser(context: Context, url: String) {
 // TuneMyMusic saves, a shared file, a pasted list or a public link; see
 // what the library has of each list, keep one as a playlist, fetch what it
 // is missing, and follow the trickle. The server does the work; this shows
-// what it says.
+// what it says. A list opened takes the page over, its name the title and
+// Back the way to the rest.
 @Composable
 fun ImportScreen(onBack: () -> Unit, owner: ImportViewModel = hiltViewModel()) {
     val context = LocalContext.current
@@ -150,29 +155,33 @@ fun ImportScreen(onBack: () -> Unit, owner: ImportViewModel = hiltViewModel()) {
             null -> Unit
         }
     }
+    val opened = vm.overview?.lists?.firstOrNull { it.id == vm.openId }
+    BackHandler(enabled = opened != null) { vm.close() }
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(extraTop = DetailTopGap)) {
-            item(key = "title") { ScreenTitle(IMPORT) }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding()) {
             val overview = vm.overview
-            if (overview == null) {
-                item(key = "waiting") { Line(vm.problem ?: "Asking the server about your lists.") }
+            if (opened != null) {
+                openedList(vm, opened)
             } else {
-                overview.libraryProblem?.let { item(key = "library") { Line(it, OctoColors.SignalOrange) } }
-                val services = vm.services
-                if (services != null) {
-                    getMyMusic(vm, services, pickFile = pickFile, paste = { pasting = true })
-                    vm.said?.let { item(key = "said") { Line(it, OctoColors.TextSecondary) } }
-                    link(vm)
+                item(key = "title") { PageHeader(IMPORT, onBack) }
+                if (overview == null) {
+                    item(key = "waiting") { Line(vm.problem ?: "Asking the server about your lists.") }
                 } else {
-                    link(vm)
-                    vm.said?.let { item(key = "said") { Line(it, OctoColors.TextSecondary) } }
+                    overview.libraryProblem?.let { item(key = "library") { Line(it, OctoColors.SignalOrange) } }
+                    val services = vm.services
+                    if (services != null) {
+                        getMyMusic(vm, services, pickFile = pickFile, paste = { pasting = true })
+                        vm.said?.let { item(key = "said") { Line(it, OctoColors.TextSecondary) } }
+                        link(vm)
+                    } else {
+                        link(vm)
+                        vm.said?.let { item(key = "said") { Line(it, OctoColors.TextSecondary) } }
+                    }
+                    lists(vm, overview)
+                    trickle(vm, overview)
                 }
-                val opened = overview.lists.firstOrNull { it.id == vm.openId }
-                if (opened != null) openedList(vm, opened) else lists(vm, overview)
-                trickle(vm, overview)
             }
         }
-        BackButton(onBack)
         PasteSheet(pasting, onDismiss = { pasting = false }) { text, name ->
             pasting = false
             vm.sendText(text, name)
@@ -226,47 +235,58 @@ private fun LazyListScope.lists(vm: ImportModel, overview: ImportOverview) {
     items(overview.lists, key = { "list:${it.id}" }) { list -> ListRow(vm, list) }
 }
 
+// One list, compact: its name, how much of it the library has and where it
+// came from, a meter, and any note the server has on it. A tap opens it;
+// its menu holds the rest: keeping it as a playlist, getting what it is
+// missing, reading it again and removing it, which asks first.
 @Composable
 private fun ListRow(vm: ImportModel, list: ImportListSummary) {
-    // Remove asks once more before the list goes, as Remove all does on
-    // Downloads.
     var confirming by remember(list.id) { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { vm.open(list.id) }) {
+    Row(
+        Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "Open") { vm.open(list.id) }.padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(list.name, style = OctoType.body, color = OctoColors.TextPrimary, maxLines = 2)
-            Text(list.originLine(), style = OctoType.caption, color = OctoColors.TextMuted)
-            Text(list.countsLine(), style = OctoType.caption, color = OctoColors.TextSecondary)
+            Text("${list.countsLine()} · ${list.originLine()}", style = OctoType.caption, color = OctoColors.TextMuted)
+            Meter(list.fraction)
+            list.partial?.let { Text(it, style = OctoType.caption, color = OctoColors.TextMuted) }
+            list.playlistNote?.let { Text(it, style = OctoType.caption, color = OctoColors.TextMuted) }
         }
-        Meter(list.fraction)
-        list.partial?.let { Text(it, style = OctoType.caption, color = OctoColors.TextMuted) }
-        list.playlistNote?.let { Text(it, style = OctoType.caption, color = OctoColors.TextMuted) }
-        SwitchLine(KEEP_AS_PLAYLIST, list.keepPlaylist, !vm.working) { vm.keepPlaylist(list.id, it) }
-        SwitchLine(GET_MISSING_SONGS, list.getMissing, !vm.working) { vm.getMissing(list.id, it) }
-        if (confirming) {
-            Text(REMOVE_LIST, style = OctoType.bodySmall, color = OctoColors.TextPrimary, modifier = Modifier.padding(top = 4.dp))
-            Text(list.removeLine(), style = OctoType.caption, color = OctoColors.TextSecondary)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AccentButton("Remove", onClick = {
-                    confirming = false
-                    vm.remove(list.id)
-                }, size = ButtonSize.Small, enabled = !vm.working)
-                GlazeButton("Cancel", { confirming = false }, size = ButtonSize.Small)
-            }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlazeButton("Open", { vm.open(list.id) }, size = ButtonSize.Small)
-                if (list.readsAgain) GlazeButton("Read again", { vm.readList(list.id) }, size = ButtonSize.Small, enabled = !vm.working)
-                GlazeButton("Remove", { confirming = true }, size = ButtonSize.Small, enabled = !vm.working)
-            }
-        }
+        HeaderMore(listMenu(vm, list) { confirming = true }, quiet = true, title = "More for ${list.name}")
+    }
+    GlassPopup(
+        visible = confirming,
+        anchor = rememberOpenedBeside(confirming),
+        onDismiss = { confirming = false },
+        backdrop = LocalHaze.current,
+        title = REMOVE_LIST,
+    ) {
+        PopupQuestion(
+            REMOVE_LIST,
+            list.removeLine(),
+            "Remove",
+            onConfirm = {
+                confirming = false
+                vm.remove(list.id)
+            },
+            onCancel = { confirming = false },
+        )
     }
 }
 
-@Composable
-private fun SwitchLine(text: String, on: Boolean, enabled: Boolean, change: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, style = OctoType.bodySmall, color = OctoColors.TextSecondary, modifier = Modifier.weight(1f))
-        OctoSwitch(on, change, enabled = enabled)
+// What a list's menu offers, in order.
+enum class ListMenu { Open, KeepAsPlaylist, GetMissing, ReadAgain, Remove }
+
+fun listMenu(readsAgain: Boolean): List<ListMenu> = ListMenu.entries.filter { it != ListMenu.ReadAgain || readsAgain }
+
+private fun listMenu(vm: ImportModel, list: ImportListSummary, onRemove: () -> Unit): List<MoreItem> = listMenu(list.readsAgain).map { entry ->
+    when (entry) {
+        ListMenu.Open -> MoreItem("Open", OctoIcons.Playlists, opensPage = true) { vm.open(list.id) }
+        ListMenu.KeepAsPlaylist -> MoreItem(KEEP_AS_PLAYLIST, OctoIcons.AddToPlaylist, checked = list.keepPlaylist, enabled = !vm.working) { vm.keepPlaylist(list.id, !list.keepPlaylist) }
+        ListMenu.GetMissing -> MoreItem(GET_MISSING_SONGS, OctoIcons.AddToLibrary, checked = list.getMissing, enabled = !vm.working) { vm.getMissing(list.id, !list.getMissing) }
+        ListMenu.ReadAgain -> MoreItem("Read again", OctoIcons.Sync, enabled = !vm.working) { vm.readList(list.id) }
+        ListMenu.Remove -> MoreItem("Remove", OctoIcons.Delete, destructive = true, opensPage = true, enabled = !vm.working, onClick = onRemove)
     }
 }
 
@@ -277,31 +297,32 @@ private fun Meter(fraction: Float) {
     }
 }
 
+// An opened list, in the page's place: its name as the title, a way to get
+// what it is missing now on the control line, one line on how much the
+// library has of it and where it came from, then its songs, each with where
+// it stands. Back closes it.
 private fun LazyListScope.openedList(vm: ImportModel, list: ImportListSummary) {
-    item(key = "open:title") {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(list.name, style = OctoType.section, color = OctoColors.TextPrimary)
-            Text("${list.countsLine()}. ${list.originLine()}", style = OctoType.caption, color = OctoColors.TextMuted)
-            GlazeButton("Back to your lists", vm::close, size = ButtonSize.Small)
-        }
-    }
     val detail = vm.detail?.takeIf { it.list.id == list.id }
+    val askable = detail?.tracks.orEmpty().filter { it.stage.askable }
+    item(key = "open:title") {
+        PageHeader(
+            list.name,
+            onBack = vm::close,
+            actions = if (askable.isEmpty() || list.getMissing) null else ({
+                GlazeButton(
+                    getNowLabel(askable.size),
+                    { vm.getSongs(list.id, askable.map { it.key }) },
+                    size = ButtonSize.Small,
+                    enabled = !vm.working,
+                )
+            }),
+        )
+    }
+    item(key = "open:origin") { Line("${list.countsLine()}. ${list.originLine()}") }
+    vm.said?.let { item(key = "open:said") { Line(it, OctoColors.TextSecondary) } }
     if (detail == null) {
         item(key = "open:reading") { Line("Reading the list…") }
         return
-    }
-    val askable = detail.tracks.filter { it.stage.askable }
-    if (askable.isNotEmpty() && !list.getMissing) {
-        item(key = "open:get") {
-            Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
-                GlazeButton(
-                    "Get the ${askable.size} missing ${if (askable.size == 1) "song" else "songs"} now",
-                    { vm.getSongs(list.id, askable.map { it.key }) },
-                    size = ButtonSize.Medium,
-                    enabled = !vm.working,
-                )
-            }
-        }
     }
     // One song may be on a list twice, so its place is part of its key.
     itemsIndexed(detail.tracks, key = { at, track -> "track:$at:${track.key}" }) { _, track -> TrackLine(track) }
@@ -320,6 +341,9 @@ private fun TrackLine(track: ImportTrack, action: (@Composable () -> Unit)? = nu
         action?.invoke()
     }
 }
+
+// The button that gets an opened list's missing songs now.
+fun getNowLabel(count: Int): String = if (count == 1) "Get 1 song" else "Get $count songs"
 
 private fun stateColor(state: ImportTrackState) = when (state) {
     ImportTrackState.Have, ImportTrackState.Done -> OctoColors.SignalGreen

@@ -202,22 +202,3 @@ fun KeptStationCard(station: LiveStation, onPlay: () -> Unit, onLongPress: () ->
     }
 }
 
-// One radius as a chip: the darker accent pill with a check while chosen, a
-// faint fill with quieter words while not.
-@Composable
-fun RadiusChip(text: String, chosen: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .heightIn(min = 36.dp)
-            .clip(CircleShape)
-            .background(if (chosen) OctoColors.AccentSelected else OctoColors.TextPrimary.copy(alpha = 0.07f))
-            .clickable(role = Role.RadioButton, onClick = onClick)
-            .semantics { selected = chosen }
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        if (chosen) Icon(painterResource(OctoIcons.Check), contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-        Text(text, style = OctoType.label, color = if (chosen) OctoColors.TextPrimary else OctoColors.TextSecondary, maxLines = 1)
-    }
-}

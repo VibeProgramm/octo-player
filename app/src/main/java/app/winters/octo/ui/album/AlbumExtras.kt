@@ -30,6 +30,7 @@ import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
 import app.winters.octo.ui.common.AlbumCard
 import app.winters.octo.ui.common.SectionTitle
+import app.winters.octo.ui.common.addMissingLabel
 import app.winters.octo.ui.nav.AlbumRoute
 import java.util.Locale
 
@@ -65,38 +66,33 @@ fun averageRatingSpoken(average: Double, locale: Locale = Locale.getDefault()): 
     return "Songs rated $stars ${if (stars == "1") "star" else "stars"} on average"
 }
 
-// A quiet line under the header: the genre, which opens that genre's page,
-// and the songs' average rating when any are rated.
-@Composable
-internal fun AlbumAbout(genre: String?, average: Double?, onGenre: (String) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (genre != null) {
-            Text(
-                genre,
-                style = OctoType.caption,
-                color = OctoColors.Accent,
-                modifier = Modifier
-                    .clickable(role = Role.Button, onClickLabel = "Open genre") { onGenre(genre) }
-                    .padding(vertical = 6.dp, horizontal = 4.dp),
-            )
-        }
-        if (average != null) {
-            val spoken = averageRatingSpoken(average)
-            Row(
-                Modifier.clearAndSetSemantics { contentDescription = spoken },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Icon(painterResource(OctoIcons.StarFilled), contentDescription = null, tint = OctoColors.TextMuted, modifier = Modifier.size(12.dp))
-                Text("${starsText(average)} average", style = OctoType.caption, color = OctoColors.TextMuted)
-            }
-        }
-    }
+// What an album's More menu holds, in order: sharing it, downloading it to
+// the phone, adding the songs the library lacks, showing only the
+// library's songs on this page, and going to its genre.
+enum class AlbumMore { Share, Download, AddMissing, OnlyMine, Genre }
+
+fun albumMore(share: Boolean, download: Boolean, missing: Boolean, offerOnlyMine: Boolean, genre: Boolean): List<AlbumMore> = buildList {
+    if (share) add(AlbumMore.Share)
+    if (download) add(AlbumMore.Download)
+    if (missing) add(AlbumMore.AddMissing)
+    if (missing && offerOnlyMine) add(AlbumMore.OnlyMine)
+    if (genre) add(AlbumMore.Genre)
 }
+
+// The add-missing line: its words, and whether it can be picked. Once every
+// missing song is on its way it opens the downloads to follow them, when
+// the server keeps that list.
+fun addMissingAction(askable: Int, follows: Boolean): Pair<String, Boolean> = when {
+    askable > 0 -> addMissingLabel(askable) to true
+    follows -> "Adding, show downloads" to true
+    else -> "Adding" to false
+}
+
+// The quiet facts under an album's title, after its artist: year, songs,
+// length, genre, the songs' average rating and how much of it the library
+// holds, each when known.
+fun albumFacts(year: Int?, songs: String, length: String?, genre: String?, average: Double?, libraryNote: String?): List<String> =
+    listOfNotNull(year?.toString(), songs, length, genre, average?.let { "Rated ${starsText(it)}" }, libraryNote)
 
 // The artist's other albums in a row, at the foot of the page.
 @Composable

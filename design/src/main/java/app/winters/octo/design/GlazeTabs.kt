@@ -24,7 +24,6 @@ import androidx.compose.ui.draw.innerShadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.layout.Layout
@@ -35,9 +34,6 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.roundToInt
-
-// The darker pill's shade.
-private val PillFill = Color.Black.copy(alpha = 0.72f)
 
 // How strongly a tab the selection passes over flashes.
 const val GearShiftTint = 0.22f
@@ -51,11 +47,11 @@ fun gearShiftTint(index: Int, pill: Float, selected: Int): Float {
     return GearShiftTint * (1f - abs(pill - index)).coerceIn(0f, 1f)
 }
 
-// A few choices in one glaze tray, the chosen one in the darker pill that
-// glides between them. The tray is recessed, with a hairline of accent at
-// its edge; the pill is lit faintly in the accent from the side it came
-// from, and the tabs it passes on its way flash a little accent, like
-// gears going by. With `fillWidth` the tabs share the width given;
+// A few choices in one glaze tray, the chosen one in a pill filled with the
+// accent that glides between them. The tray is recessed, with a hairline of
+// accent at its edge; the tabs the pill passes on its way flash a little
+// accent, like gears going by. The chosen tab's words belong in
+// OctoColors.OnAccent. With `fillWidth` the tabs share the width given;
 // without, each is as wide as the widest label.
 @Composable
 fun GlazeTabs(
@@ -74,10 +70,7 @@ fun GlazeTabs(
 ) {
     val motion = motionScale()
     val pill = remember { Animatable(selected.toFloat()) }
-    // Which way it last went: 1 to the end, -1 to the start.
-    var way by remember { mutableFloatStateOf(1f) }
     LaunchedEffect(selected) {
-        if (pill.value != selected.toFloat()) way = if (selected > pill.value) 1f else -1f
         if (motion.still) pill.snapTo(selected.toFloat()) else pill.animateTo(selected.toFloat(), octoTween(motion, OctoDuration.Neutral, OctoEasing.Smooth))
     }
     var cell by remember { mutableFloatStateOf(0f) }
@@ -125,19 +118,7 @@ fun GlazeTabs(
                     val at = pill.value
                     val corner = CornerRadius(size.height / 2f)
                     val left = at * cell
-                    drawRoundRect(PillFill, Offset(left, 0f), Size(cell, size.height), corner)
-                    // The accent light on the pill, from the side it came
-                    // from, stronger while it moves.
-                    val moving = (abs(at - selected) * 2f).coerceIn(0f, 1f)
-                    val lit = OctoColors.GlassAccent.copy(alpha = 0.10f + 0.12f * moving)
-                    val from = if (way > 0f) left else left + cell
-                    val to = if (way > 0f) left + cell * 0.7f else left + cell * 0.3f
-                    drawRoundRect(
-                        Brush.horizontalGradient(listOf(lit, Color.Transparent), startX = from, endX = to),
-                        Offset(left, 0f),
-                        Size(cell, size.height),
-                        corner,
-                    )
+                    drawRoundRect(OctoColors.Accent, Offset(left, 0f), Size(cell, size.height), corner)
                     // Gears going by.
                     for (index in 0 until count) {
                         val tint = if (pill.isRunning) gearShiftTint(index, at, selected) else 0f

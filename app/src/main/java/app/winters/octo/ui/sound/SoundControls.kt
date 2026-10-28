@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,12 +18,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,6 +50,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
@@ -58,9 +62,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.winters.octo.design.Glaze
 import app.winters.octo.design.GlazeLight
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.LineSlider
 import app.winters.octo.design.OctoColors
+import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -116,14 +120,20 @@ internal fun PresetBar(
                         .semantics { this.selected = chosen },
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (chosen) GlazeSelected(Modifier.matchParentSize())
-                    Text(
-                        choice.name,
-                        style = OctoType.label,
-                        color = if (chosen) OctoColors.Accent else OctoColors.TextPrimary,
-                        maxLines = 1,
-                        modifier = Modifier.padding(horizontal = 14.dp),
-                    )
+                    if (chosen) Box(Modifier.matchParentSize().background(OctoColors.Accent, CircleShape))
+                    Row(
+                        Modifier.padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        if (chosen) Icon(painterResource(OctoIcons.Check), contentDescription = null, tint = OctoColors.OnAccent, modifier = Modifier.size(14.dp))
+                        Text(
+                            choice.name,
+                            style = OctoType.label,
+                            color = if (chosen) OctoColors.OnAccent else OctoColors.TextPrimary,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }

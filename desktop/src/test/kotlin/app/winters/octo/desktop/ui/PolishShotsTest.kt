@@ -169,6 +169,12 @@ class PolishShotsTest {
             "playlist-big" to { _ -> go(Page.Playlist(PolishData.BIG_PLAYLIST)) },
             "playlist" to { _ -> go(Page.Playlist(PolishData.SMALL_PLAYLIST)) },
             "livelist" to { _ -> go(Page.LiveList(rig.liveList.id)) },
+            // Its menu of how many songs it keeps, the choice in use marked.
+            "livelist-limit" to { scene ->
+                go(Page.LiveList(rig.liveList.id, editing = true))
+                rig.shot(scene, null, 900)
+                rig.clickText(scene, "All songs")
+            },
             "health" to { _ -> go(Page.LibraryHealth) },
             "search" to { _ ->
                 SwingUtilities.invokeAndWait {

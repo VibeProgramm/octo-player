@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
@@ -163,11 +164,34 @@ fun PageTitle(text: String, modifier: Modifier = Modifier, detail: String? = nul
     }
 }
 
-// A section's title, whole, and its action at the end of the line, or
-// under the title when the two do not fit side by side.
+// A page's control line, under its title and above its content: the
+// page's own control first (a country or sort button), then its filters
+// (chips that scroll sideways, given the room left), then its actions
+// (Play, Shuffle, More) at the end of the line, all on one line.
 @Composable
-fun SectionTitle(text: String, modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
-    val spaced = modifier.fillMaxWidth().padding(top = 22.dp, bottom = 10.dp)
+fun ControlLine(
+    modifier: Modifier = Modifier,
+    control: (@Composable () -> Unit)? = null,
+    filters: (@Composable () -> Unit)? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+) {
+    Row(
+        modifier.fillMaxWidth().padding(bottom = Space.L),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Space.M),
+    ) {
+        control?.invoke()
+        Box(Modifier.weight(1f)) { filters?.invoke() }
+        if (actions != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S), content = actions)
+    }
+}
+
+// A section's title, whole, and its action at the end of the line, or
+// under the title when the two do not fit side by side. `bottom` is the
+// room under it, less when a line about the section follows.
+@Composable
+fun SectionTitle(text: String, modifier: Modifier = Modifier, action: String? = null, bottom: Dp = 10.dp, onAction: () -> Unit = {}) {
+    val spaced = modifier.fillMaxWidth().padding(top = 22.dp, bottom = bottom)
     if (action == null) {
         WholeTxt(text, OctoType.headline, modifier = spaced)
     } else {

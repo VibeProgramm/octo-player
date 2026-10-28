@@ -128,4 +128,113 @@ class TopSongsTest {
         assertEquals("Hip-Hop/Rap", charts.chart[2].label)
         assertEquals("genre", charts.chart[2].kind)
     }
+
+    private val v3Charts = """"charts":{"country":"jp","setting":"br","pinned":["jp","kr"],"countries":["br","jp","kr","us"],"maxPinned":3,"serverCountry":"us","chart":[
+        {"id":"34","name":"Popular right now","label":"Top songs","kind":"overall","playlist":"og9","on":true}
+    ]}"""
+
+    @Test
+    fun aCountryIsSentOnBothChartCalls() = runTest {
+        answer(ok(v3Charts))
+        answer(ok(""""topSongs":{"artist":null,"source":"apple","chart":"34","country":"jp","entry":[]}"""))
+
+        client().charts(country = "jp")
+        client().topChart(count = 50, chart = "34", country = "jp")
+
+        val charts = server.takeRequest().url
+        assertEquals("/rest/getCharts", charts.encodedPath)
+        assertEquals("jp", charts.queryParameter("country"))
+        val top = server.takeRequest().url
+        assertEquals("/rest/getTopChart", top.encodedPath)
+        assertEquals("jp", top.queryParameter("country"))
+        assertEquals("34", top.queryParameter("chart"))
+    }
+
+    @Test
+    fun withoutACountryNoneIsSent() = runTest {
+        answer(ok(v3Charts))
+        answer(ok(""""topSongs":{"artist":null,"source":"apple","entry":[]}"""))
+
+        client().charts()
+        client().topChart(50, "34")
+
+        assertNull(server.takeRequest().url.queryParameter("country"))
+        assertNull(server.takeRequest().url.queryParameter("country"))
+    }
+
+    @Test
+    fun theListenersOwnChoicesAreRead() = runTest {
+        answer(ok(v3Charts))
+
+        val charts = client().charts(country = "jp")
+
+        assertEquals("jp", charts.country)
+        assertEquals("br", charts.setting)
+        assertEquals(listOf("jp", "kr"), charts.pinned)
+        assertEquals(listOf("br", "jp", "kr", "us"), charts.countries)
+        assertEquals(3, charts.maxPinned)
+        assertEquals("us", charts.serverCountry)
+        assertEquals("og9", charts.chart.single().playlist)
+    }
+
+    @Test
+    fun anOlderAnswerReadsWithNoChoices() = runTest {
+        answer(ok(""""charts":{"country":"us","chart":[{"id":"34","name":"Popular right now","label":"Top songs","kind":"overall","on":true}]}"""))
+
+        val charts = client().charts()
+
+        assertNull(charts.setting)
+        assertTrue(charts.pinned.isEmpty())
+        assertTrue(charts.countries.isEmpty())
+        assertEquals(0, charts.maxPinned)
+        assertNull(charts.serverCountry)
+    }
+
+    @Test
+    fun savingTheCountrySendsItAndReadsTheCharts() = runTest {
+        answer(ok(v3Charts))
+
+        val charts = client().setChartCountry(CHART_COUNTRY_AUTO)
+
+        val request = server.takeRequest().url
+        assertEquals("/rest/setChartCountry", request.encodedPath)
+        assertEquals("auto", request.queryParameter("country"))
+        assertEquals("br", charts.setting)
+    }
+
+    @Test
+    fun pinningSendsOneCountryAndWhetherItIsPinned() = runTest {
+        answer(ok(v3Charts))
+        answer(ok(v3Charts))
+
+        client().pinChartCountry("jp", pinned = true)
+        client().pinChartCountry("kr", pinned = false)
+
+        val pin = server.takeRequest().url
+        assertEquals("/rest/pinChartCountry", pin.encodedPath)
+        assertEquals("jp", pin.queryParameter("country"))
+        assertEquals("true", pin.queryParameter("pinned"))
+        val unpin = server.takeRequest().url
+        assertEquals("kr", unpin.queryParameter("country"))
+        assertEquals("false", unpin.queryParameter("pinned"))
+    }
+
+    @Test
+    fun aSaveTheServerRefusedThrows() = runTest {
+        answer("""{"subsonic-response":{"status":"failed","version":"1.16.1","error":{"code":10,"message":"You can pin at most 3 countries."}}}""")
+
+        val refused = runCatching { client().pinChartCountry("de", pinned = true) }.exceptionOrNull()
+
+        assertTrue(refused is SubsonicException.Server)
+        assertEquals("You can pin at most 3 countries.", refused?.message)
+    }
+
+    @Test
+    fun aSaveAnsweredWithoutTheChartsThrows() = runTest {
+        answer(ok(""""x":1"""))
+
+        val missing = runCatching { client().setChartCountry("jp") }.exceptionOrNull()
+
+        assertTrue(missing is SubsonicException.Server)
+    }
 }

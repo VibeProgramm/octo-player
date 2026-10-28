@@ -13,6 +13,10 @@ import app.winters.octo.query.QueryRule
 
 // What the editor starts from: the saved list, a page's filters, or nothing
 // picked yet, newest first.
+// Whether leaving the editor would lose anything: the draft is not what it
+// started from. A new list's name and rules count as soon as they change.
+internal fun unsavedChanges(started: LiveListDraft, now: LiveListDraft): Boolean = started != now
+
 internal fun editorStart(existing: LiveList?, start: LibraryQuery?): LiveListDraft = when {
     existing != null -> LiveListDraft.of(existing)
     start != null -> LiveListDraft("", start)

@@ -42,14 +42,6 @@ sealed interface ImportState {
     data object Failed : ImportState
 }
 
-// The line under "New playlist" for making one from an M3U file.
-@Composable
-fun ImportPlaylistLine(onClick: () -> Unit) {
-    PlaylistLine("Import a playlist file", "M3U or M3U8", onClick) {
-        IconTile(painterResource(OctoIcons.Folder), OctoColors.BackgroundTertiary, 56.dp)
-    }
-}
-
 // How the last import went, quietly, with the lines it could not find
 // behind a tap.
 @Composable

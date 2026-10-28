@@ -557,7 +557,7 @@ private fun CurveRow(app: AppState, curve: FadeCurve, smart: Boolean, onPick: (F
                                 close()
                             },
                             leading = { CurvePreview(option) },
-                            checked = option == curve,
+                            selected = option == curve,
                         )
                     }
                 }

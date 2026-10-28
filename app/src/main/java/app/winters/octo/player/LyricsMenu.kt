@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
@@ -50,7 +51,6 @@ import androidx.lifecycle.viewModelScope
 import app.winters.octo.catalog.matchKey
 import app.winters.octo.design.GlassInput
 import app.winters.octo.design.GlassPopup
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.PopupPager
 import app.winters.octo.design.rememberPopupPages
 import app.winters.octo.design.OctoColors
@@ -80,6 +80,7 @@ import app.winters.octo.playback.NowPlaying
 import app.winters.octo.sound.AudioOutput
 import app.winters.octo.sound.SoundEngine
 import app.winters.octo.ui.common.Choice
+import app.winters.octo.ui.common.QuietButton
 import app.winters.octo.ui.common.GlassMenuBack
 import app.winters.octo.ui.common.GlassMenuOptions
 import app.winters.octo.ui.common.GlassMenuTitle
@@ -384,9 +385,10 @@ private val LineColour = OctoColors.TextPrimary.copy(alpha = 0.08f)
 // filed wrong, then the lyrics showing now in the darker pill, then every
 // other copy found. Each says where it is from, what its source calls it,
 // and its first lines. Picking one uses it for this song from now on and
-// closes the sheet. With a server that keeps lyrics choices for every app,
-// the list and the search come from the server, and a pick from it holds
-// for every app, which one quiet line says.
+// closes the sheet; Done on the top line closes it as it is. With a server
+// that keeps lyrics choices for every app, the list and the search come
+// from the server, and a pick from it holds for every app, which one quiet
+// line at the foot says.
 @Composable
 fun ColumnScope.LyricsChooser(now: NowPlaying, state: LyricsState, onDone: () -> Unit, model: LyricsMenuViewModel = hiltViewModel()) {
     val trackId = now.trackId ?: return
@@ -409,22 +411,18 @@ fun ColumnScope.LyricsChooser(now: NowPlaying, state: LyricsState, onDone: () ->
     val onServer = serverChoice != null
     val current = showingPick(serverChoice, showing)
 
-    Text("Choose lyrics", style = OctoType.section, color = OctoColors.TextPrimary, modifier = side.padding(horizontal = 8.dp))
-    Text(
-        listOf(now.title, now.artist).filterNot { it.isNullOrBlank() }.joinToString(" by "),
-        style = OctoType.caption,
-        color = OctoColors.TextMuted,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = side.padding(start = 8.dp, end = 8.dp, bottom = if (onServer) 2.dp else 12.dp),
-    )
-    if (onServer) {
+    // One line: what this is, the song in muted words, and Done.
+    Row(side.padding(start = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Choose lyrics", style = OctoType.section, color = OctoColors.TextPrimary, maxLines = 1, modifier = Modifier.semantics { heading() })
         Text(
-            "Lyrics picked from your server show on all your devices and apps.",
+            listOf(now.title, now.artist).filterNot { it.isNullOrBlank() }.joinToString(" by "),
             style = OctoType.caption,
             color = OctoColors.TextMuted,
-            modifier = side.padding(start = 8.dp, end = 8.dp, bottom = 12.dp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
+        QuietButton("Done", onDone)
     }
 
     val onlineAllowed = ready?.search?.onlineAllowed ?: true
@@ -490,8 +488,12 @@ fun ColumnScope.LyricsChooser(now: NowPlaying, state: LyricsState, onDone: () ->
             missedLine(result.search.missed)?.let { QuietLine(it, side) }
         }
     }
+    if (onServer) QuietLine(SERVER_LYRICS_NOTE, side.padding(top = 8.dp))
     Spacer(Modifier.height(8.dp))
 }
+
+// The note at the chooser's foot while its lyrics come from the server.
+const val SERVER_LYRICS_NOTE = "Lyrics picked from your server show on all your devices and apps."
 
 // The lyrics chooser in a large glass panel in the middle of the screen,
 // since it holds a search and previews. It rises above the keyboard while
@@ -545,7 +547,7 @@ private fun CandidateRow(
             .semantics { if (showing) stateDescription = "Showing now" },
         contentAlignment = Alignment.CenterStart,
     ) {
-        if (showing) GlazeSelected(Modifier.matchParentSize(), shape = RowShape)
+        if (showing) Box(Modifier.matchParentSize().background(OctoColors.AccentSelected, RowShape))
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,

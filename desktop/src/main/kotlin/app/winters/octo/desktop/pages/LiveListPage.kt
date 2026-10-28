@@ -403,12 +403,12 @@ private fun OrderButton(app: AppState, sort: QuerySort?, onPick: (QuerySort?) ->
             MenuTitle("Order")
             LiveListSorts.forEach { option ->
                 val picked = order?.by == option
-                MenuRow(option.label, { onPick(QuerySort.of(order?.takeIf { picked } ?: SortOrder(option, option.startsDescending))); close() }, checked = picked)
+                MenuRow(option.label, { onPick(QuerySort.of(order?.takeIf { picked } ?: SortOrder(option, option.startsDescending))); close() }, selected = picked)
             }
             if (order != null) {
                 MenuSeparator()
                 directionChoices(order.by).forEach { choice ->
-                    MenuRow(choice.label, { onPick(QuerySort.of(order.copy(descending = choice.descending))); close() }, checked = choice.descending == order.descending)
+                    MenuRow(choice.label, { onPick(QuerySort.of(order.copy(descending = choice.descending))); close() }, selected = choice.descending == order.descending)
                 }
             }
         }
@@ -423,7 +423,7 @@ private fun LimitButton(app: AppState, limit: Int?, onPick: (Int?) -> Unit) {
         app.popups.showUnder(anchor) { close ->
             MenuTitle("How many songs")
             Txt("Keep it short for a list like a top 50.", DesktopType.meta, OctoColors.TextMuted, Modifier.padding(horizontal = Space.Xl).padding(bottom = Space.S))
-            LiveListLimits.forEach { choice -> MenuRow(limitWords(choice), { onPick(choice); close() }, checked = choice == limit) }
+            LiveListLimits.forEach { choice -> MenuRow(limitWords(choice), { onPick(choice); close() }, selected = choice == limit) }
         }
     }, Modifier.onGloballyPositioned { anchor = it.windowRect() }, icon = OctoIcons.Songs)
 }

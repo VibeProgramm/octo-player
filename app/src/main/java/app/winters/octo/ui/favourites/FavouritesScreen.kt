@@ -1,13 +1,14 @@
 package app.winters.octo.ui.favourites
 
+import app.winters.octo.ui.common.sortItem
+import app.winters.octo.ui.common.playShuffleItems
+import app.winters.octo.ui.common.LineSegments
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -57,24 +58,18 @@ import app.winters.octo.sort.SortedLibrary
 import app.winters.octo.sort.sortFavourites
 import app.winters.octo.ui.common.AlbumCard
 import app.winters.octo.ui.common.ArtistRow
-import app.winters.octo.ui.common.BackButton
-import app.winters.octo.ui.common.DetailTopGap
 import app.winters.octo.ui.common.Feedback
 import app.winters.octo.ui.common.LocalSongSelection
 import app.winters.octo.ui.common.Pickable
-import app.winters.octo.ui.common.PlayRow
+import app.winters.octo.ui.common.PageHeader
 import app.winters.octo.ui.common.Refreshable
 import app.winters.octo.ui.common.RemoveBackground
-import app.winters.octo.ui.common.Segmented
 import app.winters.octo.ui.common.SelectableSongs
 import app.winters.octo.ui.common.SongRow
-import app.winters.octo.ui.common.SortButton
-import app.winters.octo.ui.common.TitleWithSort
 import app.winters.octo.ui.common.TopOnNewOrder
-import app.winters.octo.ui.common.songs
 import app.winters.octo.ui.nav.AlbumRoute
 import app.winters.octo.ui.nav.ArtistRoute
-import app.winters.octo.ui.playlist.KeepLikedDownloaded
+import app.winters.octo.ui.playlist.keepLikedItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -131,13 +126,10 @@ class FavouritesViewModel @Inject constructor(
     }
 }
 
-private val Segments = FavouriteSegment.entries.map { it.label }
-
 private val RowShape = RoundedCornerShape(12.dp)
 
-// Where a new song order scrolls back to: the first song, after the play
-// line and the keep-downloaded line.
-private const val FIRST_SONG = 2
+// Where a new song order scrolls back to: the first song.
+private const val FIRST_SONG = 0
 
 // How to heart a song, shown while there are none.
 private const val SONGS_EMPTY =
@@ -171,43 +163,45 @@ fun FavouritesScreen(
     val segment = chosen
 
     Refreshable {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Spacer(Modifier.height(DetailTopGap))
-            TitleWithSort("Favorites") {
-                when (segment) {
-                    null -> Unit
-                    FavouriteSegment.Songs -> songs?.let { SortButton(SortList.Liked, it.order, vm::setSongOrder) }
-                    else -> (albums ?: artists)?.let { SortButton(SortList.Favourites, it.order, vm::setOrder) }
-                }
-            }
-            if (segment == null) {
-                Loading()
-            } else {
-                Segmented(
-                    Segments,
-                    segment.ordinal,
-                    { chosen = FavouriteSegment.entries[it] },
-                    Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp),
-                )
-                when (segment) {
-                    FavouriteSegment.Songs -> FavouriteSongs(songs, vm::playSongs, vm::shuffleSongs, vm::unlike)
-                    FavouriteSegment.Albums -> FavouriteAlbums(albums, onOpen)
-                    FavouriteSegment.Artists -> FavouriteArtists(artists, onOpen)
-                }
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
+            val liked = songs?.items.orEmpty()
+            val keep = keepLikedItem(liked)
+            PageHeader(
+                "Favorites",
+                onBack,
+                count = segment?.let { favouriteCount(it, songs?.items?.size, albums?.items?.size, artists?.items?.size) },
+                // The order, the three parts as segments, and on Liked songs
+                // Play, Shuffle and More with Keep downloaded. On a narrow
+                // phone the sort moves into More first.
+                lead = listOfNotNull(
+                    when (segment) {
+                        null -> null
+                        FavouriteSegment.Songs -> songs?.let { sortItem(SortList.Liked, it.order, vm::setSongOrder) }
+                        else -> (albums ?: artists)?.let { sortItem(SortList.Favourites, it.order, vm::setOrder) }
+                    },
+                ),
+                segments = segment?.let { part ->
+                    LineSegments(FavouriteSegment.entries.map { it.label }, part.ordinal, "Show") { chosen = FavouriteSegment.entries[it] }
+                },
+                tail = if (segment == FavouriteSegment.Songs && liked.isNotEmpty()) playShuffleItems({ vm.playSongs(0) }, vm::shuffleSongs) else emptyList(),
+                more = if (segment == FavouriteSegment.Songs) listOfNotNull(keep) else emptyList(),
+            )
+            when (segment) {
+                null -> Loading()
+                FavouriteSegment.Songs -> FavouriteSongs(songs, vm::playSongs, vm::unlike)
+                FavouriteSegment.Albums -> FavouriteAlbums(albums, onOpen)
+                FavouriteSegment.Artists -> FavouriteArtists(artists, onOpen)
             }
         }
-        BackButton(onBack)
     }
 }
 
-// Liked songs: play and shuffle, the keep-downloaded switch, then the songs
-// in their order. Swipe a song left to unlike it, with an Undo; long press
-// to pick several.
+// Liked songs in their order, under the header's Play and Shuffle. Swipe a
+// song left to unlike it, with an Undo; long press to pick several.
 @Composable
 private fun FavouriteSongs(
     list: Sorted<TrackEntity>?,
     onPlay: (Int) -> Unit,
-    onShuffle: () -> Unit,
     onUnlike: (String) -> Unit,
 ) {
     if (list == null) {
@@ -223,17 +217,6 @@ private fun FavouriteSongs(
     SelectableSongs(pickable) {
         val selecting = LocalSongSelection.current?.active == true
         LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(top = 4.dp, bottom = 140.dp)) {
-            item(key = "play") {
-                if (tracks.isNotEmpty()) {
-                    PlayRow(
-                        details = songs(tracks.size),
-                        onPlay = { onPlay(0) },
-                        onShuffle = onShuffle,
-                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
-                    )
-                }
-            }
-            item(key = "keep") { KeepLikedDownloaded(tracks) }
             if (rows.isEmpty()) {
                 item(key = "empty") { EmptyText(SONGS_EMPTY) }
             }

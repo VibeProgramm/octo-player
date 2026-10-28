@@ -62,7 +62,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -72,13 +71,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.winters.octo.design.FloatingGlaze
 import app.winters.octo.design.Glaze
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.GlowIcon
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
@@ -102,7 +99,8 @@ fun sortArrowTurn(descending: Boolean): Float = if (descending) 180f else 0f
 
 // The order a list is in, as a small glass capsule at its top: the sort
 // mark, what it goes by in white, and an arrow for which way it runs. A tap
-// pops the sort list up beside it.
+// pops the sort list up beside it. On a page header short of room it moves
+// into More (see sortItem).
 @Composable
 fun SortButton(list: SortList, order: SortOrder, onChange: (SortOrder) -> Unit, modifier: Modifier = Modifier) {
     val sheet = LocalChoiceSheet.current
@@ -175,40 +173,22 @@ fun SortBar(
     }
 }
 
-// A page's big title with its sort button at the end of the line, at the
-// page's 20dp edge. The title has more room under its words than over them,
-// so the button is lifted by the difference to sit level with the words.
-// The title is never shortened or broken inside a word: when it and the
-// buttons do not both fit whole on one line, the buttons go on a line of
-// their own under it, at the same edge.
+// A list's sort button as a control line item, the first to move into More
+// when the line is short of room. There it is "Sort: Date liked", its
+// direction under it, and opens the same sort list.
 @Composable
-fun TitleWithSort(title: String, modifier: Modifier = Modifier, sort: @Composable () -> Unit) {
-    Layout(
-        content = {
-            ScreenTitle(title)
-            Box(Modifier.padding(end = 20.dp, bottom = 8.dp)) { sort() }
-        },
-        modifier = modifier,
-    ) { (titleText, buttons), constraints ->
-        val width = constraints.maxWidth
-        val buttonsPlaced = buttons.measure(Constraints(maxWidth = width))
-        val titleWidth = titleText.maxIntrinsicWidth(Constraints.Infinity)
-        if (titleFitsBeside(titleWidth, buttonsPlaced.width, width)) {
-            val titlePlaced = titleText.measure(Constraints(maxWidth = width - buttonsPlaced.width))
-            val height = maxOf(titlePlaced.height, buttonsPlaced.height)
-            layout(width, height) {
-                titlePlaced.place(0, (height - titlePlaced.height) / 2)
-                buttonsPlaced.place(width - buttonsPlaced.width, (height - buttonsPlaced.height) / 2)
-            }
-        } else {
-            val titlePlaced = titleText.measure(Constraints(maxWidth = width))
-            layout(width, titlePlaced.height + buttonsPlaced.height) {
-                titlePlaced.place(0, 0)
-                buttonsPlaced.place(width - buttonsPlaced.width, titlePlaced.height)
-            }
-        }
-    }
+fun sortItem(list: SortList, order: SortOrder, onChange: (SortOrder) -> Unit, overflow: Int = 0): LineItem {
+    val sheet = LocalChoiceSheet.current
+    val direction = sortScale(order.by).label(order.descending)
+    return LineItem(
+        "sort",
+        overflow = overflow,
+        more = MoreItem(sortMoreLabel(order), OctoIcons.Sort, detail = direction) { sheet.show(SortRequest(list.options, order, onChange)) },
+    ) { _ -> SortButton(list, order, onChange) }
 }
+
+// What a sort button says in More: what the list goes by.
+fun sortMoreLabel(order: SortOrder): String = "Sort: ${order.by.label}"
 
 // Whether a page title, at its whole one-line width, fits beside its
 // buttons on a line `width` wide.
@@ -244,7 +224,7 @@ internal fun SortChoices(request: SortRequest, close: () -> Unit) {
 private val UnchosenTint = Color.White.copy(alpha = 0.45f)
 
 // The two directions side by side in one glaze, named for what they mean
-// here ("A to Z", "Newest"). The chosen one is the darker pill with white
+// here ("A to Z", "Newest"). The chosen one is the accent-tinted pill with white
 // words and its arrow lit; the other is muted, so which is on reads at once.
 @Composable
 private fun DirectionPair(option: SortOption, descending: Boolean, modifier: Modifier = Modifier, onPick: (Boolean) -> Unit) {
@@ -254,11 +234,12 @@ private fun DirectionPair(option: SortOption, descending: Boolean, modifier: Mod
         BoxWithConstraints(Modifier.fillMaxSize().padding(4.dp)) {
             val half = maxWidth / 2
             val x by animateDpAsState(half * selected, spring(dampingRatio = 0.8f, stiffness = 350f), label = "direction")
-            GlazeSelected(
+            Box(
                 Modifier
                     .offset { IntOffset(x.roundToPx(), 0) }
                     .width(half)
-                    .fillMaxHeight(),
+                    .fillMaxHeight()
+                    .background(OctoColors.AccentSelected, OptionShape),
             )
             Row(Modifier.fillMaxSize().selectableGroup()) {
                 choices.forEachIndexed { index, choice ->
@@ -303,9 +284,9 @@ private val OptionLine = OctoColors.TextPrimary.copy(alpha = 0.08f)
 private val OtherOptionTint = Color.White.copy(alpha = 0.7f)
 
 // What a list can be ordered by, one above the other with hairlines
-// between, as in the other glass menus. On the popup's dark film the darker
-// pill alone is faint, so the chosen option also has white words and a
-// white check, and the others are dimmed a little.
+// between, as in the other glass menus. The chosen option sits in the
+// accent-tinted pill with white words and a white check, and the others are
+// dimmed a little.
 @Composable
 private fun SortOptions(options: List<SortOption>, selected: Int, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
     val looks = remember(options.size, selected) { menuRowLooks(options.size, selected) }
@@ -330,7 +311,7 @@ private fun SortOptions(options: List<SortOption>, selected: Int, onPick: (Int) 
                     .selectable(selected = chosen, role = Role.RadioButton) { onPick(index) },
                 contentAlignment = Alignment.CenterStart,
             ) {
-                if (chosen) GlazeSelected(Modifier.matchParentSize(), shape = OptionShape)
+                if (chosen) Box(Modifier.matchParentSize().background(OctoColors.AccentSelected, OptionShape))
                 Row(
                     Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -430,7 +411,14 @@ private fun LetterHeading(letter: Char) {
 // A list this long, ordered by name, gets the letter rail.
 const val RAIL_MIN_ITEMS = 60
 
-private val RailWidth = 24.dp
+// Whether a list shows the letter rail: ordered by name (it has headings)
+// and long enough.
+fun railShows(byName: Boolean, count: Int): Boolean = byName && count >= RAIL_MIN_ITEMS
+
+// How wide the letter rail is. A list that shows it keeps this much room
+// at its end, so the rail never sits over a row's length or a cover.
+val LetterRailWidth = 24.dp
+private val RailWidth = LetterRailWidth
 private val BubbleSize = 64.dp
 
 // The letters of a long list ordered by name, down its right edge. Touching

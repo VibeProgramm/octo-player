@@ -41,7 +41,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.MenuRowHeight
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.menuRowPress
@@ -71,15 +70,17 @@ val MenuWidth = 288.dp
 
 // The options of a menu, one above the other with hairlines between, the
 // chosen one in the darker pill with a white check. `selected` below zero
-// means none is chosen, as when the menu asks for an action.
+// means none is chosen, as when the menu asks for an action; `pickable`
+// says the options are still choices then, as when a search has left the
+// chosen one out.
 @Composable
-fun GlassMenuOptions(options: List<Choice>, selected: Int, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun GlassMenuOptions(options: List<Choice>, selected: Int, onPick: (Int) -> Unit, modifier: Modifier = Modifier, pickable: Boolean = selected >= 0) {
     val looks = remember(options.size, selected) { menuRowLooks(options.size, selected) }
-    Column(if (selected >= 0) modifier.selectableGroup() else modifier) {
+    Column(if (pickable) modifier.selectableGroup() else modifier) {
         options.forEachIndexed { index, option ->
             // Always 1dp, drawn or not, so the rows never shift.
             if (index > 0) MenuLine(looks[index].lineAbove)
-            MenuOption(option, looks[index].selected, pickable = selected >= 0) { onPick(index) }
+            MenuOption(option, looks[index].selected, pickable = pickable) { onPick(index) }
         }
     }
 }
@@ -135,7 +136,7 @@ private fun MenuOption(option: Choice, selected: Boolean, pickable: Boolean, onC
             ),
         contentAlignment = Alignment.CenterStart,
     ) {
-        if (selected) GlazeSelected(Modifier.matchParentSize(), shape = OptionShape)
+        if (selected) Box(Modifier.matchParentSize().background(OctoColors.AccentSelected, OptionShape))
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -143,7 +144,7 @@ private fun MenuOption(option: Choice, selected: Boolean, pickable: Boolean, onC
         ) {
             option.leading?.invoke()
             Column(Modifier.weight(1f)) {
-                Text(option.label, style = OctoType.bodySmall, color = if (option.enabled) OctoColors.TextPrimary else OctoColors.TextMuted)
+                Text(option.label, style = OctoType.bodySmall.copy(fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal), color = if (option.enabled) OctoColors.TextPrimary else OctoColors.TextMuted)
                 option.detail?.let { Text(it, style = OctoType.caption, color = OctoColors.TextMuted) }
             }
             // The check's room is kept on every line, so the menu's width
