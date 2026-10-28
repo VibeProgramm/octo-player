@@ -3,7 +3,11 @@ package app.winters.octo.design
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -96,12 +100,28 @@ const val GlazeSaturation = 1.1f
 // its specular and its lit rim, as glass out of the light does.
 val LocalWindowFocused = compositionLocalOf { true }
 
-private fun glazeBlur(frost: Float, saturation: Float) = HazeBlurStyle {
+private fun glazeBlur(frost: Float, saturation: Float, fades: Boolean = false) = HazeBlurStyle {
     backgroundColor(OctoColors.Background)
     blurRadius(backdropBlur(frost))
     noiseFactor(0f)
     colorEffects(listOf(HazeColorEffect.colorFilter(saturation(saturation))))
     fallbackColorEffect(HazeColorEffect.tint(OctoColors.BackgroundTertiary))
+    // Full at the top, gone at the bottom.
+    if (fades) mask(Brush.verticalGradient(listOf(Color.Black, Color.Transparent)))
+}
+
+private val StatusBlur by lazy { glazeBlur(GlazeFrost, GlazeSaturation, fades = true) }
+
+// The status bar's own glass at the top of every page: what scrolls up under the clock is
+// frosted, the frost fading out at the bar's bottom, so rows never run through the clock.
+@Composable
+fun StatusGlaze(backdrop: HazeState, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .windowInsetsTopHeight(WindowInsets.statusBars)
+            .hazeBlur(input = HazeInput.Backdrop(backdrop), style = StatusBlur),
+    )
 }
 
 private val GlazeBlur by lazy { glazeBlur(GlazeFrost, GlazeSaturation) }

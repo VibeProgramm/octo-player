@@ -20,6 +20,7 @@ import app.winters.octo.desktop.audio.ServerSongs
 import app.winters.octo.desktop.audio.writeSine
 import app.winters.octo.desktop.lyrics.openLyricsMenu
 import app.winters.octo.desktop.removeQueued
+import app.winters.octo.desktop.undoQueue
 import app.winters.octo.desktop.home.AlbumShelf
 import app.winters.octo.desktop.listening.LoggedPlay
 import app.winters.octo.desktop.listening.logged
@@ -555,9 +556,18 @@ class ScreenShotsTest {
                 val list = app.library!!.index!!.songs
                 app.play(list.filter { it.albumId == "a1" }.sortedBy { it.track }, 4, source = "OK Computer")
                 app.playNext(list.filter { it.albumId == "a2" }.take(2))
+                app.notice = null
                 app.showSidePanel(SidePanel.Queue)
             }
             shot("queue", 2_000)
+            // Songs put in the queue: the notice floats over the page as a pill with Undo,
+            // then the add is taken back so the shots after it see the same queue.
+            SwingUtilities.invokeAndWait { app.addToQueue(app.library!!.index!!.songs.filter { it.albumId == "a2" }.take(2)) }
+            shot("notice-undo", 800)
+            SwingUtilities.invokeAndWait {
+                app.undoQueue()
+                app.notice = null
+            }
             // A click (or a right click) at a spot in the window, with a
             // frame drawn between each step, as a real pointer would allow.
             fun click(x: Float, y: Float, right: Boolean = false) {

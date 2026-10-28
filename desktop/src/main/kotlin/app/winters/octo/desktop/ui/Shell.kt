@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -72,14 +73,17 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
+import app.winters.octo.design.AccentAction
 import app.winters.octo.design.Ambience
 import app.winters.octo.design.ControlHeight
+import app.winters.octo.design.Corner
 import app.winters.octo.design.FloatingGlaze
 import app.winters.octo.design.FrameSize
 import app.winters.octo.design.GlassField
 import app.winters.octo.design.IconAction
 import app.winters.octo.design.IconSize
 import app.winters.octo.design.LocalPopups
+import app.winters.octo.design.LocalWindowFocused
 import app.winters.octo.design.MenuFilm
 import app.winters.octo.design.MenuFrost
 import app.winters.octo.design.MenuShape
@@ -330,8 +334,19 @@ private fun SignedInFrame(app: AppState, backdrop: HazeState, parts: FrameFocus)
                                 .pageShade(shade, FrameSize.TitleBar + FrameSize.Hairline)
                                 .part(parts, parts.page, app),
                         ) {
-                            app.notice?.let { Notice(it, app.noticeDetail, app.actionFor(it)) { app.notice = null; app.noticeDetail = null } }
                             Box(Modifier.weight(1f)) { PageHost(app) }
+                        }
+                        // The notice floats over the page, above the player, so its coming and
+                        // going never moves the page.
+                        app.notice?.let {
+                            Notice(
+                                it, app.noticeDetail, app.actionFor(it), backdrop,
+                                onHover = { over -> app.noticeHovered = over },
+                                onClose = { app.notice = null; app.noticeDetail = null; app.noticeHovered = false },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(start = PageSide, end = PageSide, bottom = LocalBottomRoom.current + Space.M),
+                            )
                         }
                     }
                 }
@@ -441,21 +456,43 @@ private fun TitleBar(app: AppState, frame: Frame?, onClose: () -> Unit) {
     }
 }
 
-// A single quiet line above the page, closed with its cross. When there
-// is more to say (the engine's own words for a failure), Details shows it;
-// an `action` (Undo after a queue edit) sits beside the words.
+// A message in a glass pill floating over the page, above the player, closed with its cross.
+// When there is more to say (the engine's own words for a failure), Details shows it; an
+// `action` (Undo after a queue edit) sits beside the words as an accent button. While the
+// pointer is on it, a passing notice stays.
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun Notice(text: String, detail: String?, action: NoticeAction?, onClose: () -> Unit) {
+private fun Notice(
+    text: String,
+    detail: String?,
+    action: NoticeAction?,
+    backdrop: HazeState,
+    onHover: (Boolean) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     var open by remember(text) { mutableStateOf(false) }
-    // A screen reader that follows live regions reads a new notice out.
-    Column(Modifier.fillMaxWidth().padding(start = PageSide, end = PageSide, top = Space.M).semantics { liveRegion = LiveRegionMode.Polite }) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.M)) {
-            Txt(text, OctoType.bodySmall, OctoColors.TextSecondary, Modifier.weight(1f), maxLines = 2)
-            if (action != null) TextAction(action.label, action.run)
-            if (detail != null) TextAction(if (open) "Hide details" else "Details", { open = !open })
-            IconAction(OctoIcons.Close, "Dismiss this notice", onClose, size = ControlHeight.S, iconSize = IconSize.Inline, tint = OctoColors.TextSecondary)
+    val focused = LocalWindowFocused.current
+    LaunchedEffect(focused) { if (!focused) onHover(false) }
+    DisposableEffect(Unit) { onDispose { onHover(false) } }
+    FloatingGlaze(
+        backdrop,
+        modifier
+            .widthIn(max = FrameSize.CardMax)
+            .onPointerEvent(PointerEventType.Enter) { onHover(true) }
+            .onPointerEvent(PointerEventType.Exit) { onHover(false) },
+        shape = RoundedCornerShape(Corner.Panel * 2),
+    ) {
+        // A screen reader that follows live regions reads a new notice out.
+        Column(Modifier.padding(start = Space.L, end = Space.S, top = Space.S, bottom = Space.S).semantics { liveRegion = LiveRegionMode.Polite }) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.M)) {
+                Txt(text, OctoType.bodySmall, OctoColors.TextPrimary, Modifier.weight(1f, fill = false), maxLines = 2)
+                if (action != null) AccentAction(action.label, action.run)
+                if (detail != null) TextAction(if (open) "Hide details" else "Details", { open = !open })
+                IconAction(OctoIcons.Close, "Dismiss this notice", onClose, size = ControlHeight.S, iconSize = IconSize.Inline, tint = OctoColors.TextSecondary)
+            }
+            if (open && detail != null) Txt(detail, OctoType.caption, OctoColors.TextMuted, maxLines = 4)
         }
-        if (open && detail != null) Txt(detail, OctoType.caption, OctoColors.TextMuted, maxLines = 4)
     }
 }
 

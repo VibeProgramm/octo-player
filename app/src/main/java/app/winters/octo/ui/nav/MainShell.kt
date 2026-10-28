@@ -55,6 +55,7 @@ import app.winters.octo.ambient.LocalPageArtworks
 import app.winters.octo.ambient.PageArtworks
 import app.winters.octo.ambient.rememberBarFilm
 import app.winters.octo.design.OctoColors
+import app.winters.octo.design.StatusGlaze
 import app.winters.octo.device.DeviceLibrary
 import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.player.PlayerArtCorner
@@ -310,6 +311,9 @@ fun MainShell(library: DeviceLibrary, playback: PlaybackConnection, feedback: Fe
                         predictivePopTransitionSpec = { gestureMotion(motion) },
                     )
                 }
+                // The status bar's glass: what scrolls up under the clock is frosted. The full
+                // player, once it covers the pages, has its own top.
+                if (!playerCovers) StatusGlaze(haze, Modifier.align(Alignment.TopCenter))
                 // Back from the top of another tab goes Home rather than out.
                 BackHandler(enabled = selected != 0 && stack.size == 1) { selected = 0 }
 

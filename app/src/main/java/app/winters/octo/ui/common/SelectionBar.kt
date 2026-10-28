@@ -47,6 +47,7 @@ import app.winters.octo.design.OctoType
 import app.winters.octo.offline.OfflineDownloads
 import app.winters.octo.playback.LikeStore
 import app.winters.octo.playback.PlaybackConnection
+import app.winters.octo.playback.queueAddWords
 import app.winters.octo.health.DELETE_FROM_DISK
 import app.winters.octo.ui.menu.DiskDeleteHost
 import app.winters.octo.ui.menu.DiskDeleteViewModel
@@ -64,12 +65,15 @@ class SelectionBarViewModel @Inject constructor(
     private val playback: PlaybackConnection,
     private val likes: LikeStore,
     private val offline: OfflineDownloads,
+    private val feedback: Feedback,
 ) : ViewModel() {
     val liked: StateFlow<Set<String>> = likes.liked
 
     fun play(ids: List<String>) = playback.playTracks(ids, 0)
-    fun playNext(ids: List<String>) = playback.playNext(ids)
-    fun addToQueue(ids: List<String>) = playback.playLast(ids)
+    fun playNext(ids: List<String>) =
+        playback.playNextUndoable(ids) { count, undo -> feedback.undoable(queueAddWords(count, next = true), undo) }
+    fun addToQueue(ids: List<String>) =
+        playback.playLastUndoable(ids) { count, undo -> feedback.undoable(queueAddWords(count, next = false), undo) }
 
     // Downloads the ones only on a server; the rest are on the phone already.
     fun download(ids: List<String>) = offline.download(ids)

@@ -198,11 +198,11 @@ private fun SongActionsPage(
         GlassMenuGroups(songMenuGroups(actions)) { action ->
             when (action) {
                 SongAction.PlayNext -> GlassMenuAction(OctoIcons.PlayNext, "Play next", onClick = {
-                    vm.playNext(trackId)
+                    vm.playNextUndoable(trackId)
                     state.close()
                 })
                 SongAction.AddToQueue -> GlassMenuAction(OctoIcons.AddToQueue, "Add to queue", onClick = {
-                    vm.playLast(trackId)
+                    vm.playLastUndoable(trackId)
                     state.close()
                 })
                 SongAction.StartRadio -> GlassMenuAction(OctoIcons.Radio, "Start radio", onClick = {

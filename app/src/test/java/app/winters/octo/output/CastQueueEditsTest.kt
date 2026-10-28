@@ -12,14 +12,19 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.MediaSession
 import androidx.test.core.app.ApplicationProvider
 import app.winters.octo.playback.OctoPlayer
+import app.winters.octo.playback.QueueEditor
+import app.winters.octo.playback.QueueSource
 import app.winters.octo.playback.endOfOwnSongs
+import app.winters.octo.playback.entryId
 import app.winters.octo.playback.markedAutoplay
+import app.winters.octo.playback.withSource
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -187,6 +192,30 @@ class CastQueueEditsTest {
         cast(abc(), index = 2)
         switch.addMediaItems(switch.mediaItemCount, listOf(song("p").markedAutoplay()))
         assertQueue(listOf("a", "b", "c", "p"))
+    }
+
+    @Test
+    fun stationRefillAtTheEnd() {
+        cast(abc(), index = 2)
+        // As the station's refill does: its songs at the end, then on from the first of them.
+        val first = switch.mediaItemCount
+        switch.addMediaItems(first, listOf(song("s").withSource(QueueSource.Station("st", "St"))))
+        switch.seekTo(first, 0)
+        switch.play()
+        idle()
+        assertQueue(listOf("a", "b", "c", "s"))
+    }
+
+    @Test
+    fun queueEditorPlayNextOnTheLastSong() {
+        cast(abc(), index = 2)
+        val key = switch.getMediaItemAt(0).entryId!!
+        val editor = QueueEditor()
+        editor.attach(switch)
+        // "a" comes out and goes right after "c", the song that is on and the last.
+        assertTrue(editor.playNext(key))
+        idle()
+        assertQueue(listOf("b", "c", "a"))
     }
 
     @Test

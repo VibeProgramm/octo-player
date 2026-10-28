@@ -35,9 +35,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +62,9 @@ import javax.inject.Singleton
 // How long a line stays up: a little longer when it offers an action.
 private const val SHOW_MS = 3_500L
 private const val SHOW_WITH_ACTION_MS = 6_000L
+
+// How long a message's place keeps taking taps after it has gone.
+internal const val LATE_TAP_GUARD_MS = 600L
 
 // One short line about what just happened, and what can be done about it,
 // such as "Removed from the queue" with Undo, with an optional small icon
@@ -111,17 +117,23 @@ fun FeedbackHost(feedback: Feedback, modifier: Modifier = Modifier) {
     val message by feedback.message.collectAsStateWithLifecycle()
     val calm = rememberSystemReduceMotion()
     val shown = remember { Animatable(0f) }
-    // The message on screen, kept while it leaves.
+    // The message on screen, kept while it leaves and for a moment after, its place still taking
+    // the taps aimed at it, so a late one never reaches what is under it.
     var last by remember { mutableStateOf<FeedbackMessage?>(null) }
+    var guarding by remember { mutableStateOf(false) }
     LaunchedEffect(message) {
         val next = message
         if (next != null) {
+            guarding = false
             last = next
             shown.animateTo(1f, if (calm) tween(120) else spring(dampingRatio = 0.85f, stiffness = 500f))
             delay(if (next.action != null) SHOW_WITH_ACTION_MS else SHOW_MS)
             feedback.dismiss(next)
         } else if (last != null) {
             shown.animateTo(0f, tween(if (calm) 120 else 160, easing = FastOutLinearInEasing))
+            guarding = true
+            delay(LATE_TAP_GUARD_MS)
+            guarding = false
             last = null
         }
     }
@@ -145,6 +157,9 @@ fun FeedbackHost(feedback: Feedback, modifier: Modifier = Modifier) {
                 .widthIn(max = 520.dp)
                 .heightIn(min = 48.dp)
                 .semantics { liveRegion = LiveRegionMode.Polite }
+                // Gone from sight but still in place: every tap on it is taken and does nothing, and
+                // a screen reader no longer finds it.
+                .then(if (guarding) Modifier.swallowTaps().clearAndSetSemantics { } else Modifier)
                 .then(
                     if (current.action == null) {
                         Modifier.clickable(interactionSource = null, indication = null) { feedback.dismiss(current) }
@@ -209,6 +224,15 @@ fun FeedbackHost(feedback: Feedback, modifier: Modifier = Modifier) {
                     }
                 }
             }
+        }
+    }
+}
+
+// Takes every touch on this element before anything inside it sees one.
+private fun Modifier.swallowTaps(): Modifier = pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) {
+            awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
         }
     }
 }

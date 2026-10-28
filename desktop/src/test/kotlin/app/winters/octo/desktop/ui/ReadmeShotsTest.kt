@@ -383,7 +383,10 @@ class ReadmeShotsTest {
                 cueSongs(songs, (spec.substringAfter(":", "0").toIntOrNull() ?: 0).coerceIn(0, songs.lastIndex))
                 env("OCTO_README_QUEUE_NEXT")?.let { next ->
                     val songs = albumSongs(next.substringBefore(":")).take(next.substringAfter(":", "2").toIntOrNull() ?: 2)
-                    SwingUtilities.invokeAndWait { app.playNext(songs) }
+                    SwingUtilities.invokeAndWait {
+                        app.playNext(songs)
+                        app.notice = null
+                    }
                 }
                 page("queue") { app.showSidePanel(SidePanel.Queue) }
                 // The other pages keep the song they had in the player bar.

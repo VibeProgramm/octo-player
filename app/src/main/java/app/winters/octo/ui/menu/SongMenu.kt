@@ -28,6 +28,7 @@ import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.playback.PlaylistStore
 import app.winters.octo.playback.RADIO_LENGTH
 import app.winters.octo.playback.RatingStore
+import app.winters.octo.playback.queueAddWords
 import app.winters.octo.player.PlayerSettings
 import app.winters.octo.player.SwipeAction
 import app.winters.octo.server.ServerControls
@@ -366,18 +367,16 @@ class SongMenuViewModel @Inject constructor(
     fun track(id: String): Flow<TrackEntity?> =
         if (isFind(id)) online.songFlow(id).map { it?.asTrack() } else catalog.trackFlow(id)
 
-    fun playNext(id: String) = playback.playNext(listOf(id))
-    fun playLast(id: String) = playback.playLast(listOf(id))
     fun toggleLike(id: String) = likes.toggle(id)
     fun rate(id: String, rating: Int) = ratings.rate(id, rating)
 
-    // Play next from a swipe, which nothing else on screen confirms, so it
-    // says so and offers to take that one song back out of the queue.
-    fun playNextUndoable(id: String) = playback.playNextUndoable(listOf(id)) { undo -> feedback.undoable("Playing next", undo) }
+    // Play next, which says so and offers to take that one song back out of the queue.
+    fun playNextUndoable(id: String) =
+        playback.playNextUndoable(listOf(id)) { count, undo -> feedback.undoable(queueAddWords(count, next = true), undo) }
 
-    // Add to queue from a swipe or a screen reader, which says so too and
-    // offers to take that one song back out of the queue.
-    fun playLastUndoable(id: String) = playback.playLastUndoable(listOf(id)) { undo -> feedback.undoable("Added to queue", undo) }
+    // Add to queue, which says so and offers to take that one song back out of the queue.
+    fun playLastUndoable(id: String) =
+        playback.playLastUndoable(listOf(id)) { count, undo -> feedback.undoable(queueAddWords(count, next = false), undo) }
 
     // Takes the song's row out of a playlist, with an Undo that puts it back.
     fun removeFromPlaylist(playlistId: String, itemId: Long) {

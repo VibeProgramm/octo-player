@@ -53,7 +53,10 @@ class PlaybackConnection @Inject constructor(
     @ApplicationContext private val context: Context,
     private val catalog: CatalogDao,
     private val lengths: RealLengths,
+    // Looked up when first used: reading songs the player's way leads back to this class.
+    private val playableSongs: dagger.Lazy<PlayableSongs>,
 ) {
+    private val playable get() = playableSongs.get()
     private val scope = MainScope()
     private var future: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
@@ -260,19 +263,25 @@ class PlaybackConnection @Inject constructor(
         c.play()
     }
 
-    // ---- Adding with an undo, for a swipe on a song row ----
+    // ---- Adding with an undo ----
 
-    // Puts songs next, like playNext, then hands `inserted` a way to take
-    // those same songs back out, wherever they have moved to since.
-    fun playNextUndoable(trackIds: List<String>, inserted: (undo: () -> Unit) -> Unit) {
+    // Puts songs next, like playNext, then hands `inserted` how many went in and a way to take
+    // those same songs back out, wherever they have moved to since. The ids are read as the
+    // player reads them (songs it cannot play are left out, a found song plays as its library
+    // copy), so undo looks for what really went in. Nothing went in: nothing is handed on.
+    fun playNextUndoable(trackIds: List<String>, inserted: (count: Int, undo: () -> Unit) -> Unit) {
         if (trackIds.isEmpty()) return
-        withController { c ->
-            // Through the same command as Play next, so it lands right after
-            // the current song in shuffled order too. It goes in just after
-            // the current song in the list, which is where undo looks first.
-            val at = (c.currentMediaItemIndex + 1).coerceAtMost(c.mediaItemCount)
-            c.sendCustomCommand(PLAY_NEXT, playNextArgs(trackIds))
-            inserted { removeInserted(trackIds, at) }
+        scope.launch {
+            val played = playable.items(trackIds).map { it.mediaId }
+            if (played.isEmpty()) return@launch
+            withController { c ->
+                // Through the same command as Play next, so it lands right after the current song
+                // in shuffled order too. It goes in just after the current song in the list, which
+                // is where undo looks first.
+                val at = (c.currentMediaItemIndex + 1).coerceAtMost(c.mediaItemCount)
+                c.sendCustomCommand(PLAY_NEXT, playNextArgs(trackIds))
+                inserted(played.size) { removeInserted(played, at) }
+            }
         }
     }
 
@@ -282,16 +291,19 @@ class PlaybackConnection @Inject constructor(
         c.removeMediaItems(start, start + trackIds.size)
     }
 
-    // Puts songs at the end of the queue, like playLast, then hands
-    // `inserted` a way to take those same songs back out. They go before
-    // any Autoplay songs still to come, as the player puts them, which is
-    // where undo looks first.
-    fun playLastUndoable(trackIds: List<String>, inserted: (undo: () -> Unit) -> Unit) {
+    // Puts songs at the end of the queue, like playLast, then hands `inserted` how many went in
+    // and a way to take those same songs back out. They go before any Autoplay songs still to
+    // come, as the player puts them, which is where undo looks first.
+    fun playLastUndoable(trackIds: List<String>, inserted: (count: Int, undo: () -> Unit) -> Unit) {
         if (trackIds.isEmpty()) return
-        withController { c ->
-            val at = endOfOwnSongs(c)
-            c.addMediaItems(trackIds.map(::songRequest))
-            inserted { removeInserted(trackIds, at) }
+        scope.launch {
+            val played = playable.items(trackIds).map { it.mediaId }
+            if (played.isEmpty()) return@launch
+            withController { c ->
+                val at = endOfOwnSongs(c)
+                c.addMediaItems(trackIds.map(::songRequest))
+                inserted(played.size) { removeInserted(played, at) }
+            }
         }
     }
 
