@@ -101,45 +101,70 @@ fun coverWords(spec: CoverSpec, side: Int, setter: CoverTypesetter, book: CoverB
     if (side < layout.tinyBelowPx) return emptyList()
     val margin = (s * layout.margin).roundToInt().toFloat()
     val width = s - 2 * margin
-    val out = mutableListOf<CoverWords>()
-    var foot: CoverWords? = null
+    val bottom = s - margin
 
-    // The foot line first, so the name knows how far down it may go.
-    var floor = s - margin
+    // The foot line, or null when it is not wanted or does not fit whole on
+    // its line at its size.
     val footerText = spec.footer?.trim()?.takeIf { it.isNotEmpty() && side >= layout.footer.showFromPx }
-    if (footerText != null) {
+    val foot: CoverWords? = footerText?.let { text ->
         val f = layout.footer
-        val look = CoverType(0f, f.weight, f.tracking, coverLineHeight(coverScript(footerText), f.lineHeight), 1)
+        val look = CoverType(0f, f.weight, f.tracking, coverLineHeight(coverScript(text), f.lineHeight), 1)
         val size = max(f.minPx, s * f.size)
-        val fit = fitCoverText(footerText, width, s * 0.2f, 1, f.minPx, size, look, setter)
-        val top = s - s * f.bottom - fit.measured.height
-        foot = CoverWords(CoverRole.Footer, footerText, fit.type, margin, top, width, align, alpha(White, f.opacity), fit.measured)
-        floor = top - s * 0.04f
+        fitOrNull(text, width, s * 0.2f, 1, f.minPx, size, look, setter)?.let { fit ->
+            val top = s - s * f.bottom - fit.measured.height
+            CoverWords(CoverRole.Footer, text, fit.type, margin, top, width, align, alpha(White, f.opacity), fit.measured)
+        }
     }
     if (name.isEmpty()) return listOfNotNull(foot)
 
     val t = layout.title
     val top = s * t.top
     val lineText = shown.line?.takeIf { side >= layout.line.showFromPx }
-    val lineRoom = if (lineText == null) 0f else max(s * t.wrapSize, t.wrapMinPx) * layout.line.shareOfTitle * layout.line.lineHeight
-    val room = floor - top - lineRoom
     val look = CoverType(0f, t.weight, t.tracking, coverLineHeight(coverScript(name), t.lineHeight), 1)
     val minPx = max(t.minPx, s * t.minSize)
     val oneLineLeast = max(minPx, max(s * t.oneLineDownTo, t.oneLineMinPx))
     val wrapMost = max(minPx, max(s * t.wrapSize, min(t.wrapMinPx, s * t.size)))
-    val title = (if (oneLineLeast <= s * t.size) fitOrNull(name, width, room, 1, oneLineLeast, s * t.size, look, setter) else null)
-        ?: fitCoverText(name, width, room, t.maxLines, minPx, wrapMost, look, setter)
-    out += CoverWords(CoverRole.Title, name, title.type, margin, top, width, align, White, title.measured)
 
-    if (lineText != null) {
-        val l = layout.line
-        val lineTop = top + title.measured.height
-        val most = max(l.minPx, title.type.sizePx * l.shareOfTitle)
-        val lineLook = CoverType(0f, l.weight, l.tracking, coverLineHeight(coverScript(lineText), l.lineHeight), 1)
-        val fit = fitCoverText(lineText, width, s, 1, min(l.minPx, most), most, lineLook, setter)
-        if (lineTop + fit.measured.height <= floor) out += CoverWords(CoverRole.Line, lineText, fit.type, margin, lineTop, width, align, White, fit.measured)
+    // The name whole in the room above `edge`, or null: on one line when it
+    // can go that large, else wrapped, never smaller than `least`.
+    fun titleAbove(edge: Float, withLine: Boolean, least: Float): FittedText? {
+        val lineRoom = if (withLine) max(s * t.wrapSize, t.wrapMinPx) * layout.line.shareOfTitle * layout.line.lineHeight else 0f
+        val room = edge - top - lineRoom
+        val oneLine = if (oneLineLeast <= s * t.size && least <= oneLineLeast) fitOrNull(name, width, room, 1, oneLineLeast, s * t.size, look, setter) else null
+        return oneLine ?: fitOrNull(name, width, room, t.maxLines, least, max(wrapMost, least), look, setter)
     }
-    return out + listOfNotNull(foot)
+
+    fun titleWords(fit: FittedText) = CoverWords(CoverRole.Title, name, fit.type, margin, top, width, align, White, fit.measured)
+
+    // The light line under the name, or null when it does not fit whole.
+    fun lineUnder(fit: FittedText, edge: Float): CoverWords? {
+        val text = lineText ?: return null
+        val l = layout.line
+        val lineTop = top + fit.measured.height
+        val most = max(l.minPx, fit.type.sizePx * l.shareOfTitle)
+        val lineLook = CoverType(0f, l.weight, l.tracking, coverLineHeight(coverScript(text), l.lineHeight), 1)
+        val lineFit = fitOrNull(text, width, s, 1, min(l.minPx, most), most, lineLook, setter) ?: return null
+        if (lineTop + lineFit.measured.height > edge) return null
+        return CoverWords(CoverRole.Line, text, lineFit.type, margin, lineTop, width, align, White, lineFit.measured)
+    }
+
+    // The name keeps its usual smallest size, giving up the light line and
+    // then the foot line to make room for it.
+    val footEdge = foot?.let { it.top - s * 0.04f } ?: bottom
+    if (lineText != null && foot != null) {
+        titleAbove(footEdge, true, minPx)?.let { return listOfNotNull(titleWords(it), lineUnder(it, footEdge), foot) }
+    } else if (lineText != null) {
+        titleAbove(bottom, true, minPx)?.let { return listOfNotNull(titleWords(it), lineUnder(it, bottom)) }
+    }
+    if (foot != null) {
+        titleAbove(footEdge, false, minPx)?.let { return listOf(titleWords(it), foot) }
+    }
+    titleAbove(bottom, false, minPx)?.let { return listOf(titleWords(it)) }
+
+    // Then smaller than usual, down to the floor, alone; and if even that
+    // does not hold it whole, the cover is artwork only.
+    val floorPx = max(t.floorPx, s * t.floorSize)
+    return titleAbove(bottom, false, floorPx)?.let { listOf(titleWords(it)) } ?: emptyList()
 }
 
 // The words a cover sets large and the light line under them. A name

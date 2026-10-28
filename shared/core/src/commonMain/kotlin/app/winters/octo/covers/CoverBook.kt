@@ -56,6 +56,11 @@ data class TitleNumbers(
     val wrapMinPx: Float = 0f,
     val minSize: Float,
     val minPx: Float,
+    // When the name does not fit at its usual smallest even without the
+    // light line and the foot line, it may go this small (the larger of
+    // floorPx and floorSize of the side) before the cover is artwork only.
+    val floorPx: Float,
+    val floorSize: Float,
     val maxLines: Int,
     val lineHeight: Float,
     val tracking: Float,
