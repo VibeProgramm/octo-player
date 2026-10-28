@@ -1,5 +1,8 @@
 import OctoKit
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Octo's on/off switch: the accent, glowing faintly, when on; a faint recessed pill when off.
 /// The thumb slides on the default curve and squashes toward where it is going while held.
@@ -167,6 +170,33 @@ private struct PillLayer: View, Animatable {
 extension OctoColor {
     /// The words and checks on a full accent fill.
     static let onAccent = Color(OctoPalette.onAccent)
+}
+
+/// Keeps a system segmented control in the current accent. The system tints only controls made
+/// after its appearance is set, so the tint is set again as the accent changes and the control is
+/// rebuilt under an identity made from the accent. The chosen segment comes from the binding, so
+/// it stays.
+struct SegmentedAccent: ViewModifier {
+    /// The chosen segment in the accent fill with dark words, the others white.
+    static func tint() {
+        #if canImport(UIKit)
+        let control = UISegmentedControl.appearance()
+        control.selectedSegmentTintColor = UIColor(OctoColor.accent)
+        control.setTitleTextAttributes([.foregroundColor: UIColor(OctoColor.onAccent)], for: .selected)
+        control.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .normal)
+        #endif
+    }
+
+    func body(content: Content) -> some View {
+        let key = AccentState.shared.rgba
+        Self.tint()
+        return content.id(key)
+    }
+}
+
+extension View {
+    /// Rebuilds a system segmented control the moment the accent changes.
+    func segmentedAccent() -> some View { modifier(SegmentedAccent()) }
 }
 
 /// A segment's words: white, or on the accent pill dark with a check before them. Never cut or

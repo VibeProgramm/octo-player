@@ -419,5 +419,6 @@ struct GlassSegments<Value: Hashable>: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
+        .segmentedAccent()
     }
 }
