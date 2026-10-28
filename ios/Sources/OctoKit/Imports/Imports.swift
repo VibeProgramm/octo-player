@@ -313,7 +313,7 @@ public struct ImportListDetail: Decodable, Sendable, Equatable {
 
 /// What the trickle is doing for the signed-in user.
 public enum TrickleState: String, Sendable {
-    case idle, running, paused, off, yielding, waitingForSoulseek, unknown = ""
+    case idle, running, paused, off, yielding, waitingForSoulseek, waitingForMusicDatabase, unknown = ""
 
     public static func of(_ text: String?) -> TrickleState {
         guard let text, let found = TrickleState(rawValue: text), found != .unknown else { return .unknown }
@@ -323,6 +323,8 @@ public enum TrickleState: String, Sendable {
 
 public struct TrickleStatus: Decodable, Sendable, Equatable {
     public var state = ""
+    /// The server's own words for its state, for a state this app does not know yet.
+    public var label: String?
     public var nextUtc: String?
     public var perHour = 0
     public var queued = 0
@@ -342,11 +344,12 @@ public struct TrickleStatus: Decodable, Sendable, Equatable {
         self.done = done
     }
 
-    enum CodingKeys: String, CodingKey { case state, nextUtc, perHour, queued, downloading, done, notFound, skipped, current, recent, next }
+    enum CodingKeys: String, CodingKey { case state, label, nextUtc, perHour, queued, downloading, done, notFound, skipped, current, recent, next }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         state = c.string(.state) ?? ""
+        label = c.string(.label)
         nextUtc = c.string(.nextUtc)
         perHour = c.int(.perHour) ?? 0
         queued = c.int(.queued) ?? 0

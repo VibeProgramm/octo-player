@@ -155,7 +155,7 @@ final class Opened: @unchecked Sendable {
     @Test func aListSaysWhereItIsFromAndWhatTheLibraryHas() {
         let list = ImportListSummary(source: "spotifyPlaylist", by: "Spotify", total: 10, have: 6, missing: 2, queued: 1, downloading: 1, notFound: 1)
         #expect(list.originLine == "Spotify · by Spotify")
-        #expect(list.countsLine == "6 of 10 · 2 missing · 2 coming · 1 not found")
+        #expect(list.countsLine == "6\u{00A0}of\u{00A0}10 · 2\u{00A0}missing · 2\u{00A0}coming · 1\u{00A0}not\u{00A0}found")
         #expect(ImportListSummary(source: "file").originLine == "File")
         #expect(trackStateLabel(.done) == "Fetched")
         #expect(ImportListSummary(name: "Road trip").removeLine == "Octo forgets Road trip. Songs already in your library stay.")
@@ -167,10 +167,43 @@ final class Opened: @unchecked Sendable {
         let utc = TimeZone(identifier: "UTC")!
         let running = TrickleStatus(state: "running", nextUtc: "2026-10-04T14:05:00Z", perHour: 20, queued: 3, done: 2)
         #expect(running.title == "Waiting for the next turn")
-        #expect(running.line(zone: utc) == "Up to 20 songs an hour. Next song at 14:05. 3 waiting, 2 fetched.")
+        #expect(running.line(zone: utc) == "Up to 20\u{00A0}songs an hour. Next song at 14:05. 3\u{00A0}waiting,\u{00A0}2\u{00A0}fetched.")
         #expect(TrickleStatus(state: "waitingForSoulseek").title == "Waiting for Soulseek")
+        #expect(TrickleStatus(state: "waitingForMusicDatabase").title == "Waiting for MusicBrainz")
+        #expect(TrickleStatus(state: "waitingForMusicDatabase", perHour: 20, queued: 3).line(zone: utc)
+            == "It goes on once MusicBrainz is back. Up to 20\u{00A0}songs an hour. 3\u{00A0}waiting.")
+        #expect(TrickleStatus(state: "yielding", perHour: 20, queued: 1).line(zone: utc) == "Someone's own downloads come first. Up to 20\u{00A0}songs an hour. 1\u{00A0}waiting.")
+        #expect(TrickleStatus(state: "waitingForSoulseek", perHour: 20, queued: 1).line(zone: utc) == "It goes on once Soulseek is back. Up to 20\u{00A0}songs an hour. 1\u{00A0}waiting.")
         #expect(TrickleStatus(state: "off").line(zone: utc) == "Songs an hour is 0 on the server, so nothing starts.")
         #expect(TrickleStatus(state: "idle").title == "Nothing to fetch")
+    }
+
+    @Test func aStateThisAppDoesNotKnowNeverSaysNothingToFetch() throws {
+        #expect(TrickleStatus(state: "somethingNew", queued: 2).title == "Working on it")
+        #expect(TrickleStatus(state: "somethingNew").title == "Nothing to fetch")
+        var labeled = TrickleStatus(state: "somethingNew", queued: 2)
+        labeled.label = "Tidying up"
+        #expect(labeled.title == "Tidying up")
+        labeled.label = " "
+        #expect(labeled.title == "Working on it")
+        labeled.label = " \n"
+        #expect(labeled.title == "Working on it")
+        let read = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"brandNew","label":"Tidying up","downloading":1}"#.utf8))
+        #expect(read.stage == .unknown)
+        #expect(read.title == "Tidying up")
+        let fetching = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"brandNew","downloading":1}"#.utf8))
+        #expect(fetching.title == "Working on it")
+        let one = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"running","perHour":1,"notFound":1}"#.utf8))
+        #expect(one.line(zone: TimeZone(identifier: "UTC")!) == "Up to 1\u{00A0}song an hour. 1\u{00A0}not\u{00A0}found.")
+        let held = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"waitingForMusicDatabase","queued":3}"#.utf8))
+        #expect(held.stage == .waitingForMusicDatabase)
+    }
+
+    @Test func heldRowsLeaveTheHeadingsWordsOut() throws {
+        let held = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"waitingForMusicDatabase","next":[{"key":"s:3","title":"Roads","artist":"Portishead","state":"queued","detail":"Waiting for MusicBrainz to answer"}]}"#.utf8))
+        #expect(held.shownNext.map(\.detail) == [nil])
+        let mixed = try JSONDecoder().decode(TrickleStatus.self, from: Data(#"{"state":"running","next":[{"key":"s:3","title":"Roads","artist":"Portishead","state":"queued","detail":"Waiting for MusicBrainz to answer"}]}"#.utf8))
+        #expect(mixed.shownNext.map(\.detail) == ["Waiting for MusicBrainz to answer"])
     }
 
     @Test func theAccountLineSaysWhatToDoFirst() {

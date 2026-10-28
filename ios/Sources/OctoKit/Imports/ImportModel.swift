@@ -113,7 +113,7 @@ public func trackStateLabel(_ state: ImportTrackState) -> String {
     switch state {
     case .have: "In your library"
     case .missing: "Missing"
-    case .queued: "Queued"
+    case .queued: "Waiting"
     case .downloading: "Fetching"
     case .done: "Fetched"
     case .notFound: "Not found"
@@ -136,8 +136,10 @@ extension ImportListSummary {
 
     /// "6 of 10 · 2 missing · 1 coming · 1 not found".
     public var countsLine: String {
-        ["\(have) of \(total)", missing > 0 ? "\(missing) missing" : nil, coming > 0 ? "\(coming) coming" : nil,
-         notFound > 0 ? "\(notFound) not found" : nil].compactMap { $0 }.joined(separator: " · ")
+        // Each count is held to its words with no-break spaces, so a line never breaks inside one.
+        ["\(have)\u{00A0}of\u{00A0}\(total)", missing > 0 ? "\(missing)\u{00A0}missing" : nil,
+         coming > 0 ? "\(coming)\u{00A0}coming" : nil,
+         notFound > 0 ? "\(notFound)\u{00A0}not\u{00A0}found" : nil].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// What goes and what stays when the list is removed.
@@ -180,33 +182,51 @@ extension SpotifyStatus {
 }
 
 extension TrickleStatus {
-    /// What the trickle is doing, as a heading.
+    /// What the trickle is doing, as a heading. A state this app does not know yet reads as the
+    /// server's own words, or as work while songs wait, never as nothing to fetch.
     public var title: String {
         switch stage {
-        case .idle, .unknown: "Nothing to fetch"
+        case .idle: "Nothing to fetch"
+        case .unknown:
+            if let label, !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { label }
+            else if queued > 0 || downloading > 0 { "Working on it" }
+            else { "Nothing to fetch" }
         case .running: downloading > 0 ? "Fetching" : "Waiting for the next turn"
         case .paused: "Paused"
         case .off: "Off"
         case .yielding: "Waiting for other downloads"
         case .waitingForSoulseek: "Waiting for Soulseek"
+        case .waitingForMusicDatabase: "Waiting for MusicBrainz"
         }
     }
 
-    /// The trickle's line: the pace, when the next song starts, and the counts.
+    /// The trickle's line: why it waits (when it does), the pace, when the next song starts, and the counts, each count held to its word and the counts kept together as one group.
     public func line(zone: TimeZone = .current) -> String {
         var parts: [String] = []
+        if stage == .yielding { parts.append("Someone's own downloads come first.") }
+        if stage == .waitingForSoulseek { parts.append("It goes on once Soulseek is back.") }
+        if stage == .waitingForMusicDatabase { parts.append("It goes on once MusicBrainz is back.") }
         if stage == .off {
             parts.append("Songs an hour is 0 on the server, so nothing starts.")
         } else {
-            parts.append("Up to \(perHour == 1 ? "1 song" : "\(perHour) songs") an hour.")
+            parts.append("Up to \(perHour == 1 ? "1\u{00A0}song" : "\(perHour)\u{00A0}songs") an hour.")
         }
         if stage == .running, downloading == 0, let nextUtc { parts.append("Next song at \(Self.time(nextUtc, zone)).") }
-        if stage == .yielding { parts.append("Someone's own downloads come first.") }
-        if stage == .waitingForSoulseek { parts.append("It goes on once Soulseek is back.") }
         let tally = [(queued, "waiting"), (downloading, "fetching"), (done, "fetched"), (notFound, "not found"), (skipped, "skipped")]
-            .filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }.joined(separator: ", ")
+            .filter { $0.0 > 0 }.map { "\($0.0)\u{00A0}\($0.1.replacingOccurrences(of: " ", with: "\u{00A0}"))" }.joined(separator: ",\u{00A0}")
         if !tally.isEmpty { parts.append(tally + ".") }
         return parts.joined(separator: " ")
+    }
+
+    /// The next songs as shown: while every one waits for MusicBrainz the heading says so once,
+    /// so their rows leave out the same words.
+    public var shownNext: [ImportTrack] {
+        guard stage == .waitingForMusicDatabase else { return next }
+        return next.map { track in
+            var shown = track
+            shown.detail = nil
+            return shown
+        }
     }
 
     static func time(_ utc: String, _ zone: TimeZone) -> String {
