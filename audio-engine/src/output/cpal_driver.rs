@@ -74,16 +74,6 @@ impl Driver for CpalDriver {
         Self::describe(&device, Some(&id))
     }
 
-    // cpal 0.18.2's Device::id never frees the string Windows hands back
-    // (fixed on cpal's main branch, not released), and this is asked
-    // every 2 s, so Windows reads the id itself. Drop this once a cpal
-    // release has the fix.
-    #[cfg(windows)]
-    fn default_device_id(&mut self) -> Option<String> {
-        let raw = wasapi_default_render_id()?;
-        Some(cpal::DeviceId::new(self.host.id(), raw).to_string())
-    }
-
     fn open(
         &mut self,
         id: Option<&str>,
@@ -198,38 +188,6 @@ fn device_event(kind: cpal::ErrorKind, why: impl FnOnce() -> String) -> Option<D
     }
 }
 
-// The default playback endpoint's id: the string Windows gives is
-// copied, then freed. One enumerator per thread, never released (as
-// cpal keeps its own), so nothing runs after COM goes at thread exit.
-#[cfg(windows)]
-fn wasapi_default_render_id() -> Option<String> {
-    use std::cell::RefCell;
-    use std::mem::ManuallyDrop;
-    use windows::Win32::Media::Audio::{IMMDeviceEnumerator, MMDeviceEnumerator, eConsole, eRender};
-    use windows::Win32::System::Com::{
-        CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree,
-    };
-    thread_local! {
-        static ENUMERATOR: RefCell<Option<ManuallyDrop<IMMDeviceEnumerator>>> = const { RefCell::new(None) };
-    }
-    ENUMERATOR.with(|slot| unsafe {
-        let mut slot = slot.borrow_mut();
-        if slot.is_none() {
-            // Already up on this thread, or up in another mode: either
-            // way the calls below work.
-            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-            *slot = CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
-                .ok()
-                .map(ManuallyDrop::new);
-        }
-        let device = slot.as_ref()?.GetDefaultAudioEndpoint(eRender, eConsole).ok()?;
-        let id = device.GetId().ok()?;
-        let text = id.to_string().ok();
-        CoTaskMemFree(Some(id.0 as *const _));
-        text
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,5 +262,49 @@ mod tests {
         let grown = private_bytes().saturating_sub(before);
         // cpal's own id leaked about 10.7 MB over 40,000 checks.
         assert!(grown < 2 * 1024 * 1024, "grew {grown} bytes over 40,000 checks");
+    }
+
+    // Run alone: `cargo test --release --lib stream_reopens_keep_no_handles -- --ignored --test-threads=1`.
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn stream_reopens_keep_no_handles() {
+        use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessHandleCount};
+        fn handles() -> u32 {
+            let mut count = 0u32;
+            unsafe {
+                let _ = GetProcessHandleCount(GetCurrentProcess(), &mut count);
+            }
+            count
+        }
+        fn round() {
+            let device = cpal::default_host().default_output_device().expect("default device");
+            let supported = device.default_output_config().expect("default config");
+            let stream = device
+                .build_output_stream_raw(
+                    supported.config(),
+                    supported.sample_format(),
+                    |data: &mut cpal::Data, _| data.bytes_mut().fill(0),
+                    |e| eprintln!("{e}"),
+                    None,
+                )
+                .expect("build stream");
+            stream.play().expect("play");
+            std::thread::sleep(Duration::from_millis(20));
+            drop(stream);
+        }
+        if !has_default_device() {
+            return;
+        }
+        for _ in 0..20 {
+            round();
+        }
+        let before = handles();
+        for _ in 0..500 {
+            round();
+        }
+        let grown = handles().saturating_sub(before);
+        println!("handles {before} -> {}", before + grown);
+        assert!(grown <= 5, "handle count grew by {grown} over 500 stream rounds");
     }
 }
