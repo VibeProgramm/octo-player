@@ -331,10 +331,10 @@ private fun PlaylistRow(app: AppState, playlist: Playlist, selected: Boolean, ra
     val pointer = LocalPointer.current
     var here by remember { mutableStateOf(false) }
     val keyboard = LocalFocusVisibility.current.keyboard
-    // Songs dragged onto the listener's own playlist are added to it.
+    // Songs dragged onto a playlist the listener can add to are added to it.
     val drag = LocalDrag.current
     val dropId = "pl:${playlist.id}"
-    val takes = drag.active && app.canEdit(playlist)
+    val takes = drag.active && app.access(playlist).add
     val lit = takes && isDropOver(dropId)
     val row: @Composable () -> Unit = {
         Box(

@@ -112,7 +112,7 @@ fun ColumnScope.SongMenu(
     when (page) {
         MenuPage.Main -> {
             MenuTitle(one?.title ?: "${songs.size} songs")
-            val owns = inPlaylist?.let { p -> app.playlists.firstOrNull { it.id == p.id }?.let(app::canEdit) } == true
+            val access = inPlaylist?.let { p -> app.playlists.firstOrNull { it.id == p.id }?.let(app::access) }
             val starred = songs.all(app::isStarred)
             val rating = sharedRating(songs.map(app::ratingOf))
             if (extra != null) {
@@ -136,7 +136,8 @@ fun ColumnScope.SongMenu(
                 songs.size,
                 place,
                 outside,
-                owns,
+                ownsPlaylist = access?.remove == true,
+                movesInPlaylist = access?.reorder == true,
                 lastPlaylist = last != null,
                 inFolder = !one?.parent.isNullOrEmpty(),
                 canAdd = fetches != null,
@@ -392,7 +393,8 @@ fun ColumnScope.ArtistMenu(app: AppState, id: String, name: String, starred: Str
 // The menu for a playlist, in the sidebar, on its page or in a list: play
 // it, pin it, rename it in place, copy it, write it to a file, and for the
 // listener's own, make it public or private or delete it (asked first, in
-// the menu itself).
+// the menu itself). A family playlist is renamed by anyone who can add to it
+// (Octo answers for its maker) and deleted only by a family manager.
 @Composable
 fun ColumnScope.PlaylistMenu(app: AppState, playlist: Playlist, close: () -> Unit) {
     var deleting by remember { mutableStateOf(false) }
@@ -403,7 +405,14 @@ fun ColumnScope.PlaylistMenu(app: AppState, playlist: Playlist, close: () -> Uni
         return
     }
     MenuTitle(playlist.name)
-    playlistMenuActions(empty = playlist.songCount == 0, owns = app.canEdit(playlist)).forEachIndexed { index, group ->
+    val access = app.access(playlist)
+    playlistMenuActions(
+        empty = playlist.songCount == 0,
+        owns = access.reorder,
+        renames = access.rename || access.mayRename,
+        visibility = access.visibility,
+        deletes = access.delete,
+    ).forEachIndexed { index, group ->
         if (index > 0) MenuSeparator()
         group.forEach { action ->
             when (action) {
@@ -444,7 +453,7 @@ fun ColumnScope.PlaylistMenu(app: AppState, playlist: Playlist, close: () -> Uni
 // stay in the library.
 @Composable
 private fun ColumnScope.ConfirmDelete(app: AppState, playlist: Playlist, close: () -> Unit, cancel: () -> Unit) {
-    Question("Delete \"${playlist.name}\"?", "It can't be undone. The songs stay in your library.")
+    Question("Delete \"${playlist.name}\"?", if (app.access(playlist).family) "It's deleted for everyone in the family. The songs stay in your library." else "It can't be undone. The songs stay in your library.")
     MenuRow("Delete", { app.deletePlaylist(playlist); close() }, OctoIcons.Delete, destructive = true)
     MenuRow("Cancel", cancel, OctoIcons.Close)
 }
@@ -487,7 +496,7 @@ fun playlistMenu(app: AppState, playlist: Playlist): () -> Unit {
 }
 
 // Picks a playlist to add songs to, or makes a new one with them: the
-// playlists added to lately first, then the rest of the listener's own.
+// playlists added to lately first, then the rest the listener can add to.
 // The songs are gathered only once a playlist is chosen. When some are on
 // it already, the chooser turns into the question of what to add. With
 // `start`, it adds to that playlist at once, as "Add to last playlist" does.
@@ -533,7 +542,7 @@ fun ColumnScope.PlaylistChooser(app: AppState, songs: suspend () -> List<Song>, 
         MenuRow("New playlist", { naming = true }, OctoIcons.AddToLibrary)
     }
     val recent = app.lastPlaylists()
-    val rest = app.playlists.filter(app::canEdit) - recent.toSet()
+    val rest = app.playlists.filter { app.access(it).add } - recent.toSet()
     listOf(recent, rest).filter { it.isNotEmpty() }.forEach { group ->
         MenuSeparator()
         group.forEach { playlist ->
@@ -557,7 +566,7 @@ fun ColumnScope.AddAgainMenu(app: AppState, question: AddQuestion, close: () -> 
 }
 
 // Adds songs dropped on a playlist: straight in when none are there yet,
-// else the question opens where they were dropped. Only the listener's own
-// playlists take songs; a drop on another's says so in the notice line.
+// else the question opens where they were dropped. Only playlists the
+// listener can add to take songs; a drop on another's says so in the notice line.
 fun addDroppedSongs(app: AppState, playlist: Playlist, songs: List<Song>, at: IntOffset) =
     app.addToPlaylistChecked(playlist, songs) { question -> app.popups.showAt(at) { close -> AddAgainMenu(app, question, close) } }

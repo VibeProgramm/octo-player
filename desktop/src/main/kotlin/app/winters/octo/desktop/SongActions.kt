@@ -12,8 +12,10 @@ import app.winters.octo.radio.RadioTuning
 import app.winters.octo.radio.radioMix
 import app.winters.octo.radio.radioSong
 import app.winters.octo.sort.SortList
+import app.winters.octo.subsonic.FAMILY_PLAYLISTS_EXTENSION
 import app.winters.octo.subsonic.Song
 import app.winters.octo.subsonic.SubsonicException
+import app.winters.octo.subsonic.songsToRemove
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -208,17 +210,51 @@ suspend fun AppState.playlistSongs(id: String): List<Song> = connection?.client?
 // Taking songs away.
 
 // Takes rows out of a playlist by their places in it, all in one call so
-// no place moves before the others go.
+// no place moves before the others go. On a server that takes removals by
+// song (octoFamilyPlaylists) a family playlist's songs go by id; on an older
+// one it is first checked to be exactly the list its page shows, with every
+// song Octo holds, since Octo counts places over that list.
 fun AppState.removeFromPlaylist(id: String, positions: List<Int>) {
+    val connection = connection
     val client = connection?.client ?: return
     if (positions.isEmpty()) return
     val formPost = formPost
+    val isFamily = playlists.firstOrNull { it.id == id }?.let { access(it).family } == true
+    val seen = playlistView(id)?.entry?.map { it.id }
     scope.launch {
         try {
+            if (isFamily && connection?.supports(FAMILY_PLAYLISTS_EXTENSION) == true) {
+                // Octo takes these out by song, so places can never point at another one.
+                val ids = seen ?: client.playlist(id).entry.map { it.id }
+                client.updatePlaylist(id, songsToRemove = songsToRemove(ids, positions), formPost = formPost)
+                refreshPlaylists()
+                return@launch
+            }
+            if (isFamily) {
+                // Octo counts places over the list it shows this listener, so the
+                // page's copy must be that list now, with every song it holds, and
+                // the listener must not be one who hears only clean songs.
+                val me = family.plan()
+                if (me?.abilities?.cleanOnly != false) {
+                    notice = FAMILY_MISCOUNT
+                    return@launch
+                }
+                val fresh = client.playlist(id).entry.map { it.id }
+                val held = client.playlists().firstOrNull { it.id == id }?.songCount
+                if (held != fresh.size) {
+                    notice = FAMILY_MISCOUNT
+                    return@launch
+                }
+                if (seen != fresh) {
+                    notice = FAMILY_CHANGED
+                    loadPlaylist(id)
+                    return@launch
+                }
+            }
             client.updatePlaylist(id, songIndexesToRemove = positions.distinct().sorted(), formPost = formPost)
             refreshPlaylists()
         } catch (e: SubsonicException) {
-            notice = "Couldn't remove from the playlist: ${e.userMessage()}"
+            notice = "Couldn't remove from the playlist: ${playlistFailure(e)}"
         }
     }
 }

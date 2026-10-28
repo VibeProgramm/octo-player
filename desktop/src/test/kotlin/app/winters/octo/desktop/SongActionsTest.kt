@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import org.junit.After
@@ -224,6 +225,108 @@ class SongActionsTest {
         app.removeFromPlaylist("p1", listOf(0))
         waitFor { app.notice != null }
         assertTrue(app.notice!!.startsWith("Couldn't remove from the playlist"))
+    }
+
+    // Octo with Family on, a family playlist "f1" that the sidebar says holds
+    // `held` songs and whose page lists `listed` of them, and a listener who
+    // hears every song or only clean ones.
+    private fun familyApp(
+        held: Int,
+        listed: Int,
+        cleanOnly: Boolean = false,
+        extensions: List<String> = emptyList(),
+        songs: List<String>? = null,
+    ): AppState {
+        answerFamily(held, listed, cleanOnly, songs)
+        val app = app(extensions = listOf("octoFamily:1") + extensions)
+        waitFor { app.playlists.any { it.id == "f1" } }
+        runBlocking { app.loadPlaylist("f1") }
+        return app
+    }
+
+    private fun answerFamily(held: Int, listed: Int, cleanOnly: Boolean = false, songs: List<String>? = null) {
+        server.answer(
+            "getFamily",
+            """"family":{"me":{"username":"winters","displayName":"Alex","role":"Listener","managed":false,
+            "abilities":{"addToLibrary":"Request","requestQuality":"Flac","autoApprove":false,"weeklyRequestLimit":10,
+            "streamCap":0,"awayCap":0,"away":true,"devicesAtOnce":0,"downloadFiles":true,"offlineCopies":true,"share":false,
+            "importPlaylists":true,"cleanOnly":$cleanOnly,"familyPlaylistsEdit":true,"manageFamily":false,"approveRequests":false,
+            "storageLimitGb":0,"instantFromFamily":true},
+            "requestsThisWeek":0,"storageUsedBytes":0,"place":"Home","deviceId":null}}""",
+            type = "octo",
+        )
+        server.answer(
+            "getPlaylists",
+            """"playlists":{"playlist":[{"id":"f1","name":"Road trip","owner":"Family","songCount":$held,"readonly":false}]}""",
+        )
+        val ids = songs ?: (1..listed).map { "s$it" }
+        val entries = ids.joinToString(",") { songJson(it, "Song $it") }
+        server.answer("getPlaylist", """"playlist":{"id":"f1","name":"Road trip","owner":"Family","entry":[$entries]}""")
+        server.answer("updatePlaylist")
+    }
+
+    @Test
+    fun aFamilyRemovalWaitsWhileOctoShowsFewerSongsThanItHolds() {
+        val app = familyApp(held = 3, listed = 2)
+        app.removeFromPlaylist("f1", listOf(1))
+        waitFor { app.notice != null }
+        assertTrue(callsTo("updatePlaylist").isEmpty())
+        assertEquals(FAMILY_MISCOUNT, app.notice)
+    }
+
+    @Test
+    fun aFamilyRemovalGoesWhenThePageIsTheServersList() {
+        val app = familyApp(held = 3, listed = 3)
+        app.removeFromPlaylist("f1", listOf(1))
+        waitFor { callsTo("updatePlaylist").isNotEmpty() }
+        val call = callsTo("updatePlaylist").single()
+        assertEquals(listOf("1"), call.url.queryParameterValues("songIndexToRemove"))
+        assertNull(app.notice)
+    }
+
+    @Test
+    fun aFamilyRemovalWaitsWhenThePlaylistChangedSinceItWasShown() {
+        val app = familyApp(held = 3, listed = 3)
+        answerFamily(held = 4, listed = 4)
+        app.removeFromPlaylist("f1", listOf(1))
+        waitFor { app.notice != null }
+        assertTrue(callsTo("updatePlaylist").isEmpty())
+        assertEquals(FAMILY_CHANGED, app.notice)
+    }
+
+    @Test
+    fun aCleanOnlyListenerTakesNothingOutOfAFamilyPlaylist() {
+        val app = familyApp(held = 3, listed = 3, cleanOnly = true)
+        app.removeFromPlaylist("f1", listOf(1))
+        waitFor { app.notice != null }
+        assertTrue(callsTo("updatePlaylist").isEmpty())
+        assertEquals(FAMILY_MISCOUNT, app.notice)
+    }
+
+    private val byRule = listOf("octoFamilyPlaylists:1")
+
+    @Test
+    fun aFamilyRemovalGoesBySongOnAServerThatTakesThatWithoutAnyCountCheck() {
+        val app = familyApp(held = 3, listed = 3, extensions = byRule, songs = listOf("s1", "s2", "s1"))
+        val readsBefore = callsTo("getPlaylists").size
+        app.removeFromPlaylist("f1", listOf(2))
+        waitFor { callsTo("updatePlaylist").isNotEmpty() }
+        val call = callsTo("updatePlaylist").single()
+        assertEquals(listOf("s1@2"), call.url.queryParameterValues("octoSongToRemove"))
+        assertTrue(call.url.queryParameterValues("songIndexToRemove").isEmpty())
+        val before = server.calls.takeWhile { it !== call }
+        assertEquals(readsBefore, before.count { it.url.pathSegments.last() == "getPlaylists" })
+        assertNull(app.notice)
+    }
+
+    @Test
+    fun aCleanOnlyListenerTakesSongsOutBySongToo() {
+        val app = familyApp(held = 3, listed = 3, cleanOnly = true, extensions = byRule)
+        app.removeFromPlaylist("f1", listOf(1))
+        waitFor { callsTo("updatePlaylist").isNotEmpty() }
+        val call = callsTo("updatePlaylist").single()
+        assertEquals(listOf("s2@1"), call.url.queryParameterValues("octoSongToRemove"))
+        assertNull(app.notice)
     }
 
     @Test
