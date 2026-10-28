@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 18,
-    "identityHash": "8018600e013f061b75c46a2cc2f36354",
+    "identityHash": "d7d8aa19b8619ad2234291fdefd5b22a",
     "entities": [
       {
         "tableName": "track",
@@ -734,7 +734,7 @@
       },
       {
         "tableName": "playlist",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `serverId` TEXT, `sourceId` TEXT, `syncedAt` INTEGER, `syncedName` TEXT, `serverStamp` TEXT, `octoNotice` TEXT, `family` INTEGER NOT NULL DEFAULT 0, `syncedSongs` TEXT, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `serverId` TEXT, `sourceId` TEXT, `syncedAt` INTEGER, `syncedName` TEXT, `serverStamp` TEXT, `octoNotice` TEXT, `family` INTEGER NOT NULL DEFAULT 0, `syncedSongs` TEXT, `familyMayAdd` INTEGER NOT NULL DEFAULT 0, `familyMayRemove` INTEGER NOT NULL DEFAULT 0, `familyMayRename` INTEGER NOT NULL DEFAULT 0, `familyMayDelete` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -801,6 +801,34 @@
             "fieldPath": "syncedSongs",
             "columnName": "syncedSongs",
             "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "familyMayAdd",
+            "columnName": "familyMayAdd",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "familyMayRemove",
+            "columnName": "familyMayRemove",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "familyMayRename",
+            "columnName": "familyMayRename",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "familyMayDelete",
+            "columnName": "familyMayDelete",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
           }
         ],
         "primaryKey": {
@@ -1807,7 +1835,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8018600e013f061b75c46a2cc2f36354')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd7d8aa19b8619ad2234291fdefd5b22a')"
     ]
   }
 }

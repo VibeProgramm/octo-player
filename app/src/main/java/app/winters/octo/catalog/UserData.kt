@@ -67,6 +67,11 @@ data class PlaylistEntity(
     // The server's songs as both sides last agreed, one id a line, so a
     // family playlist's own changes can be told from everyone else's.
     val syncedSongs: String? = null,
+    // What the listener may do with this family playlist, as the last sync found.
+    @ColumnInfo(defaultValue = "0") val familyMayAdd: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val familyMayRemove: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val familyMayRename: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val familyMayDelete: Boolean = false,
 )
 
 @Entity(

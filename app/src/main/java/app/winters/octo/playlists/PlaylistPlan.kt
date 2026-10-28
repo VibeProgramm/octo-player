@@ -35,6 +35,8 @@ data class LinkedPlaylist(
     val syncedStamp: String?,
     // A family playlist, whose own changes are sent on top of everyone else's.
     val family: Boolean = false,
+    // A family playlist the listener may not change here: it only follows the server.
+    val pullOnly: Boolean = false,
 )
 
 sealed interface PlaylistStep {
@@ -68,15 +70,19 @@ sealed interface PlaylistStep {
 fun stampOf(changed: String?, songCount: Int) = "${changed.orEmpty()}|$songCount"
 
 // Server playlists worth a copy on the phone: the signed-in user's own and
-// the family's they may change, leaving out read-only ones and stations, which
-// the stations shelf shows.
+// the family's, leaving out other read-only ones and stations, which the
+// stations shelf shows. A family playlist a listener without editing may not
+// change is kept as a copy that only follows the server.
 fun importable(playlists: List<Playlist>, stationIds: Set<String>, username: String): List<Playlist> =
-    playlists.filter { !it.readonly && it.id !in stationIds && (isFamilyPlaylist(it.owner, username) || ownedBy(it.owner, username)) }
+    playlists.filter {
+        it.id !in stationIds &&
+            (isFamilyPlaylist(it.owner, username, it.octoFamily) || (!it.readonly && ownedBy(it.owner, username)))
+    }
 
 // The playlists a new one made on a server too old to answer with it
 // can be: the user's own by that name not linked yet, never the family's.
 fun newestNamedCandidates(playlists: List<Playlist>, name: String, username: String, linked: Set<String>): List<Playlist> =
-    importable(playlists, emptySet(), username).filter { it.name == name && it.id !in linked && !isFamilyPlaylist(it.owner, username) }
+    importable(playlists, emptySet(), username).filter { it.name == name && it.id !in linked && !isFamilyPlaylist(it.owner, username, it.octoFamily) }
 
 // How long the phone's copy of the server's playlists counts as fresh when
 // the playlists come on screen.
@@ -123,6 +129,13 @@ fun planLinked(server: ServerPlaylist?, playlist: LinkedPlaylist, stillThere: Bo
         return if (playlist.edited || stillThere) PlaylistStep.Unlink(playlist.localId) else PlaylistStep.Remove(playlist.localId)
     }
     val serverChanged = server.stamp != playlist.syncedStamp
+    if (playlist.pullOnly) {
+        return if (serverChanged || playlist.edited) {
+            PlaylistStep.Pull(playlist.localId, server.id, server.stamp, keepName = false)
+        } else {
+            null
+        }
+    }
     return when {
         serverChanged && playlist.edited -> if (playlist.family) {
             // Both changed: a family playlist sends the phone's own changes on
@@ -247,6 +260,19 @@ fun familySend(base: List<String>, phone: List<String>, current: List<String>, l
         return FamilySend(adds, base + wanted.add, wanted.removeAt.map { current[it] })
     }
     return FamilySend(wanted, phone, emptyList())
+}
+
+// Whether a family send reached the server although its answer was lost:
+// every song it added is there as many more times as it was added, and
+// every song it took out as many fewer. Changes by others meanwhile do not
+// hide it.
+fun familySendLanded(current: List<String>, after: List<String>, changes: FamilyChanges): Boolean {
+    val before = current.groupingBy { it }.eachCount()
+    val now = after.groupingBy { it }.eachCount()
+    val added = changes.add.groupingBy { it }.eachCount()
+    val removed = changes.removeAt.map { current[it] }.groupingBy { it }.eachCount()
+    return added.all { (id, n) -> (now[id] ?: 0) >= (before[id] ?: 0) + n } &&
+        removed.all { (id, n) -> (now[id] ?: 0) <= (before[id] ?: 0) - n }
 }
 
 // The rows after taking the server's songs, less the songs whose removal

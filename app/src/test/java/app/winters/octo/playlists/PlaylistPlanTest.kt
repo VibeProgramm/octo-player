@@ -7,6 +7,7 @@ import app.winters.octo.subsonic.Playlist
 import app.winters.octo.subsonic.Song
 import app.winters.octo.ui.playlist.phoneOnlyNote
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -154,13 +155,37 @@ class PlaylistPlanTest {
     }
 
     @Test
-    fun theFamilysChangeablePlaylistsComeOverButNotReadOnlyOnes() {
+    fun theFamilysPlaylistsComeOverReadOnlyOnesToo() {
         val all = listOf(
             listed("fam", owner = "Family"),
             listed("famRo", owner = "Family", readonly = true),
             listed("theirs", owner = "sam"),
+            listed("ownRo", owner = "alex", readonly = true),
         )
-        assertEquals(listOf("fam"), importable(all, emptySet(), username = "alex").map { it.id })
+        assertEquals(listOf("fam", "famRo"), importable(all, emptySet(), username = "alex").map { it.id })
+    }
+
+    @Test
+    fun theServersFamilyFlagDecidesOverTheOwner() {
+        val flagged = Playlist(id = "f", name = "f", owner = "sam", octoFamily = true)
+        val notFlagged = Playlist(id = "n", name = "n", owner = "Family", octoFamily = false)
+        assertEquals(listOf("f"), importable(listOf(flagged, notFlagged), emptySet(), username = "alex").map { it.id })
+    }
+
+    @Test
+    fun aPullOnlyFamilyPlaylistFollowsTheServerEvenWhenEdited() {
+        val same = ServerPlaylist("s", "n", "old")
+        val link = LinkedPlaylist("l", "s", "n", edited = true, syncedName = "n", syncedStamp = "old", family = true, pullOnly = true)
+        assertEquals(PlaylistStep.Pull("l", "s", "old", keepName = false), planLinked(same, link))
+        assertNull(planLinked(same, link.copy(edited = false)))
+    }
+
+    @Test
+    fun aFamilySendThatLandedIsRecognizedByCounts() {
+        assertTrue(familySendLanded(listOf("a", "b"), listOf("a", "b", "x", "c"), FamilyChanges(emptyList(), listOf("c"))))
+        assertFalse(familySendLanded(listOf("a", "b"), listOf("a", "b"), FamilyChanges(emptyList(), listOf("c"))))
+        assertTrue(familySendLanded(listOf("a", "b", "a"), listOf("a", "b"), FamilyChanges(listOf(2), emptyList())))
+        assertFalse(familySendLanded(listOf("a", "b", "a"), listOf("a", "b", "a"), FamilyChanges(listOf(2), emptyList())))
     }
 
     @Test

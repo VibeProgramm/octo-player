@@ -208,6 +208,14 @@ interface UserDao {
     @Query("UPDATE playlist SET family = :family WHERE id = :id")
     suspend fun markFamily(id: String, family: Boolean)
 
+    // What the listener may do with a family playlist, as Octo's rows said at
+    // the last sync.
+    @Query(
+        "UPDATE playlist SET familyMayAdd = :add, familyMayRemove = :remove, familyMayRename = :rename, " +
+            "familyMayDelete = :delete WHERE id = :id",
+    )
+    suspend fun markFamilyRights(id: String, add: Boolean, remove: Boolean, rename: Boolean, delete: Boolean)
+
     // The songs a family playlist's next changes are worked out from, kept at
     // once after a change reaches the server so it is never sent twice.
     @Query("UPDATE playlist SET syncedSongs = :songs WHERE id = :id")
@@ -221,7 +229,8 @@ interface UserDao {
     @Query(
         """
         UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
-            octoNotice = NULL, syncedSongs = NULL, family = 0
+            octoNotice = NULL, syncedSongs = NULL, family = 0,
+            familyMayAdd = 0, familyMayRemove = 0, familyMayRename = 0, familyMayDelete = 0
         WHERE id = :id
         """,
     )
@@ -231,7 +240,8 @@ interface UserDao {
     @Query(
         """
         UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
-            syncedSongs = NULL, family = 0
+            syncedSongs = NULL, family = 0,
+            familyMayAdd = 0, familyMayRemove = 0, familyMayRename = 0, familyMayDelete = 0
         WHERE sourceId = :sourceId
         """,
     )
@@ -242,7 +252,8 @@ interface UserDao {
     @Query(
         """
         UPDATE playlist SET serverId = NULL, sourceId = NULL, syncedAt = NULL, syncedName = NULL, serverStamp = NULL,
-            syncedSongs = NULL, family = 0
+            syncedSongs = NULL, family = 0,
+            familyMayAdd = 0, familyMayRemove = 0, familyMayRename = 0, familyMayDelete = 0
         WHERE sourceId IS NOT NULL AND sourceId NOT IN (:kept)
         """,
     )
