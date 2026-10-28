@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -85,10 +86,13 @@ fun SongMenuHost(
     DisposableEffect(state, vm) {
         state.quick = object : QuickSongActions {
             override fun playNext(trackId: String) = vm.playNextUndoable(trackId)
-            override fun addToQueue(trackId: String) = vm.playLast(trackId)
+            override fun addToQueue(trackId: String) = vm.playLastUndoable(trackId)
         }
         onDispose { state.quick = null }
     }
+    // What a swipe on a row does, as Settings say.
+    val swipe by vm.swipeAction.collectAsStateWithLifecycle()
+    LaunchedEffect(swipe) { state.swipeAction = swipe }
     val phoneFiles = rememberPhoneFiles()
     // Over the bottom bar and under every menu, as the bar it stands in for.
     SelectionBarHost(state.selectionBar, phoneFiles)
@@ -194,11 +198,11 @@ private fun SongActionsPage(
         GlassMenuGroups(songMenuGroups(actions)) { action ->
             when (action) {
                 SongAction.PlayNext -> GlassMenuAction(OctoIcons.PlayNext, "Play next", onClick = {
-                    vm.playNext(trackId)
+                    vm.playNextUndoable(trackId)
                     state.close()
                 })
                 SongAction.AddToQueue -> GlassMenuAction(OctoIcons.AddToQueue, "Add to queue", onClick = {
-                    vm.playLast(trackId)
+                    vm.playLastUndoable(trackId)
                     state.close()
                 })
                 SongAction.StartRadio -> GlassMenuAction(OctoIcons.Radio, "Start radio", onClick = {

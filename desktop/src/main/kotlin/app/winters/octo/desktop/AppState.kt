@@ -55,6 +55,7 @@ import app.winters.octo.desktop.queue.autoplaySongs
 import app.winters.octo.desktop.queue.queueNameFor
 import app.winters.octo.desktop.search.COMMAND_MARK
 import app.winters.octo.playback.QueueSource
+import app.winters.octo.playback.queueAddWords
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import app.winters.octo.desktop.search.Fetches
@@ -426,6 +427,10 @@ class AppState(
     // A word the notice line offers beside its text, like Undo after a
     // queue edit; shown only while the notice is still the one it came with.
     var noticeAction by mutableStateOf<NoticeAction?>(null)
+    // Whether the pointer is on the notice; a passing notice waits for it to move off.
+    var noticeHovered by mutableStateOf(false)
+    // The passing notice now showing, so an older one's timer never takes a newer one away.
+    private var passingTurn = 0L
 
     // Keeps a station going, on a server that sends a station's next songs.
     val stationRefill = StationRefill(
@@ -622,15 +627,17 @@ class AppState(
         if (drawer != null) drawer.wake() else passingNotice(line)
     }
 
-    // A notice that leaves on its own a few seconds later, unless another
-    // took its place meanwhile.
-    fun passingNotice(line: String, action: NoticeAction? = null) {
+    // A notice that leaves on its own a few seconds later (once the pointer is off it), unless
+    // another took its place meanwhile.
+    fun passingNotice(line: String, action: NoticeAction? = null, showFor: Long = PASSING_NOTICE_MS, poll: Long = 100) {
         notice = line
         noticeDetail = null
         noticeAction = action
+        val mine = ++passingTurn
         scope.launch {
-            delay(PASSING_NOTICE_MS)
-            if (notice == line) {
+            delay(showFor)
+            while (noticeHovered && passingTurn == mine) delay(poll)
+            if (passingTurn == mine && notice == line) {
                 notice = null
                 if (noticeAction?.text == line) noticeAction = null
             }
@@ -930,9 +937,17 @@ class AppState(
         player.play(order, if (shuffle) 0 else start, false, QueueSource.Station(id, name))
     }
 
-    fun playNext(songs: List<Song>) = player.playNext(songs)
+    fun playNext(songs: List<Song>) {
+        if (songs.isEmpty()) return
+        player.playNext(songs)
+        queueAdded(queueAddWords(songs.size, next = true))
+    }
 
-    fun addToQueue(songs: List<Song>) = player.addToQueue(songs)
+    fun addToQueue(songs: List<Song>) {
+        if (songs.isEmpty()) return
+        player.addToQueue(songs)
+        queueAdded(queueAddWords(songs.size, next = false))
+    }
 
     fun setVolume(volume: Float) {
         player.setVolume(volume)

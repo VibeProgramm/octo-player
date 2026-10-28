@@ -133,7 +133,7 @@ fun StreamingPage(
 
     SettingsPageFrame("Streaming and downloads", onBack, highlight) {
         SettingsGroup(title = "Streaming", icon = OctoIcons.Wifi) {
-            ChoiceRow(SettingsIndex.Copies, value = CopyChoices.getValue(prefs.copies).label, onClick = {
+            ChoiceRow(SettingsIndex.Copies, value = CopyChoices.getValue(prefs.copies).label, answers = CopyPreference.entries.map { CopyChoices.getValue(it).label }, onClick = {
                 val options = CopyPreference.entries
                 sheet.show(
                     ChoiceRequest(SettingsIndex.Copies.title, options.map(CopyChoices::getValue), options.indexOf(prefs.copies)) {
@@ -145,7 +145,7 @@ fun StreamingPage(
             // choice, are on Audio quality.
             ActionRow(null, onClick = { onOpen(SettingsPageRoute(SettingsPage.AudioQuality)) }, title = SettingsPage.AudioQuality.title, helper = "On Wi-Fi ${prefs.wifi.label}, on mobile data ${prefs.mobile.label}")
             val waits = StartAfter.entries
-            ChoiceRow(SettingsIndex.StartAfter, value = prefs.startAfter.label, helper = START_AFTER_HELP, onClick = {
+            ChoiceRow(SettingsIndex.StartAfter, value = prefs.startAfter.label, helper = START_AFTER_HELP, answers = waits.map { it.label }, onClick = {
                 sheet.show(ChoiceRequest(SettingsIndex.StartAfter.title, waits.map { Choice(it.label) }, waits.indexOf(prefs.startAfter)) { vm.setStartAfter(waits[it]) })
             })
         }
@@ -159,10 +159,10 @@ fun StreamingPage(
                 },
             )
             if (kept.cacheSize != CacheSize.Off) {
-                ChoiceRow(SettingsIndex.FetchWifi, value = ahead(kept.prefetchWifi), onClick = {
+                ChoiceRow(SettingsIndex.FetchWifi, value = ahead(kept.prefetchWifi), answers = AheadCounts.map(::ahead), onClick = {
                     sheet.show(aheadRequest(SettingsIndex.FetchWifi.title, kept.prefetchWifi, offline::setPrefetchWifi))
                 })
-                ChoiceRow(SettingsIndex.FetchMobile, value = ahead(kept.prefetchMobile), onClick = {
+                ChoiceRow(SettingsIndex.FetchMobile, value = ahead(kept.prefetchMobile), answers = AheadCounts.map(::ahead), onClick = {
                     sheet.show(aheadRequest(SettingsIndex.FetchMobile.title, kept.prefetchMobile, offline::setPrefetchMobile))
                 })
                 ActionRow(SettingsIndex.ClearCache, onClick = offline::clearCache, enabled = used > 0, chevron = false)
@@ -170,7 +170,7 @@ fun StreamingPage(
         }
 
         SettingsGroup(title = "Downloads", icon = OctoIcons.Download) {
-            ChoiceRow(SettingsIndex.DownloadQuality, value = kept.downloadQuality.downloadLabel, onClick = {
+            ChoiceRow(SettingsIndex.DownloadQuality, value = kept.downloadQuality.downloadLabel, answers = qualities.map { it.downloadLabel }, onClick = {
                 sheet.show(
                     ChoiceRequest(SettingsIndex.DownloadQuality.title, qualities.map { it.downloadChoice }, qualities.indexOf(kept.downloadQuality)) {
                         offline.setDownloadQuality(qualities[it])

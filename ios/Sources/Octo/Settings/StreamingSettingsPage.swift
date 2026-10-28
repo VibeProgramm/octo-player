@@ -8,6 +8,9 @@ struct StreamingSettingsPage: View {
     @State private var settings = AppSettings.shared
     @State private var feeds = SettingsFeeds.shared
 
+    /// What the fetch ahead rows can show on their right: the fixed counts, as the other apps list them.
+    private var aheadValues: [String] { [0, 1, 2, 3, 5, 10].map(SettingsWords.ahead) }
+
     var body: some View {
         let stream = settings.stream
         let kept = settings.offline
@@ -27,15 +30,16 @@ struct StreamingSettingsPage: View {
             SettingsGroup(title: "Cache", icon: SettingsIcon.storage) {
                 ChoiceRow(SettingsIndex.cacheSize,
                           value: kept.cacheSize == .off ? "Off" : "\(kept.cacheSize.label), \(SettingsWords.sizeLabel(used)) used",
+                          values: [],
                           question: SettingsQuestion(
                               SettingsIndex.cacheSize.title, CacheSize.allCases, current: kept.cacheSize,
                               answer: { SettingsAnswer($0.label, $0 == .off ? "Songs stream every time, and nothing is fetched ahead" : nil) },
                               // The cache takes the new size, then measures itself again.
                               pick: settings.setCacheSize))
                 if kept.cacheSize != .off {
-                    ChoiceRow(SettingsIndex.fetchWifi, value: SettingsWords.ahead(kept.prefetchWifi),
+                    ChoiceRow(SettingsIndex.fetchWifi, value: SettingsWords.ahead(kept.prefetchWifi), values: aheadValues,
                               question: aheadQuestion(SettingsIndex.fetchWifi.title, kept.prefetchWifi, settings.setPrefetchWifi))
-                    ChoiceRow(SettingsIndex.fetchMobile, value: SettingsWords.ahead(kept.prefetchMobile),
+                    ChoiceRow(SettingsIndex.fetchMobile, value: SettingsWords.ahead(kept.prefetchMobile), values: aheadValues,
                               question: aheadQuestion(SettingsIndex.fetchMobile.title, kept.prefetchMobile, settings.setPrefetchMobile))
                     ActionRow(SettingsIndex.clearCache, chevron: false, enabled: used > 0) {
                         Task { await feeds.clearCache() }
@@ -43,7 +47,7 @@ struct StreamingSettingsPage: View {
                 }
             }
             SettingsGroup(title: "Downloads", icon: SettingsIcon.download) {
-                ChoiceRow(SettingsIndex.downloadQuality, value: kept.downloadQuality.downloadLabel, question: SettingsQuestion(
+                ChoiceRow(SettingsIndex.downloadQuality, value: kept.downloadQuality.downloadLabel, values: StreamQuality.allCases.map(\.downloadLabel), question: SettingsQuestion(
                     SettingsIndex.downloadQuality.title, StreamQuality.allCases, current: kept.downloadQuality,
                     answer: { quality in
                         quality == .original ? SettingsAnswer(StreamQuality.originalLabel)

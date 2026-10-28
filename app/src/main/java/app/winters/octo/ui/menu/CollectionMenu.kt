@@ -25,6 +25,7 @@ import app.winters.octo.offline.OfflineDownloads
 import app.winters.octo.playback.LibraryRadio
 import app.winters.octo.playback.PlaybackConnection
 import app.winters.octo.playback.PlaylistStore
+import app.winters.octo.playback.queueAddWords
 import app.winters.octo.ui.common.Feedback
 import app.winters.octo.ui.playlist.copiedMessage
 import app.winters.octo.ui.playlist.playlistCopyName
@@ -243,11 +244,17 @@ class CollectionMenuViewModel @Inject constructor(
     }
 
     fun playNext(target: CollectionTarget) {
-        viewModelScope.launch { songIds(target).takeIf { it.isNotEmpty() }?.let(playback::playNext) }
+        viewModelScope.launch {
+            val ids = songIds(target).takeIf { it.isNotEmpty() } ?: return@launch
+            playback.playNextUndoable(ids) { count, undo -> feedback.undoable(queueAddWords(count, next = true), undo) }
+        }
     }
 
     fun addToQueue(target: CollectionTarget) {
-        viewModelScope.launch { songIds(target).takeIf { it.isNotEmpty() }?.let(playback::playLast) }
+        viewModelScope.launch {
+            val ids = songIds(target).takeIf { it.isNotEmpty() } ?: return@launch
+            playback.playLastUndoable(ids) { count, undo -> feedback.undoable(queueAddWords(count, next = false), undo) }
+        }
     }
 
     // Hands the songs on once read, when there are any. Runs here rather

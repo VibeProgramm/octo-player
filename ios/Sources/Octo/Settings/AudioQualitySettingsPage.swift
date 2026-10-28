@@ -117,13 +117,13 @@ struct AudioQualitySettingsPage: View {
         let mobileLimit = me?.awayLimit ?? 0
         SettingsPageFrame(title: SettingsPage.audioQuality.title, highlight: highlight) {
             if let me {
-                SettingsGroup(title: "Your account, on every app", icon: SettingsIcon.listeners) {
+                SettingsGroup(title: "Your account, on every app", icon: SettingsIcon.account) {
                     ForEach(me.limitLines, id: \.self) { NoteRow($0, color: OctoColor.signalOrange) }
-                    ChoiceRow(SettingsIndex.accountHome, value: me.home.name,
+                    ChoiceRow(SettingsIndex.accountHome, value: me.home.name, values: AccountQualityWords.options(limitKbps: me.homeLimit).map(\.quality.name),
                               question: accountQuestion(AccountQualityWords.atHome, me.home, limit: me.homeLimit) { quality in
                                   Task { await model.setQuality(home: quality) }
                               })
-                    ChoiceRow(SettingsIndex.accountAway, value: me.away.name,
+                    ChoiceRow(SettingsIndex.accountAway, value: me.away.name, values: AccountQualityWords.options(limitKbps: me.awayLimit).map(\.quality.name),
                               question: accountQuestion(AccountQualityWords.away, me.away, limit: me.awayLimit) { quality in
                                   Task { await model.setQuality(away: quality) }
                               })
@@ -138,11 +138,11 @@ struct AudioQualitySettingsPage: View {
             }
             SettingsGroup(title: familyOn ? "This app's quality" : "Streaming", icon: SettingsIcon.wifi) {
                 if !model.appPicks {
-                    NoteRow("Your account's choice applies now. These apply when this phone is left to the app.")
+                    NoteRow(AccountQualityWords.appQualityNote(deviceShown: me != nil && model.follows != nil))
                 }
-                ChoiceRow(SettingsIndex.streamWifi, value: settings.stream.wifi.label,
+                ChoiceRow(SettingsIndex.streamWifi, value: settings.stream.wifi.label, values: StreamQuality.allCases.map(\.label),
                           question: streamQuestion(SettingsIndex.streamWifi.title, settings.stream.wifi, limit: wifiLimit, pick: settings.setStreamWifi))
-                ChoiceRow(SettingsIndex.streamMobile, value: settings.stream.mobile.label,
+                ChoiceRow(SettingsIndex.streamMobile, value: settings.stream.mobile.label, values: StreamQuality.allCases.map(\.label),
                           question: streamQuestion(SettingsIndex.streamMobile.title, settings.stream.mobile, limit: mobileLimit,
                                                    pick: settings.setStreamMobile))
             }

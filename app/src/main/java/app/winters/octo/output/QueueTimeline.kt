@@ -13,11 +13,18 @@ import androidx.media3.common.util.UnstableApi
 // order, so the lock screen, the app and "next" agree with the phone.
 @OptIn(UnstableApi::class)
 internal class QueueTimeline(
-    private val items: List<MediaItem>,
-    private val uids: List<Any>,
-    private val durationsMs: List<Long?>,
-    private val order: List<Int>,
+    items: List<MediaItem>,
+    uids: List<Any>,
+    durationsMs: List<Long?>,
+    order: List<Int>,
 ) : Timeline() {
+    // Copies: Media3 keeps a timeline after the queue has changed, and
+    // compares old and new ones, so each must stay as it was made.
+    private val items = items.toList()
+    private val uids = uids.toList()
+    private val durationsMs = durationsMs.toList()
+    private val order = order.toList()
+
     // Where each queue position sits in the play order.
     private val rank = IntArray(order.size).also { ranks -> order.forEachIndexed { r, position -> ranks[position] = r } }
 

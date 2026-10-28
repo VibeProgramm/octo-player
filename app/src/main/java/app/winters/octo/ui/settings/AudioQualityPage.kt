@@ -27,6 +27,7 @@ import app.winters.octo.ui.family.QualityOption
 import app.winters.octo.ui.family.QUALITY_AWAY
 import app.winters.octo.ui.family.QUALITY_ON_THIS_DEVICE
 import app.winters.octo.ui.family.appPicksQuality
+import app.winters.octo.ui.family.appQualityNote
 import app.winters.octo.ui.family.awayLimit
 import app.winters.octo.ui.family.deviceModeLine
 import app.winters.octo.ui.family.deviceModeName
@@ -87,15 +88,15 @@ fun AudioQualityPage(onBack: () -> Unit, highlight: String?, vm: AudioQualityVie
     SettingsPageFrame(SettingsPage.AudioQuality.title, onBack, highlight) {
         if (familyOn && me != null) {
             val quality = me.quality
-            SettingsGroup(title = "Your account, on every app", icon = OctoIcons.Listeners) {
+            SettingsGroup(title = "Your account, on every app", icon = OctoIcons.Account) {
                 familyLimitLines(quality).forEach { NoteRow(it, color = OctoColors.SignalOrange) }
-                ChoiceRow(SettingsIndex.AccountHome, value = qualityName(quality.home), onClick = {
+                ChoiceRow(SettingsIndex.AccountHome, value = qualityName(quality.home), answers = qualityOptions(homeLimit(quality)).map { qualityName(it.quality) }, onClick = {
                     val options = qualityOptions(homeLimit(quality))
                     sheet.show(ChoiceRequest(QUALITY_AT_HOME, options.map { it.choice(homeLimit(quality)) }, options.indexOfFirst { it.quality == quality.home }) {
                         model.setQuality(home = options[it].quality)
                     })
                 })
-                ChoiceRow(SettingsIndex.AccountAway, value = qualityName(quality.away), onClick = {
+                ChoiceRow(SettingsIndex.AccountAway, value = qualityName(quality.away), answers = qualityOptions(awayLimit(quality)).map { qualityName(it.quality) }, onClick = {
                     val options = qualityOptions(awayLimit(quality))
                     sheet.show(ChoiceRequest(QUALITY_AWAY, options.map { it.choice(awayLimit(quality)) }, options.indexOfFirst { it.quality == quality.away }) {
                         model.setQuality(away = options[it].quality)
@@ -104,7 +105,7 @@ fun AudioQualityPage(onBack: () -> Unit, highlight: String?, vm: AudioQualityVie
             }
             model.deviceMode?.let { mode ->
                 SettingsGroup(title = QUALITY_ON_THIS_DEVICE, icon = OctoIcons.Phone) {
-                    ChoiceRow(SettingsIndex.DeviceQuality, value = deviceModeName(mode), onClick = {
+                    ChoiceRow(SettingsIndex.DeviceQuality, value = deviceModeName(mode), answers = DeviceQualityMode.entries.map(::deviceModeName), onClick = {
                         val modes = DeviceQualityMode.entries
                         sheet.show(ChoiceRequest(QUALITY_ON_THIS_DEVICE, modes.map { Choice(deviceModeName(it), deviceModeLine(it)) }, modes.indexOf(mode)) {
                             model.setDeviceMode(modes[it])
@@ -118,11 +119,11 @@ fun AudioQualityPage(onBack: () -> Unit, highlight: String?, vm: AudioQualityVie
         val wifiLimit = if (familyOn && me != null) homeLimit(me.quality) else 0
         val mobileLimit = if (familyOn && me != null) awayLimit(me.quality) else 0
         SettingsGroup(title = if (familyOn) "This app's quality" else "Streaming", icon = OctoIcons.Wifi) {
-            if (!applies) NoteRow("Your account's choice applies now. These apply when this phone is left to the app.")
-            ChoiceRow(SettingsIndex.StreamWifi, value = prefs.wifi.label, onClick = {
+            if (!applies) NoteRow(appQualityNote(deviceShown = familyOn && me != null && model.deviceMode != null))
+            ChoiceRow(SettingsIndex.StreamWifi, value = prefs.wifi.label, answers = qualities.map { it.label }, onClick = {
                 sheet.show(ChoiceRequest(SettingsIndex.StreamWifi.title, qualities.map { it.choice(wifiLimit) }, qualities.indexOf(prefs.wifi)) { vm.setWifi(qualities[it]) })
             })
-            ChoiceRow(SettingsIndex.StreamMobile, value = prefs.mobile.label, onClick = {
+            ChoiceRow(SettingsIndex.StreamMobile, value = prefs.mobile.label, answers = qualities.map { it.label }, onClick = {
                 sheet.show(ChoiceRequest(SettingsIndex.StreamMobile.title, qualities.map { it.choice(mobileLimit) }, qualities.indexOf(prefs.mobile)) { vm.setMobile(qualities[it]) })
             })
         }

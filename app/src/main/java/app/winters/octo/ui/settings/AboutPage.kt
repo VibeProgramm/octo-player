@@ -137,7 +137,7 @@ fun AboutPage(onBack: () -> Unit, highlight: String?) {
                 onChange = vm::setCheckAutomatically,
                 helper = "Every few hours, downloading on Wi-Fi.",
             )
-            ChoiceRow(SettingsIndex.InstallUpdates, value = installName(prefs.install), onClick = {
+            ChoiceRow(SettingsIndex.InstallUpdates, value = installName(prefs.install), answers = InstallWhen.entries.map(::installName), onClick = {
                 val options = InstallWhen.entries
                 sheet.show(
                     ChoiceRequest(

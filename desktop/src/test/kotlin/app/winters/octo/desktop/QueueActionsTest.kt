@@ -144,7 +144,7 @@ class QueueActionsTest {
         val call = server.calls.first { it.url.pathSegments.last() == "createPlaylist" }
         assertEquals("Mix", call.url.queryParameter("name"))
         assertEquals(listOf("s1", "s2", "x"), call.url.queryParameterValues("songId"))
-        waitFor { app.notice != null }
+        waitFor { app.notice == "Saved as Mix" }
         assertEquals("Saved as Mix", app.notice)
     }
 

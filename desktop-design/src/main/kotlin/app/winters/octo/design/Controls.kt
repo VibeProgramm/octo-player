@@ -5,10 +5,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -161,6 +164,32 @@ fun TextAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier,
     ) {
         if (icon != null) Glyph(icon, size = 16.dp, tint = tint)
         Txt(text, OctoType.label, tint)
+    }
+}
+
+// The one action a notice offers: a capsule of the accent with the page's dark ink, so it reads
+// as a button beside the notice's words. Lighter under the pointer, a little dimmer pressed.
+@Composable
+fun AccentAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val press = remember { MutableInteractionSource() }
+    val pressed by press.collectIsPressedAsState()
+    val hovered by press.collectIsHoveredAsState()
+    val fill = when {
+        pressed -> OctoColors.Accent.copy(alpha = 0.82f)
+        hovered -> OctoColors.AccentHover
+        else -> OctoColors.Accent
+    }
+    Row(
+        modifier
+            .tabStop(LocalTabStops.current)
+            .clip(CircleShape)
+            .background(fill, CircleShape)
+            .hoverable(press)
+            .clickable(interactionSource = press, indication = FocusRing(CircleShape), role = Role.Button, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Txt(text, OctoType.label, OctoColors.Background)
     }
 }
 

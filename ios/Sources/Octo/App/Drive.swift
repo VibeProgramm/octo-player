@@ -13,6 +13,7 @@ import UIKit
 /// - `tab:home`, `tab:search`, `tab:library`, `tab:settings` (the tab in use again goes back to
 ///   its first page, or scrolls it to the top)
 /// - `reselect` taps the tab in use again; `back` goes back once
+/// - `scroll:POINTS` scrolls the page in front down by POINTS (400 when left out)
 /// - `barplayer` grows the bar's small player; `showtabs` folds it back into the round button
 /// - `player` opens the full player, `close` closes it, `lyrics` opens its lyrics
 /// - `player:STATE` opens the full player in a state: `player:queue` (Up next), `player:sleep`
@@ -77,6 +78,7 @@ enum Drive {
                 }
             case "close": router.drive = .closePlayer
             case "lyrics": router.drive = .lyrics
+            case "scroll": scrollFront(by: CGFloat(Double(value) ?? 400))
             case "probe":
                 HitchProbe.shared.start()
                 MainThreadProbe.start()
@@ -130,6 +132,49 @@ enum Drive {
             }
             try? await Task.sleep(for: .milliseconds(400))
         }
+    }
+
+    private static let log = Logger(subsystem: "app.winters.octo", category: "drive")
+
+    /// Scrolls the list of the page in front: the outermost scroll view under the middle of the
+    /// screen that can scroll and is shown and touchable, kept within its ends.
+    private static func scrollFront(by points: CGFloat) {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first,
+            let hit = window.hitTest(CGPoint(x: window.bounds.midX, y: window.bounds.midY), with: nil)
+        else {
+            log.info("scroll: nothing under the middle of the screen")
+            return
+        }
+        var found: UIScrollView?
+        var view: UIView? = hit
+        while let current = view {
+            if current.isHidden || current.alpha < 0.01 || !current.isUserInteractionEnabled {
+                found = nil
+            } else if let scroll = current as? UIScrollView, scroll.isScrollEnabled,
+                      scroll.contentSize.height > scroll.bounds.height {
+                found = scroll
+            }
+            view = current.superview
+        }
+        // A page SwiftUI fades out (a tab behind the one in front) can be see-through only in its layers.
+        var layer: CALayer? = found?.layer
+        while let current = layer {
+            if current.isHidden || current.opacity < 0.01 {
+                found = nil
+                break
+            }
+            layer = current.superlayer
+        }
+        guard let scroll = found else {
+            log.info("scroll: no shown scroll view under the middle of the screen")
+            return
+        }
+        let top = -scroll.adjustedContentInset.top
+        let bottom = max(top, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
+        let y = min(max(top, scroll.contentOffset.y + points), bottom)
+        scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: y), animated: false)
+        log.info("scroll: \(String(describing: type(of: scroll)), privacy: .public) at \(String(describing: scroll.frame), privacy: .public) to \(Double(y), privacy: .public)")
     }
 
     /// More steps, added by parts of the app: each answers whether it took the step.

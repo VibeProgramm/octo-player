@@ -5,9 +5,9 @@ import app.winters.octo.subsonic.Song
 
 // What the queue panel does to the queue, beyond playing: moving picked
 // songs, taking them out, clearing what is to come, saving it as a
-// playlist, and taking an edit back. An edit that takes songs out says so
-// in the one notice line, with Undo; moves and songs put in are taken back
-// with Ctrl+Z in the panel, quietly.
+// playlist, and taking an edit back. An edit that takes songs out, or puts
+// them in, says so in the notice, with Undo; moves are taken back with
+// Ctrl+Z in the panel, quietly.
 
 // A word the notice line offers beside `text` (the notice it came with),
 // and what it does.
@@ -16,17 +16,23 @@ class NoticeAction(val text: String, val label: String, val run: () -> Unit)
 // The action to show beside a notice: only the one that came with it.
 fun AppState.actionFor(text: String): NoticeAction? = noticeAction?.takeIf { it.text == text }
 
-// Says what happened to the queue in the notice line, with Undo.
+// Says what happened to the queue in the notice, with Undo, until it is closed or replaced.
 fun AppState.queueEdited(words: String) {
     notice = words
     noticeDetail = null
-    noticeAction = NoticeAction(words, "Undo") {
-        if (undoQueue()) {
-            notice = null
-        } else {
-            notice = "Can't undo that now: the queue has changed since"
-            noticeAction = null
-        }
+    noticeAction = undoAction(words)
+}
+
+// Says that songs went into the queue, with Undo, for a few seconds.
+fun AppState.queueAdded(words: String) = passingNotice(words, undoAction(words))
+
+// Undo for the queue edit the notice `words` tells of.
+private fun AppState.undoAction(words: String) = NoticeAction(words, "Undo") {
+    if (undoQueue()) {
+        notice = null
+    } else {
+        notice = "Can't undo that now: the queue has changed since"
+        noticeAction = null
     }
 }
 
