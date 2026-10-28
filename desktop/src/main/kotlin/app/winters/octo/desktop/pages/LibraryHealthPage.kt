@@ -17,10 +17,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import app.winters.octo.design.ControlHeight
 import app.winters.octo.design.Corner
 import app.winters.octo.design.DesktopType
 import app.winters.octo.design.GlazeCapsule
-import app.winters.octo.design.GlazeSelected
 import app.winters.octo.design.IconSize
 import app.winters.octo.design.MenuRow
 import app.winters.octo.design.OctoColors
@@ -40,6 +41,8 @@ import app.winters.octo.desktop.nav.Visit
 import app.winters.octo.desktop.runFix
 import app.winters.octo.desktop.ui.LoadingLine
 import app.winters.octo.desktop.ui.PageSide
+import app.winters.octo.desktop.ui.ChoiceButton
+import app.winters.octo.desktop.ui.PageHeader
 import app.winters.octo.desktop.ui.PageTitle
 import app.winters.octo.desktop.ui.SongTable
 import app.winters.octo.desktop.ui.rememberListState
@@ -101,62 +104,47 @@ fun LibraryHealthPage(app: AppState, visit: Visit) {
                 else NothingHere("Everything looks right", HEALTH_ALL_CLEAR)
             },
         ) {
-            item(key = "title") { PageTitle("Library health", detail = report.overview()) }
-            item(key = "tools") { Tools(app, health) }
-            if (check != null) {
-                item(key = "checks") { Findings(report, check) { health.picked = it } }
-                item(key = "about") { About(app, health, report, check, index.songs) }
-            }
+            item(key = "title") { HealthHeader(app, health, report, check, index.songs) }
+            if (check != null) item(key = "about") { About(app, health, report, check, index.songs) }
         }
     }
 }
 
-// Under the title: how a fix is going while one runs, its ring filling as
-// the downloads drawer's do, with Stop; and the server's trash.
+// The title with what was checked after it, then the control line: the
+// check shown, with its count, opening the others that found something,
+// and at the end the fixes for it, or how a fix is going while one
+// runs (its ring filling as the downloads drawer's do, with Stop), and the
+// server's trash.
 @Composable
-private fun Tools(app: AppState, health: HealthModel) {
+private fun HealthHeader(app: AppState, health: HealthModel, report: HealthReport<Song>, check: HealthCheck?, all: List<Song>) {
     val running = health.running
     val trash = health.actions?.canRestore == true
-    if (running == null && !trash) return
-    Row(
-        Modifier.widthIn(max = PageSize.Reading).padding(bottom = Space.Xl),
-        horizontalArrangement = Arrangement.spacedBy(Space.M),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (running != null) {
-            ProgressRing(running.done.toFloat() / running.total.coerceAtLeast(1), size = IconSize.Table)
-            Txt(running.words, DesktopType.body, OctoColors.TextSecondary, Modifier.weight(1f))
-            GlazeCapsule(null, "Stop", { health.stop() })
-        } else {
-            GlazeCapsule(OctoIcons.History, RECENTLY_REMOVED, { showTrash(app) })
-        }
-    }
-}
-
-// The checks that found something, one row each with its count, the one
-// shown on the darker pill; hairlines between them.
-@Composable
-private fun Findings(report: HealthReport<Song>, shown: HealthCheck, pick: (HealthCheck) -> Unit) {
-    Column(Modifier.widthIn(max = PageSize.Reading).padding(bottom = Space.Xl)) {
-        report.findings.forEachIndexed { i, check ->
-            if (i > 0) Separator(Modifier.padding(horizontal = Space.M))
-            val lit = check == shown
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(RowHeight.Regular)
-                    .hoverLift(Corner.ControlShape)
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Tab) { pick(check) },
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                if (lit) GlazeSelected(Modifier.matchParentSize(), Corner.ControlShape)
-                Row(Modifier.padding(horizontal = Space.L), verticalAlignment = Alignment.CenterVertically) {
-                    Txt(check.title(), DesktopType.body, if (lit) OctoColors.TextPrimary else OctoColors.TextSecondary, Modifier.weight(1f))
-                    Txt(check.countLabel(report.count(check)), DesktopType.meta, if (lit) OctoColors.TextSecondary else OctoColors.TextMuted)
-                }
+    val fixes = remember(report, check, health.actions, running == null, all) { check?.let { fixesFor(app, health, report, it, all) } }
+    PageHeader(
+        "Library health",
+        detail = report.overview(),
+        filters = if (check == null) null else ({
+            ChoiceButton(
+                report.findings,
+                check,
+                { it.title() },
+                { health.picked = it },
+                detail = { "%,d".format(report.count(it)) },
+                words = "${check.title()} · ${"%,d".format(report.count(check))}",
+            )
+        }),
+        actions = if (running == null && fixes?.all == null && fixes?.lookUp == null && !trash) null else ({
+            if (running != null) {
+                ProgressRing(running.done.toFloat() / running.total.coerceAtLeast(1), size = IconSize.Table)
+                Txt(running.words, DesktopType.meta, OctoColors.TextSecondary, Modifier.widthIn(max = PageSize.RunningWords))
+                GlazeCapsule(null, "Stop", { health.stop() }, height = ControlHeight.L)
+            } else {
+                fixes?.all?.let { (label, open) -> GlazeCapsule(OctoIcons.Check, label, open, lit = true, height = ControlHeight.L) }
+                fixes?.lookUp?.let { (label, open) -> GlazeCapsule(OctoIcons.Search, label, open, height = ControlHeight.L) }
+                if (trash) HeaderIcon(OctoIcons.History, RECENTLY_REMOVED, { showTrash(app) })
             }
-        }
-    }
+        }),
+    )
 }
 
 // How many songs a bulk lookup takes at once: each is a fingerprint and a
@@ -204,24 +192,19 @@ internal fun fixesFor(app: AppState, health: HealthModel, report: HealthReport<S
     }
 }
 
-// What the picked check means and what to do about it: the server's fixes
-// when it has them, else what to do by hand.
+// What the picked check means and what to do about it, in one paragraph:
+// the server's fixes when it has them (the buttons are on the control
+// line), else what to do by hand.
 @Composable
 private fun About(app: AppState, health: HealthModel, report: HealthReport<Song>, check: HealthCheck, all: List<Song>) {
     val fixes = remember(report, check, health.actions, health.running == null, all) { fixesFor(app, health, report, check, all) }
     val fixable = fixes.all != null || fixes.lookUp != null
-    Column(Modifier.widthIn(max = PageSize.Reading).padding(bottom = Space.Xl), verticalArrangement = Arrangement.spacedBy(Space.S)) {
-        Txt(check.title(), DesktopType.section)
-        Txt(check.meaning(), DesktopType.body, OctoColors.TextSecondary, maxLines = 4)
-        Txt(if (fixable) check.fixMeaning() else check.advice(), DesktopType.body, OctoColors.TextSecondary, maxLines = 4)
-        if (fixable) {
-            Row(Modifier.padding(top = Space.S), horizontalArrangement = Arrangement.spacedBy(Space.M)) {
-                fixes.all?.let { (label, open) -> GlazeCapsule(OctoIcons.Check, label, open, lit = true) }
-                fixes.lookUp?.let { (label, open) -> GlazeCapsule(OctoIcons.Search, label, open) }
-            }
-            Txt("Right-click a song for the fixes for that song alone.", DesktopType.meta, OctoColors.TextMuted, maxLines = 2)
-        }
-    }
+    val words = listOfNotNull(
+        check.meaning(),
+        if (fixable) check.fixMeaning() else check.advice(),
+        if (fixable) "Right-click a song for the fixes for that song alone." else null,
+    ).joinToString(" ")
+    Txt(words, DesktopType.body, OctoColors.TextSecondary, Modifier.widthIn(max = PageSize.Reading).padding(bottom = Space.Xl), maxLines = 6)
 }
 
 // The page's own rows in a song's menu: the fixes for this song, and copy

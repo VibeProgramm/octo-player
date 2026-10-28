@@ -15,6 +15,8 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -185,6 +188,8 @@ fun GlazeRound(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val look = rememberButtonLook(interaction)
+    // With no words of its own, resting the pointer on it says what it does.
+    val tip = rememberTooltipState()
     Glaze(
         modifier
             .size(size)
@@ -193,11 +198,13 @@ fun GlazeRound(
             .hoverable(interaction)
             .pointerHoverIcon(PointerIcon.Hand)
             .tabStop(LocalTabStops.current)
+            .tooltipTarget(tip)
             .clickable(interactionSource = interaction, indication = FocusRing(CircleShape), enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = description },
         light = if (lit || look.hovered || look.pressed) GlazeLight.Lifted else GlazeLight.Rest,
     ) {
         Glyph(icon, size = 18.dp)
+        TooltipPopup(tip, description)
     }
 }
 
@@ -264,6 +271,8 @@ fun <T> GlazeSegments(
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
     enabled: (T) -> Boolean = { true },
+    labelWidth: Boolean = false,
+    tabPadding: Dp = 14.dp,
 ) {
     GlazeTabs(
         count = options.size,
@@ -274,15 +283,34 @@ fun <T> GlazeSegments(
         fillWidth = false,
         indication = FocusRing(CircleShape),
         enabled = { enabled(options[it]) },
+        labelWidth = labelWidth,
+        tabPadding = tabPadding,
     ) { index, chosen ->
         val color = when {
             !enabled(options[index]) -> OctoColors.TextMuted
-            chosen -> OctoColors.TextPrimary
+            chosen -> OctoColors.OnAccent
             else -> OctoColors.TextSecondary
         }
-        Txt(label(options[index]), OctoType.label, color)
+        val style = if (chosen) OctoType.label.copy(fontWeight = FontWeight.Medium) else OctoType.label
+        // Every segment takes the same room, so the pill does not change
+        // size as the choice moves: the chosen one wears the check before
+        // its words, the others hold half of that room on each side.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (chosen) {
+                Glyph(OctoIcons.Check, size = SegmentCheck, tint = OctoColors.OnAccent)
+                Spacer(Modifier.width(SegmentCheckGap))
+            } else {
+                Spacer(Modifier.width((SegmentCheck + SegmentCheckGap) / 2))
+            }
+            Txt(label(options[index]), style, color)
+            if (!chosen) Spacer(Modifier.width((SegmentCheck + SegmentCheckGap) / 2))
+        }
     }
 }
+
+// The check shown before the chosen segment's words, and the gap after it.
+val SegmentCheck = 14.dp
+val SegmentCheckGap = 4.dp
 
 // A ring that fills as something downloads; with no fraction known it turns.
 @Composable

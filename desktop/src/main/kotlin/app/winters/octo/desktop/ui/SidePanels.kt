@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -77,6 +76,7 @@ import app.winters.octo.design.ControlHeight
 import app.winters.octo.design.Corner
 import app.winters.octo.design.CutTxt
 import app.winters.octo.design.DesktopType
+import app.winters.octo.design.FitOrElse
 import app.winters.octo.design.FrameSize
 import app.winters.octo.design.GlassField
 import app.winters.octo.design.GlazeCapsule
@@ -130,8 +130,9 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 
 // The panel down the right of the frame, in its glass: the queue, the
 // lyrics, or the song's details, on tabs, so it can stay open while the
-// listener browses, or the downloads drawer on its own. The lyrics' menu
-// sits beside the tabs; the queue has its own over its list.
+// listener browses, or the downloads drawer on its own. The panel's own
+// actions sit on the tabs' line before Close: the lyrics' menu, the
+// queue's menu, the downloads' way back and theirs.
 @Composable
 fun ContextPanel(app: AppState, panel: SidePanel, backdrop: HazeState, modifier: Modifier = Modifier) {
     Column(modifier.chromeFilm(backdrop).padding(top = Space.M)) {
@@ -139,20 +140,37 @@ fun ContextPanel(app: AppState, panel: SidePanel, backdrop: HazeState, modifier:
             // The downloads drawer is a sheet of its own, under its name; the
             // others share the tabs.
             if (panel == SidePanel.Downloads) {
-                Txt(panel.title, DesktopType.section, OctoColors.TextPrimary, Modifier.padding(vertical = Space.S))
+                DownloadsHeading(app, Modifier.weight(1f))
             } else {
-                GlazeSegments(SidePanel.entries - SidePanel.Downloads, panel, { it.title }, app::showSidePanel)
+                PanelTabs(SidePanel.entries - SidePanel.Downloads, panel, { it.title }, app::showSidePanel, Modifier.weight(1f))
             }
-            Spacer(Modifier.weight(1f))
-            if (panel == SidePanel.Lyrics) LyricsMenuButton(app)
+            when (panel) {
+                SidePanel.Lyrics -> LyricsMenuButton(app)
+                SidePanel.Queue -> QueueActions(app)
+                else -> Unit
+            }
             IconAction(OctoIcons.Close, "Close the panel", { app.showSidePanel(null) }, size = ControlHeight.M, iconSize = IconSize.Toolbar)
         }
         when (panel) {
-            SidePanel.Queue -> QueueList(app)
+            SidePanel.Queue -> QueueList(app, inPanel = true)
             SidePanel.Lyrics -> LyricsView(app, Modifier.fillMaxSize())
             SidePanel.Info -> InfoPanel(app, Modifier.fillMaxSize())
             SidePanel.Downloads -> DownloadsPanel(app, Modifier.fillMaxSize())
         }
+    }
+}
+
+// The panel's tabs at the start of its header line, in the room the line's
+// own buttons leave them (those are measured first and never squeezed).
+// When the tabs would not fit there whole, they are one button that opens
+// them instead.
+@Composable
+internal fun <T> PanelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier, contentAlignment = Alignment.CenterStart) {
+        FitOrElse(
+            { GlazeSegments(options, selected, label, onSelect, labelWidth = true, tabPadding = Space.M + Space.Xxs) },
+            { ChoiceButton(options, selected, label, onSelect) },
+        )
     }
 }
 
@@ -194,12 +212,13 @@ private fun itemsOf(sections: List<QueueSection>): List<QueueItem> = buildList {
 // Delete takes them out; Enter or a double click plays one; Ctrl+Z takes
 // the last edit back. A right click opens the song menu with the queue's
 // own moves. Over it, a quiet line says how long is left, with the
-// queue's menu beside it. Songs dragged here from a list go above or below
+// queue's menu beside it (on the side panel's line instead, `inPanel`)
+// and a way back to the song playing. Songs dragged here from a list go above or below
 // the song to come they are dropped on, next when dropped on the one
 // playing, and last anywhere else in the panel.
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun QueueList(app: AppState, modifier: Modifier = Modifier.fillMaxSize()) {
+fun QueueList(app: AppState, modifier: Modifier = Modifier.fillMaxSize(), inPanel: Boolean = false) {
     val state by app.player.state.collectAsState()
     // A lineup of stations shows its stations, to switch between.
     if (state.live != null && isLineup(state.queue.map { it.song })) return LiveLineupList(app, state, modifier)
@@ -218,6 +237,10 @@ fun QueueList(app: AppState, modifier: Modifier = Modifier.fillMaxSize()) {
     var hasFocus by remember { mutableStateOf(false) }
     DisposableEffect(Unit) { onDispose { if (hasFocus) lists.active = false } }
     val scope = rememberCoroutineScope()
+    val toNow = {
+        val at = items.indexOfFirst { it is QueueItem.Heading && it.section.kind == SectionKind.NowPlaying }
+        if (at >= 0) scope.launch { list.animateScrollToItem(at) }
+    }
     val clicks = remember { QueueClicks() }
     val pointer = LocalPointer.current
     val drag = LocalDrag.current
@@ -349,7 +372,7 @@ fun QueueList(app: AppState, modifier: Modifier = Modifier.fillMaxSize()) {
             .semantics { contentDescription = "Queue" }
             .focusable(),
     ) {
-        QueueHeader(app, state)
+        QueueHeader(app, state, menu = !inPanel, toNow = { toNow() })
         if (state.current == null) {
             Txt(
                 "Nothing is queued. Play something, or right-click a song and pick Add to queue.",
@@ -576,9 +599,10 @@ internal fun queueSpeech(title: String, artist: String?, length: String, kind: S
 }
 
 // Over the queue: how many songs are still to come, how long they last and
-// when the music ends, and the queue's menu.
+// when the music ends, then the way back to the song playing, and the
+// queue's menu where no panel's line holds it.
 @Composable
-private fun QueueHeader(app: AppState, state: PlayerState) {
+private fun QueueHeader(app: AppState, state: PlayerState, menu: Boolean, toNow: () -> Unit) {
     // The end time moves on while paused, so it is worked out again now and then.
     val now by produceState(LocalDateTime.now()) {
         while (true) {
@@ -591,9 +615,21 @@ private fun QueueHeader(app: AppState, state: PlayerState) {
         Modifier.fillMaxWidth().padding(start = Space.L + Space.Xs, end = Space.S, top = Space.S),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Txt(summary.orEmpty(), OctoType.caption, OctoColors.TextMuted, Modifier.weight(1f), maxLines = 2)
-        QueueMenuButton(app, state)
+        // A time's "AM" or "PM" never wraps away from it.
+        Txt(summary.orEmpty().replace(" AM", " AM").replace(" PM", " PM"), OctoType.caption, OctoColors.TextMuted, Modifier.weight(1f), maxLines = 2)
+        if (state.current != null) {
+            IconAction(OctoIcons.Lossless, "Show the song playing", toNow, size = ControlHeight.M, iconSize = IconSize.Toolbar, tint = OctoColors.TextSecondary)
+        }
+        if (menu) QueueMenuButton(app, state)
     }
+}
+
+// The queue's menu on the panel's line. A lineup of stations has none.
+@Composable
+private fun QueueActions(app: AppState) {
+    val state by app.player.state.collectAsState()
+    if (state.live != null && isLineup(state.queue.map { it.song })) return
+    QueueMenuButton(app, state)
 }
 
 private const val SUMMARY_EVERY_MS = 15_000L

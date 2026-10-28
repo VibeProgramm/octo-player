@@ -148,7 +148,8 @@ fun SoundPage(app: AppState, visit: Visit) {
         app,
         visit,
         "Sound",
-        listOf(
+        detail = playerState.playingOn?.name,
+        sections = listOf(
             PageSection("output", "Output", OctoIcons.Speaker, detail = if (all.sound.perOutput) "These settings are for $device." else "These settings are for every output.") {
                 Rows {
                     SwitchRow(

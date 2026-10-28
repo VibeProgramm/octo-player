@@ -22,7 +22,7 @@ import app.winters.octo.desktop.nav.Visit
 import app.winters.octo.desktop.ui.PageLoadingLine
 import app.winters.octo.desktop.ui.FilterBar
 import app.winters.octo.desktop.ui.NoMatches
-import app.winters.octo.desktop.ui.PageTitle
+import app.winters.octo.desktop.ui.PageHeader
 import app.winters.octo.desktop.ui.SongTable
 import app.winters.octo.desktop.ui.rememberListState
 import app.winters.octo.desktop.ui.rememberShownFields
@@ -71,12 +71,15 @@ fun HistoryPage(app: AppState, visit: Visit) {
             },
         ) {
             item(key = "title") {
-                PageTitle(
+                PageHeader(
                     "Recently played",
                     detail = if (query.filters) filteredCount(filtered.songs.size, shown.songs.size, true) else "Plays on this computer, and the last play of songs played elsewhere.",
+                    filters = if (shown.songs.isEmpty()) null else ({ FilterBar(app, query, filter, shown.songs, oneLine = true) }),
+                    actions = if (shown.songs.isEmpty()) null else ({
+                        PlayAndShuffle({ app.play(filtered.songs) }, { app.play(filtered.songs, shuffle = true) }, enabled = filtered.songs.isNotEmpty())
+                    }),
                 )
             }
-            if (shown.songs.isNotEmpty()) item(key = "filters") { FilterBar(app, query, filter, shown.songs) }
         }
     }
 }

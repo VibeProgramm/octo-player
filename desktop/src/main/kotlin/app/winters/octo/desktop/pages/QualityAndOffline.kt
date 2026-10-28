@@ -5,10 +5,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import app.winters.octo.design.DesktopType
+import app.winters.octo.design.FitOrElse
 import app.winters.octo.design.GlazeSegments
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.Txt
 import app.winters.octo.desktop.AppState
+import app.winters.octo.desktop.ui.ChoiceButton
 import app.winters.octo.desktop.settings.AppSettings
 import app.winters.octo.offline.keptLine
 import app.winters.octo.subsonic.DeviceQualityMode
@@ -52,7 +54,11 @@ internal fun AudioQualityRows(app: AppState, settings: AppSettings) {
             Group(QUALITY_ON_THIS_DEVICE) {
                 Rows {
                     SettingRow(deviceModeName(mode), deviceModeLine(mode)) {
-                        GlazeSegments(DeviceQualityMode.entries, mode, { if (it == DeviceQualityMode.Account) "My account" else "This app" }, model::setDeviceMode)
+                        val name: (DeviceQualityMode) -> String = { if (it == DeviceQualityMode.Account) "My account" else "This app" }
+                        FitOrElse(
+                            { GlazeSegments(DeviceQualityMode.entries, mode, name, model::setDeviceMode) },
+                            { ChoiceButton(DeviceQualityMode.entries, mode, name, model::setDeviceMode, title = QUALITY_ON_THIS_DEVICE) },
+                        )
                     }
                 }
             }
@@ -83,7 +89,11 @@ internal fun AudioQualityRows(app: AppState, settings: AppSettings) {
 private fun QualityRow(title: String, caption: String?, chosen: StreamQuality, limit: Int, dim: Boolean = false, pick: (StreamQuality) -> Unit) {
     SettingRow(title, qualityCaption(caption, chosen, limit), dim = dim) {
         val options = qualityOptions(limit)
-        GlazeSegments(options.map { it.quality }, chosen, ::qualityName, pick, enabled = { q -> options.first { it.quality == q }.enabled })
+        // The one-button form offers only the qualities that can be picked.
+        FitOrElse(
+            { GlazeSegments(options.map { it.quality }, chosen, ::qualityName, pick, enabled = { q -> options.first { it.quality == q }.enabled }) },
+            { ChoiceButton(options.filter { it.enabled }.map { it.quality }, chosen, ::qualityName, pick, title = title) },
+        )
     }
 }
 
@@ -133,7 +143,11 @@ internal fun OfflineRows(app: AppState, settings: AppSettings) {
         }
         SwitchRow("Keep Liked songs", "Every song you like, as you like it.", choices.liked) { on -> offline.keepLiked(on) }
         SettingRow("Download quality", "For songs fetched from now on. Smaller files fit more songs.") {
-            GlazeSegments(StreamQuality.entries, StreamQuality.entries.firstOrNull { it.name == settings.offline.downloadQuality } ?: StreamQuality.Original, ::qualityName, offline::setDownloadQuality)
+            val chosen = StreamQuality.entries.firstOrNull { it.name == settings.offline.downloadQuality } ?: StreamQuality.Original
+            FitOrElse(
+                { GlazeSegments(StreamQuality.entries, chosen, ::qualityName, offline::setDownloadQuality) },
+                { ChoiceButton(StreamQuality.entries, chosen, ::qualityName, offline::setDownloadQuality, title = "Download quality") },
+            )
         }
     }
     val playlists = app.playlists

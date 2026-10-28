@@ -123,7 +123,15 @@ fun HomePage(app: AppState, visit: Visit) {
     var starting by remember { mutableStateOf<String?>(null) }
     fun open(shelf: AlbumShelf): () -> Unit = { app.navigator.go(Page.Shelf(shelf)) }
     LazyColumn(Modifier.scrollbar(list, LocalBottomRoom.current), state = list, contentPadding = pagePadding(LocalBottomRoom.current)) {
-        item(key = "title") { PageTitle("Home") }
+        // Changing the shelves is a quiet word at the end of the title's line.
+        item(key = "title") {
+            PageTitle("Home", trailing = {
+                TextAction(EDIT_HOME, {
+                    showSection("Settings", "look")
+                    app.navigator.go(Page.Settings)
+                })
+            })
+        }
         app.queueSync.offer?.let { offer -> item(key = "resume") { ResumeCard(app, offer) } }
         when {
             home == null && failure != null -> item(key = "failed") { FailedLine("Couldn't read Home from your server. $failure", store::retry) }
@@ -143,7 +151,7 @@ fun HomePage(app: AppState, visit: Visit) {
             }
             else -> {
                 // The shelves in the order saved in Settings, the hidden ones
-                // left out, then a way to change them.
+                // left out.
                 sections.filter { it.shown }.forEach { entry ->
                     when (entry.section) {
                         HomeSection.RecentlyPlayed -> albums(app, entry.section.title, home.recentlyPlayed) { app.navigator.go(Page.History) }
@@ -209,14 +217,6 @@ fun HomePage(app: AppState, visit: Visit) {
                         HomeSection.Pinned, HomeSection.Artists, HomeSection.SomethingDifferent -> Unit
                     }
                 }
-                moving(key = "edit-home") {
-                    Box(Modifier.fillMaxWidth().padding(top = Space.Section), contentAlignment = Alignment.Center) {
-                        GlazeCapsule(null, EDIT_HOME, {
-                            showSection("Settings", "look")
-                            app.navigator.go(Page.Settings)
-                        })
-                    }
-                }
             }
         }
     }
@@ -245,15 +245,21 @@ private fun <T> ShelfRow(title: String, items: List<T>, id: (T) -> Any, seeAll: 
         val fit = (maxWidth / ShelfCardWidth).toInt().coerceAtLeast(1)
         val width = maxWidth / fit
         Column(Modifier.fillMaxWidth()) {
-            // As tall with See all as without, so shelves keep one rhythm.
-            Row(Modifier.fillMaxWidth().padding(top = Space.Xxl, bottom = Space.Xs).heightIn(min = ControlHeight.L), verticalAlignment = Alignment.CenterVertically) {
-                Txt(title, DesktopType.section, modifier = Modifier.weight(1f).padding(start = Space.M))
-                if (seeAll != null && !(whole && items.size <= fit)) TextAction("See all", seeAll)
-            }
+            ShelfTitle(title, seeAll.takeIf { !(whole && items.size <= fit) })
             Row {
                 items.take(fit).forEach { item -> key(id(item)) { Box(Modifier.width(width)) { card(item) } } }
             }
         }
+    }
+}
+
+// A shelf's name, and See all at the right when it leads to more. As tall
+// with See all as without, so shelves keep one rhythm.
+@Composable
+internal fun ShelfTitle(title: String, seeAll: (() -> Unit)?) {
+    Row(Modifier.fillMaxWidth().padding(top = Space.Xxl, bottom = Space.Xs).heightIn(min = ControlHeight.L), verticalAlignment = Alignment.CenterVertically) {
+        Txt(title, DesktopType.section, modifier = Modifier.weight(1f).padding(start = Space.M))
+        if (seeAll != null) TextAction("See all", seeAll)
     }
 }
 

@@ -3,6 +3,8 @@ package app.winters.octo.desktop.pages
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,20 +33,25 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.IntRect
-import app.winters.octo.design.ChipRow
+import androidx.compose.ui.unit.dp
 import app.winters.octo.design.ControlHeight
 import app.winters.octo.design.Corner
 import app.winters.octo.design.DesktopType
 import app.winters.octo.design.FrameSize
 import app.winters.octo.design.GlassField
 import app.winters.octo.design.GlazeCapsule
+import app.winters.octo.design.FitOrElse
 import app.winters.octo.design.GlazeSegments
 import app.winters.octo.design.Glyph
 import app.winters.octo.design.IconAction
 import app.winters.octo.design.IconSize
+import app.winters.octo.design.MenuBack
+import app.winters.octo.design.MenuTitle
+import app.winters.octo.design.PopupPadding
 import app.winters.octo.design.OctoColors
 import app.winters.octo.design.OctoIcons
 import app.winters.octo.design.OctoType
+import app.winters.octo.design.PageSize
 import app.winters.octo.design.RowHeight
 import app.winters.octo.design.Space
 import app.winters.octo.design.Txt
@@ -69,7 +76,8 @@ import app.winters.octo.desktop.ui.FailedLine
 import app.winters.octo.desktop.ui.LoadingLine
 import app.winters.octo.desktop.ui.LocalBottomRoom
 import app.winters.octo.desktop.ui.LocalPointer
-import app.winters.octo.desktop.ui.PageTitle
+import app.winters.octo.desktop.ui.ChoiceButton
+import app.winters.octo.desktop.ui.PageHeader
 import app.winters.octo.desktop.ui.SectionTitle
 import app.winters.octo.desktop.ui.StationLogo
 import app.winters.octo.desktop.ui.LiveStationMenu
@@ -78,6 +86,7 @@ import app.winters.octo.desktop.ui.windowRect
 import app.winters.octo.desktop.ui.onRightClick
 import app.winters.octo.desktop.ui.pagePadding
 import app.winters.octo.desktop.ui.rememberListState
+import app.winters.octo.desktop.settings.LiveRadioPrefs
 import app.winters.octo.liveradio.LiveSort
 import app.winters.octo.liveradio.LiveStation
 import app.winters.octo.liveradio.located
@@ -123,26 +132,39 @@ fun LiveRadioPage(app: AppState, visit: Visit) {
     val find = model.find
     LazyColumn(Modifier.scrollbar(list, LocalBottomRoom.current), state = list, contentPadding = pagePadding(LocalBottomRoom.current)) {
         item(key = "title") {
-            PageTitle(LIVE_RADIO_NEAR, detail = "Stations on the air around you, from the Radio Browser catalog.")
+            PageHeader(
+                LIVE_RADIO_NEAR,
+                detail = "Stations on the air around you, from the Radio Browser catalog.",
+                control = { PlaceButton(app, prefs.place?.label) },
+                filters = { OrderControls(app, prefs.sort, prefs.radius, located = (prefs.place?.located ?: false)) },
+            )
         }
-        item(key = "where") { WhereControls(app, prefs.where, model.country(prefs)) }
-        item(key = "order") { OrderControls(app, prefs.sort, prefs.radius, located = (prefs.place?.located ?: false)) }
         if (kept.isNotEmpty()) {
             item(key = "kept-title") { SectionTitle("Kept here") }
             items(kept, key = { "kept:${it.uuid}" }) { station -> StationRow(app, station, kept = true, miles = model.miles, near = false, lineup = kept, source = "Kept here") }
         }
-        stations(app, find, keptIds, prefs.radius, model.miles)
+        stations(app, find, keptIds, prefs, model.miles)
     }
 }
 
 // The stations found, or why there are none.
-private fun LazyListScope.stations(app: AppState, find: LiveFind, keptIds: Set<String>, radius: Int, miles: Boolean) {
+private fun LazyListScope.stations(app: AppState, find: LiveFind, keptIds: Set<String>, prefs: LiveRadioPrefs, miles: Boolean) {
+    val radius = prefs.radius
     when (find) {
         LiveFind.NoPlace -> item(key = "no-place") {
-            NothingHere("Where are you listening?", "Type a ZIP or postal code, or a city with its state after a comma, then press Find.")
+            Column {
+                NothingHere("Where are you listening?", "Type a ZIP or postal code, or a city with its state after a comma, then press Find.")
+                WhereControls(app, prefs.where, app.liveRadio.country(prefs))
+            }
         }
         LiveFind.Finding -> item(key = "finding") { LoadingLine("Finding stations") }
-        is LiveFind.Problem -> item(key = "problem") { Txt(find.words, OctoType.bodySmall, OctoColors.TextSecondary, Modifier.padding(vertical = Space.Page), maxLines = 3) }
+        // A place that could not be found is typed again here as well as under the place button.
+        is LiveFind.Problem -> item(key = "problem") {
+            Column {
+                Txt(find.words, OctoType.bodySmall, OctoColors.TextSecondary, Modifier.padding(vertical = Space.Page), maxLines = 3)
+                WhereControls(app, prefs.where, app.liveRadio.country(prefs))
+            }
+        }
         is LiveFind.CatalogDown -> item(key = "down") { FailedLine(CATALOG_DOWN, app.liveRadio::retry) }
         is LiveFind.Found -> {
             item(key = "near-title") { SectionTitle(if (find.place.located) "Near ${find.place.label}" else "In ${find.place.label}") }
@@ -161,7 +183,60 @@ private fun LazyListScope.stations(app: AppState, find: LiveFind, keptIds: Set<S
     }
 }
 
-// Where: the postal code or city, the country it is in, and Find.
+// The place the stations are around, leading the control line: a click
+// opens where to look (WherePicker) under it.
+@Composable
+private fun PlaceButton(app: AppState, place: String?) {
+    var anchor by remember { mutableStateOf(IntRect.Zero) }
+    GlazeCapsule(
+        OctoIcons.Globe,
+        place ?: "Choose a place",
+        { showWhere(app, anchor) },
+        Modifier.widthIn(max = PageSize.PlaceButton).onGloballyPositioned { anchor = it.windowRect() },
+        height = ControlHeight.L,
+        quiet = true,
+    )
+}
+
+// Where to look, under the control at `anchor`, starting from the place
+// last looked for.
+internal fun showWhere(app: AppState, anchor: IntRect) {
+    val prefs = app.settings.current.liveRadio
+    app.popups.showUnder(anchor, width = CountryMenuWidth, scrollsItself = true) { close -> WherePicker(app, prefs.where, app.liveRadio.country(prefs), close) }
+}
+
+// Where to look, in the place button's menu: the postal code or city, the
+// country it is in (its own page of the menu, to search), and Find, which
+// looks it up and puts the menu away.
+@Composable
+private fun ColumnScope.WherePicker(app: AppState, saved: String, savedCountry: String, close: () -> Unit) {
+    var where by remember { mutableStateOf(saved) }
+    var country by remember { mutableStateOf(savedCountry) }
+    var choosing by remember { mutableStateOf(false) }
+    val find = {
+        if (where.isNotBlank()) {
+            close()
+            app.liveRadio.lookUp(where, country)
+        }
+    }
+    if (choosing) {
+        MenuBack("Country") { choosing = false }
+        CountryMenu(countryRows(country, Countries, ::countryName), { row -> row.code?.let { country = it }; choosing = false }, close = {})
+        return
+    }
+    MenuTitle("Where are you listening?")
+    PopupPadding {
+        GlassField(where, { where = it }, Modifier.fillMaxWidth(), placeholder = WHERE_HINT, icon = OctoIcons.Globe, onSubmit = find)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.M)) {
+            GlazeCapsule(null, countryName(country), { choosing = true }, Modifier.weight(1f, fill = false), height = ControlHeight.M, quiet = true)
+            Spacer(Modifier.weight(1f))
+            GlazeCapsule(OctoIcons.Search, "Find", find, lit = true, enabled = where.isNotBlank(), height = ControlHeight.M)
+        }
+    }
+}
+
+// Where: the postal code or city, the country it is in, and Find, on the
+// page while no place is chosen yet.
 @Composable
 private fun WhereControls(app: AppState, saved: String, savedCountry: String) {
     var where by remember(saved) { mutableStateOf(saved) }
@@ -189,13 +264,19 @@ private fun OrderControls(app: AppState, sort: LiveSort, radius: Int, located: B
     val miles = app.liveRadio.miles
     val choices = radiusChoices(miles)
     Row(
-        Modifier.fillMaxWidth().padding(bottom = Space.M),
+        Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.L),
     ) {
-        GlazeSegments(LiveSort.entries, sort, ::sortLabel, app.liveRadio::setSort)
+        FitOrElse(
+            { GlazeSegments(LiveSort.entries, sort, ::sortLabel, app.liveRadio::setSort) },
+            { ChoiceButton(LiveSort.entries, sort, ::sortLabel, app.liveRadio::setSort, title = "Order") },
+            // The distance button is measured first, so the order gets only
+            // the room it leaves.
+            Modifier.weight(1f, fill = false),
+        )
         if (located) {
-            ChipRow(choices.indices.toList(), radius.coerceIn(choices.indices), { radiusLabel(choices[it], miles) }, app.liveRadio::setRadius)
+            ChoiceButton(choices.indices.toList(), radius.coerceIn(choices.indices), { radiusLabel(choices[it], miles) }, app.liveRadio::setRadius, title = "How far")
         }
     }
 }

@@ -433,6 +433,24 @@ fun MenuTitle(text: String, modifier: Modifier = Modifier) {
     Txt(text, OctoType.label, OctoColors.TextSecondary, modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { heading() })
 }
 
+// A heading with a quiet line of its own after it on the same baseline
+// (what the pop-up is about, or what to do in it), rather than under it.
+@Composable
+fun MenuTitle(text: String, detail: String, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Txt(text, OctoType.label, OctoColors.TextSecondary, Modifier.alignByBaseline().semantics { heading() })
+        Txt(detail, OctoType.caption, OctoColors.TextMuted, Modifier.weight(1f, fill = false).alignByBaseline(), maxLines = 2)
+    }
+}
+
+// The top of a menu's inner page: its name after a back arrow ("‹ Rating"),
+// going back to the page it opened from, then a hairline.
+@Composable
+fun MenuBack(title: String, onBack: () -> Unit) {
+    MenuRow(title, onBack, OctoIcons.Back)
+    MenuSeparator()
+}
+
 // The hairline between groups of menu rows.
 @Composable
 fun MenuSeparator() {

@@ -14,6 +14,17 @@ object PageSize {
     val HeaderArt = 180.dp
     val HeaderArtSmall = 128.dp
     val HeaderNarrow = 720.dp
+    // How wide a page is at least for an artist's biography to sit beside
+    // their name in the header, rather than under it.
+    val AsideFrom = 1000.dp
+    // The widest a control line's place button grows (Live radio); a
+    // longer place shortens inside it.
+    val PlaceButton = 260.dp
+    // The widest a choice button on a control line grows (a chart, a
+    // finding); longer words shorten inside it.
+    val ChoiceButton = 260.dp
+    // The widest a running fix's words grow on a control line.
+    val RunningWords = 320.dp
     // The narrowest a card may be in a grid that fills the page's width.
     val Card = 168.dp
     // The same for an artist's round card beside a genre's albums, smaller

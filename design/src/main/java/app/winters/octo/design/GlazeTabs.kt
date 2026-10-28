@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,7 +53,10 @@ fun gearShiftTint(index: Int, pill: Float, selected: Int): Float {
 // accent at its edge; the tabs the pill passes on its way flash a little
 // accent, like gears going by. The chosen tab's words belong in
 // OctoColors.OnAccent. With `fillWidth` the tabs share the width given;
-// without, each is as wide as the widest label.
+// without, each is as wide as the widest label. With `labelWidth` (and no
+// `fillWidth`) each is instead as wide as its own words, and the pill
+// takes the width of the tab it is on. `tabPadding` is the air either side
+// of a tab's words.
 @Composable
 fun GlazeTabs(
     count: Int,
@@ -66,6 +70,8 @@ fun GlazeTabs(
     // Whether a tab can be picked; a tab that cannot is shown but ignores
     // presses.
     enabled: (Int) -> Boolean = { true },
+    labelWidth: Boolean = false,
+    tabPadding: Dp = if (fillWidth) 4.dp else 14.dp,
     tab: @Composable (index: Int, chosen: Boolean) -> Unit,
 ) {
     val motion = motionScale()
@@ -74,6 +80,9 @@ fun GlazeTabs(
         if (motion.still) pill.snapTo(selected.toFloat()) else pill.animateTo(selected.toFloat(), octoTween(motion, OctoDuration.Neutral, OctoEasing.Smooth))
     }
     var cell by remember { mutableFloatStateOf(0f) }
+    // Where each tab starts and how wide it is, when tabs differ in width.
+    var starts by remember { mutableStateOf(emptyList<Float>()) }
+    var widths by remember { mutableStateOf(emptyList<Float>()) }
 
     Glaze(
         modifier
@@ -104,7 +113,7 @@ fun GlazeTabs(
                     ) {
                         // Sharing a width, the words may use nearly all of
                         // their tab; hugging them, the tabs keep some air.
-                        Box(Modifier.padding(horizontal = if (fillWidth) 4.dp else 14.dp)) { tab(index, chosen) }
+                        Box(Modifier.padding(horizontal = tabPadding)) { tab(index, chosen) }
                     }
                 }
             },
@@ -114,9 +123,24 @@ fun GlazeTabs(
                 .padding(4.dp)
                 .selectableGroup()
                 .drawBehind {
-                    if (cell <= 0f) return@drawBehind
                     val at = pill.value
                     val corner = CornerRadius(size.height / 2f)
+                    if (labelWidth && !fillWidth && starts.size == count && count > 0) {
+                        val from = at.toInt().coerceIn(0, count - 1)
+                        val to = (from + 1).coerceAtMost(count - 1)
+                        val part = (at - from).coerceIn(0f, 1f)
+                        val left = starts[from] + (starts[to] - starts[from]) * part
+                        val wide = widths[from] + (widths[to] - widths[from]) * part
+                        drawRoundRect(OctoColors.Accent, Offset(left, 0f), Size(wide, size.height), corner)
+                        for (index in 0 until count) {
+                            val tint = if (pill.isRunning) gearShiftTint(index, at, selected) else 0f
+                            if (tint > 0f) {
+                                drawRoundRect(OctoColors.GlassAccent.copy(alpha = tint), Offset(starts[index], 0f), Size(widths[index], size.height), corner)
+                            }
+                        }
+                        return@drawBehind
+                    }
+                    if (cell <= 0f) return@drawBehind
                     val left = at * cell
                     drawRoundRect(OctoColors.Accent, Offset(left, 0f), Size(cell, size.height), corner)
                     // Gears going by.
@@ -129,6 +153,21 @@ fun GlazeTabs(
                 },
         ) { measurables, constraints ->
             val tall = constraints.maxHeight
+            if (labelWidth && !fillWidth) {
+                val own = measurables.map { it.maxIntrinsicWidth(tall) }
+                val total = own.sum()
+                val limit = if (constraints.hasBoundedWidth) constraints.maxWidth else Int.MAX_VALUE
+                val whole = total.coerceIn(constraints.minWidth, limit)
+                val scale = if (total > 0) whole.toFloat() / total else 0f
+                val fit = own.map { it * scale }
+                val edges = fit.runningFold(0f) { sum, each -> sum + each }
+                starts = edges.dropLast(1)
+                widths = fit
+                val placed = fit.mapIndexed { i, each -> measurables[i].measure(Constraints.fixed(edges[i + 1].roundToInt() - edges[i].roundToInt(), tall)) }
+                return@Layout layout(whole, tall) {
+                    placed.forEachIndexed { index, placeable -> placeable.place(edges[index].roundToInt(), 0) }
+                }
+            }
             val widest = measurables.maxOfOrNull { it.maxIntrinsicWidth(tall) } ?: 0
             val width = if (fillWidth && constraints.hasBoundedWidth) {
                 constraints.maxWidth

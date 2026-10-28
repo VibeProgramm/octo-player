@@ -94,6 +94,8 @@ object OctoIcons {
     // address is set.
     val Globe by sym("sym_globe")
     val Lock by sym("sym_lock")
+    // Signing out of a server: an arrow leaving a box.
+    val SignOut by sym("sym_sign_out")
 
     // Back and forward through the pages, and opening the full player: the
     // chevron turned.
@@ -142,4 +144,5 @@ val allIcons: List<Pair<String, () -> ImageVector>> = listOf(
     "Expand" to { OctoIcons.Expand }, "Collapse" to { OctoIcons.Collapse }, "Home" to { OctoIcons.Home },
     "Settings" to { OctoIcons.Settings }, "Reveal" to { OctoIcons.Reveal }, "Conceal" to { OctoIcons.Conceal },
     "Minimize" to { OctoIcons.Minimize }, "Maximize" to { OctoIcons.Maximize }, "Restore" to { OctoIcons.Restore },
+    "SignOut" to { OctoIcons.SignOut },
 )

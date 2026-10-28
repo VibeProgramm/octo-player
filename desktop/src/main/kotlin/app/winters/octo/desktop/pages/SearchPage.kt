@@ -52,6 +52,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.winters.octo.design.FitOrElse
 import app.winters.octo.design.GlassField
 import app.winters.octo.design.GlazeSegments
 import app.winters.octo.design.Glyph
@@ -68,10 +69,11 @@ import app.winters.octo.desktop.nav.Visit
 import app.winters.octo.desktop.search.SearchFilter
 import app.winters.octo.desktop.search.SearchFound
 import app.winters.octo.desktop.search.SearchState
+import app.winters.octo.desktop.ui.ChoiceButton
 import app.winters.octo.desktop.ui.FailedLine
 import app.winters.octo.desktop.ui.LoadingLine
 import app.winters.octo.desktop.ui.LocalBottomRoom
-import app.winters.octo.desktop.ui.PageTitle
+import app.winters.octo.desktop.ui.PageHeader
 import app.winters.octo.desktop.ui.SectionTitle
 import app.winters.octo.desktop.ui.ShelfCardWidth
 import app.winters.octo.desktop.ui.SongTable
@@ -108,10 +110,15 @@ fun SearchPage(app: AppState, visit: Visit) {
     ) {
         // The field itself is at the top of the sidebar, on every page.
         item(key = "filters") {
-            Column(verticalArrangement = Arrangement.spacedBy(Space.L)) {
-                PageTitle("Search", detail = model.text.takeIf(String::isNotBlank)?.let { "Results for \"$it\"" })
-                GlazeSegments(SearchFilter.entries, model.filter, { it.label }, model::pick)
-            }
+            PageHeader(
+                "Search",
+                control = {
+                    FitOrElse(
+                        { GlazeSegments(SearchFilter.entries, model.filter, { it.label }, model::pick) },
+                        { ChoiceButton(SearchFilter.entries, model.filter, { it.label }, model::pick, title = "Show") },
+                    )
+                },
+            )
         }
         when (state) {
             SearchState.Idle -> {

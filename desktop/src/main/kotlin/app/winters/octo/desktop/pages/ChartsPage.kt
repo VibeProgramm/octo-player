@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -28,7 +30,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.roundToIntRect
-import app.winters.octo.design.ChipRow
+import app.winters.octo.design.ControlHeight
 import app.winters.octo.design.DesktopType
 import app.winters.octo.design.GlazeCapsule
 import app.winters.octo.design.GlazeRound
@@ -46,7 +48,10 @@ import app.winters.octo.desktop.home.HomeStore
 import app.winters.octo.desktop.nav.Page
 import app.winters.octo.desktop.nav.Visit
 import app.winters.octo.desktop.search.Charts
+import app.winters.octo.desktop.ui.ChoiceButton
 import app.winters.octo.desktop.ui.ControlLine
+import app.winters.octo.desktop.ui.PageTitle
+import app.winters.octo.desktop.ui.TitleToLine
 import app.winters.octo.desktop.ui.LoadingLine
 import app.winters.octo.desktop.ui.LocalBottomRoom
 import app.winters.octo.desktop.ui.SectionTitle
@@ -58,17 +63,16 @@ import app.winters.octo.discovery.CountryPick
 import app.winters.octo.discovery.CountryRow
 import app.winters.octo.discovery.chartCountryRows
 import app.winters.octo.discovery.countryChoices
-import app.winters.octo.discovery.rankedBy
 import app.winters.octo.subsonic.CHART_OVERALL
 import app.winters.octo.subsonic.TopSongs
-import java.util.Locale
 
 // The charts and new songs an Octo server reads from Apple Music: a
 // country's most played songs, Best New Songs, Trending Songs and a chart
-// per genre, one at a time, picked with the chips. Each song plays from
+// per genre, one at a time, picked in the chart button's menu. Each song plays from
 // the library when the library has it and is added with its "+"
 // otherwise, as on the search page. The title has its line; the line
-// under it holds the country button, the chips, and Play and Shuffle. On a
+// under it holds the country button, the chart button, and Play and
+// Shuffle. On a
 // server that saves it, a country picked in the country button's list asks
 // what to do with it; a country only looked at is let go with the page.
 @Composable
@@ -84,32 +88,35 @@ fun ChartsPage(app: AppState, visit: Visit) {
     val failed = charts.failures[charts.key(charts.selected, charts.country)] ?: charts.country?.let { charts.choiceFailures[it] }
     val songs = top?.entry.orEmpty().mapNotNull { it.song }
     LazyColumn(Modifier.scrollbar(list, LocalBottomRoom.current), state = list, contentPadding = pagePadding(LocalBottomRoom.current)) {
-        item(key = "title") { WholeTxt("Charts", DesktopType.pageTitle, modifier = Modifier.padding(bottom = Space.M)) }
+        item(key = "title") { PageTitle("Charts", bottom = TitleToLine) }
         item(key = "controls") {
             var anchor by remember { mutableStateOf(IntRect.Zero) }
             val country = charts.shownCountry?.takeIf { charts.canPickCountry }
             ControlLine(
-                control = if (country == null) null else {
-                    {
-                        GlazeCapsule(
-                            OctoIcons.Globe,
-                            countryName(country),
-                            { showCountryMenu(app, charts, anchor, caption = top?.let(::caption)) },
-                            Modifier.widthIn(max = CountryButtonMax).onGloballyPositioned { anchor = it.boundsInWindow().roundToIntRect() },
-                            height = 32.dp,
-                            quiet = true,
-                            enabled = !charts.saving,
-                        )
-                    }
-                },
-                filters = if (choices.isEmpty()) null else {
-                    {
-                        ChipRow(
-                            choices.map { it.id },
-                            charts.selected,
-                            label = { id -> choices.firstOrNull { it.id == id }?.label ?: id },
-                            onSelect = { charts.selected = it },
-                        )
+                control = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Space.M), verticalAlignment = Alignment.CenterVertically) {
+                        if (country != null) {
+                            GlazeCapsule(
+                                OctoIcons.Globe,
+                                countryName(country),
+                                { showCountryMenu(app, charts, anchor) },
+                                Modifier.widthIn(max = CountryButtonMax).onGloballyPositioned { anchor = it.boundsInWindow().roundToIntRect() },
+                                height = ControlHeight.L,
+                                quiet = true,
+                                enabled = !charts.saving,
+                            )
+                        }
+                        // The chart shown, picked from its menu.
+                        if (choices.isNotEmpty()) {
+                            ChoiceButton(
+                                choices.map { it.id },
+                                charts.selected,
+                                label = { id -> choices.firstOrNull { it.id == id }?.label ?: id },
+                                onSelect = { charts.selected = it },
+                                // Apple's own lists first, then the genres.
+                                group = { id -> choices.firstOrNull { it.id == id }?.kind == "genre" },
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -133,12 +140,19 @@ fun ChartsPage(app: AppState, visit: Visit) {
 // The widest the country button grows; a longer name shortens inside it.
 private val CountryButtonMax = 220.dp
 
+// What the country menu's first line says, in every state.
+internal const val COUNTRY_MENU_TITLE = "Choose a country"
+
+// How wide the choice for a picked country is: a little wider than the
+// country list, so none of its lines ends on a word alone.
+private val CountryChoiceWidth = CountryMenuWidth + 24.dp
+
 // Every country, under the button that opened it, the chart's source line
 // at its top: the listener's own first, the server's while they chose one
 // of their own, then every country by name. Their own goes back to their
 // charts; any other asks what to do with it. `typed` starts the search
 // with words already in it.
-internal fun showCountryMenu(app: AppState, charts: Charts, anchor: IntRect, typed: MutableState<String>? = null, caption: String? = null) {
+internal fun showCountryMenu(app: AppState, charts: Charts, anchor: IntRect, typed: MutableState<String>? = null) {
     app.popups.showUnder(anchor, width = CountryMenuWidth, scrollsItself = true) { close ->
         val own = charts.own ?: return@showUnder
         val rows = chartCountryRows(own, charts.country, ::countryName)
@@ -149,7 +163,9 @@ internal fun showCountryMenu(app: AppState, charts: Charts, anchor: IntRect, typ
                 else -> askCountry(app, charts, anchor, code, server = row.pick == CountryPick.Server)
             }
         }
-        if (typed != null) CountryMenu(rows, pick, close, typed, title = caption) else CountryMenu(rows, pick, close, title = caption)
+        // The line always shows and always says what the menu is for, so
+        // the field under it never moves.
+        if (typed != null) CountryMenu(rows, pick, close, typed, title = COUNTRY_MENU_TITLE) else CountryMenu(rows, pick, close, title = COUNTRY_MENU_TITLE)
     }
 }
 
@@ -159,7 +175,7 @@ internal fun showCountryMenu(app: AppState, charts: Charts, anchor: IntRect, typ
 // and says so when one did not happen; putting it away does nothing.
 internal fun askCountry(app: AppState, charts: Charts, anchor: IntRect, code: String, server: Boolean = false) {
     charts.problemSeen()
-    app.popups.showUnder(anchor, width = CountryMenuWidth) { close ->
+    app.popups.showUnder(anchor, width = CountryChoiceWidth) { close ->
         val own = charts.own ?: return@showUnder
         val name = countryName(code)
         MenuTitle(name)
@@ -194,14 +210,6 @@ private fun ChoiceLine(label: String, detail: String, enabled: Boolean, onClick:
     }
 }
 
-// Who ranked the chart and for which country: "Most played on Apple Music
-// in United States".
-private fun caption(top: TopSongs): String? {
-    val by = rankedBy(top.source, top.chart) ?: return null
-    val country = top.country?.takeIf { it.length == 2 }?.let { Locale("", it.uppercase()).displayCountry }
-    return if (country.isNullOrBlank()) by else "$by in $country"
-}
-
 // A chart's songs; `shown` keeps only the first few (Home's row).
 private fun LazyListScope.chartSongs(app: AppState, top: TopSongs, shown: Int?) {
     val entries = top.entry.filter { it.song != null }.let { if (shown != null) it.take(shown) else it }
@@ -231,14 +239,12 @@ internal fun LazyListScope.chartsRow(app: AppState, charts: Charts, home: HomeSt
     }
     val top = home.shelves.chart ?: return
     if (top.entry.none { it.song != null }) return
+    // Its title as every shelf's; who ranks it is said in the Charts page's country menu.
     moving(key = "charts-title") {
-        Column(verticalArrangement = Arrangement.spacedBy(Space.Xs)) {
-            SectionTitle(top.name ?: "Popular right now", action = "See all", bottom = 0.dp) {
-                charts.showOwn()
-                charts.selected = CHART_OVERALL
-                app.navigator.go(Page.Charts)
-            }
-            caption(top)?.let { Txt(it, OctoType.caption, OctoColors.TextMuted, Modifier.padding(bottom = Space.L)) }
+        ShelfTitle(top.name ?: "Popular right now") {
+            charts.showOwn()
+            charts.selected = CHART_OVERALL
+            app.navigator.go(Page.Charts)
         }
     }
     chartSongs(app, top, shown = CHARTS_ROW)
