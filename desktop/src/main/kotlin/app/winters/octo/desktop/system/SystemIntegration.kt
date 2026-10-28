@@ -34,6 +34,7 @@ import app.winters.octo.desktop.hotkeys.GlobalShortcuts
 import app.winters.octo.desktop.hotkeys.HotkeyAction
 import app.winters.octo.desktop.hotkeys.HotkeyBackend
 import app.winters.octo.desktop.nav.VOLUME_STEP
+import app.winters.octo.desktop.ui.GpuCacheTrim
 import app.winters.octo.desktop.ui.anyOutside
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -256,6 +257,7 @@ class SystemIntegration(
 
     fun hideWindow() {
         windowVisible = false
+        GpuCacheTrim.soon()
     }
 
     fun toggleMiniPlayer() = setMiniPlayer(!miniPlayerOpen)

@@ -7,14 +7,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.HttpUrl
 import java.net.NetworkInterface
 
-// How often the computer's own addresses are looked at, to notice it
-// joining another network.
-private const val NETWORK_WATCH_MS = 10_000L
+// How often the computer's own addresses are looked at as a safety net when
+// Windows tells of every change (a missed notice is caught by the next look).
+private const val NETWORK_FALLBACK_MS = 5 * 60_000L
+
+// How often they are looked at when the system cannot tell of changes.
+// Listing the network interfaces costs tens of milliseconds, so it is not
+// done often.
+private const val NETWORK_POLL_MS = 60_000L
 
 // A connection error asks for a new check at most this often, so a burst
 // of failed cover loads does not become a burst of pings.
@@ -24,16 +29,21 @@ private const val ERROR_RECHECK_MS = 5_000L
 // A computer is always on some local network, so the home address is used
 // whenever it answers, and the main one otherwise. It checks when made,
 // when the computer joins another network, and after a request to the
-// server fails to connect. The client asks it where each call goes.
+// server fails to connect. A join is heard from the system's own address
+// change notice when it has one, with a rare look as a safety net, and found
+// by a look every minute otherwise. The client asks it where each call goes.
 class HomeRoute(
     val main: HttpUrl,
     val home: HttpUrl,
     private val answers: suspend (HttpUrl) -> Boolean,
     private val network: () -> Set<String> = ::localAddresses,
-    private val watchEveryMs: Long = NETWORK_WATCH_MS,
+    private val changes: AddressChanges = systemAddressChanges(),
+    private val watchEveryMs: Long? = null,
 ) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val checks = Channel<Unit>(Channel.CONFLATED)
+    private val checksNetwork = Channel<Unit>(Channel.CONFLATED)
+    private val watcher: AutoCloseable? = runCatching { changes.watch { checksNetwork.trySend(Unit) } }.getOrNull()
 
     @Volatile var place: Place = Place.Away
         private set
@@ -48,11 +58,12 @@ class HomeRoute(
                 place = choosePlace(hasHome = true, onLocalNetwork = true, homeAnswered = answers(home))
             }
         }
+        val interval = watchEveryMs ?: if (watcher != null) NETWORK_FALLBACK_MS else NETWORK_POLL_MS
         scope.launch {
             var last = network()
             recheck()
             while (true) {
-                delay(watchEveryMs)
+                withTimeoutOrNull(interval) { checksNetwork.receive() }
                 val now = network()
                 if (now != last) {
                     last = now
@@ -79,6 +90,7 @@ class HomeRoute(
     }
 
     override fun close() {
+        runCatching { watcher?.close() }
         scope.cancel()
     }
 }

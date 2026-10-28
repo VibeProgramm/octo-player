@@ -20,9 +20,9 @@ class MemoryLogTest {
 
     @Test
     fun aLineWithNothingReadableShowsQuestionMarksAndTheHeap() {
-        val line = memoryLine("2026-01-01T10:00:00", 11, unknown, "tray", false)
+        val line = memoryLine("2026-01-01T10:00:00", 11, unknown, "tray", false, 3, null)
         assertEquals(
-            "2026-01-01T10:00:00 min=11 private=? ws=? handles=? threads=? gpu=?/? cpu=? io=? heap=120/256 reopens=? window=tray playing=no",
+            "2026-01-01T10:00:00 min=11 private=? ws=? handles=? threads=? gpu=?/? cpu=? io=? heap=120/256 reopens=? trims=3 trimFreed=? window=tray playing=no",
             line,
         )
     }
