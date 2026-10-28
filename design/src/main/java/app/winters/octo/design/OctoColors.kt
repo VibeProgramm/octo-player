@@ -72,6 +72,9 @@ object OctoColors {
     // still the darker pill, only lightly tinted, and white text reads on it.
     val AccentSelected: Color get() = mix(Color.Black, Accent, 0.40f)
 
+    // The dark ink drawn on an accent fill: the page's own color.
+    val OnAccent = Color(0xFF0C0C0D)
+
     // The ring round a focused control.
     val FocusRing: Color get() = Accent.copy(alpha = 0.70f)
 
