@@ -11,12 +11,27 @@ class LyricEngineTest {
     private val view = 1000.0
     private val lineHeight = 80.0
 
-    // Ten lines, one every two seconds, each sung for the whole two.
+    // Ten lines, one every two seconds, each sung for the whole two. The
+    // budget clock stands still, so a slow machine never runs it out.
     private fun engine(): LyricEngine {
         val lines = (0 until 10).map { i ->
             SyncLine(i, "line $i", listOf(SyncWord("line", i * 2.0, i * 2.0 + 2, true)), i * 2.0, i * 2.0 + 2)
         }
-        return LyricEngine(lines).also { it.setGeometry(DoubleArray(10) { lineHeight }, 10.0, 60.0, view) }
+        return LyricEngine(lines, nanoTime = { 0L }).also { it.setGeometry(DoubleArray(10) { lineHeight }, 10.0, 60.0, view) }
+    }
+
+    @Test
+    fun preparingStopsOnceTheBudgetIsSpent() {
+        val lines = (0 until 10).map { i ->
+            SyncLine(i, "line $i", listOf(SyncWord("line", i * 2.0, i * 2.0 + 2, true)), i * 2.0, i * 2.0 + 2)
+        }
+        var now = 0L
+        val engine = LyricEngine(lines, nanoTime = { now })
+        engine.setGeometry(DoubleArray(10) { lineHeight }, 10.0, 60.0, view)
+        val prepared = mutableListOf<Int>()
+        // Each line takes the whole budget, so the frame stops after the second.
+        engine.frame(0, 8_500, true, 1.0, 0, prepare = { prepared += it; now += PREPARE_BUDGET_NANOS })
+        assertEquals(listOf(4, 5), prepared)
     }
 
     private fun LyricEngine.centre(i: Int) = states[i].y.value() + states[i].height / 2

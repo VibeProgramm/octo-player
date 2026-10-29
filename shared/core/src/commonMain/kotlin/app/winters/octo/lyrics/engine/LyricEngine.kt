@@ -34,7 +34,8 @@ const val SCROLL_BOTTOM_LIMIT = 0.7
 // ripple, the fades, the scroll by hand, and which lines get their word
 // animation ready. Drawing only reads what this leaves behind, through
 // each line's version counters, so a frame never composes anything.
-class LyricEngine(val lines: List<SyncLine>) {
+// `nanoTime` times the preparing budget.
+class LyricEngine(val lines: List<SyncLine>, private val nanoTime: () -> Long = System::nanoTime) {
     val states: List<LineState> = lines.map(::LineState)
     val clock = LyricClock()
 
@@ -312,14 +313,14 @@ class LyricEngine(val lines: List<SyncLine>) {
                 st.drawVersion.intValue++
             }
         }
-        val started = System.nanoTime()
+        val started = nanoTime()
         for (step in 0..PREPARE_AHEAD + PREPARE_BEHIND) {
             val i = when {
                 step <= PREPARE_AHEAD -> a + step
                 else -> a - (step - PREPARE_AHEAD)
             }
             if (i !in lines.indices || states[i].live) continue
-            if (System.nanoTime() - started > PREPARE_BUDGET_NANOS) break
+            if (nanoTime() - started > PREPARE_BUDGET_NANOS) break
             prepare(i)
             states[i].live = true
             states[i].drawVersion.intValue++
