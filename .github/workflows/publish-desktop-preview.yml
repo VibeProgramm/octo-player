@@ -143,9 +143,16 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
-          gh release create "$TAG" release/* --target "$SOURCE_SHA" --draft --prerelease --latest=false \
-            --title "Octo $VERSION — Linux packaging preview" --notes-file preview-notes.md
-          gh api "repos/$GH_REPO/releases/tags/$TAG" > "$RUNNER_TEMP/release.json"
+          if gh release view "$TAG" --json databaseId,isDraft,targetCommitish > "$RUNNER_TEMP/existing.json"; then
+            # A previous attempt may have uploaded the draft before failing.
+            jq -e --arg sha "$SOURCE_SHA" '.isDraft and .targetCommitish == $sha' "$RUNNER_TEMP/existing.json"
+          else
+            gh release create "$TAG" release/* --target "$SOURCE_SHA" --draft --prerelease --latest=false \
+              --title "Octo $VERSION — Linux packaging preview" --notes-file preview-notes.md
+          fi
+          # A draft's tag need not exist yet, so the /tags endpoint returns 404.
+          release_id=$(gh release view "$TAG" --json databaseId --jq .databaseId)
+          gh api "repos/$GH_REPO/releases/$release_id" > "$RUNNER_TEMP/release.json"
           python3 - <<'PY'
           import hashlib
           import json
