@@ -19,7 +19,7 @@ sha256sums=('@SHA256@')
 
 package() {
     install -dm755 "$pkgdir/opt/octo-player" "$pkgdir/usr/bin"
-    cp -a "$srcdir/Octo/." "$pkgdir/opt/octo-player/"
+    cp -a --no-preserve=ownership "$srcdir/Octo/." "$pkgdir/opt/octo-player/"
     ln -s /opt/octo-player/bin/Octo "$pkgdir/usr/bin/octo"
     install -Dm644 "$srcdir/octo.desktop" "$pkgdir/usr/share/applications/octo-Octo.desktop"
     install -Dm644 "$srcdir/octo.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/app.winters.octo.png"

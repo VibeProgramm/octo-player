@@ -129,8 +129,8 @@ def main():
     if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?", args.version):
         parser.error("--version must be a SemVer version, such as 1.2.0 or 1.3.0-beta.1")
     image = args.image.resolve()
-    if not (image / "bin/Octo").is_file():
-        parser.error("--image must be createDistributable's Octo folder")
+    if not (image / "bin/Octo").is_file() or not os.access(image / "bin/Octo", os.X_OK):
+        parser.error("--image must be createDistributable's Octo folder, with an executable bin/Octo")
     config = (image / "lib/app/Octo.cfg").read_text()
     if f"java-options=-Docto.version={args.version}" not in config.splitlines():
         parser.error("the app image's version does not match --version")
