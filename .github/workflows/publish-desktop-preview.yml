@@ -1,0 +1,170 @@
+# Fork-only previews from the artifacts of an already tested desktop build.
+name: publish-desktop-preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful manual desktop-installers run in this fork
+        required: true
+        type: string
+        default: '40964778596'
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: desktop-preview-${{ inputs.build_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'VibeProgramm/octo-player'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+    steps:
+      - name: Check the source build
+        id: source
+        run: |
+          [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Expected a numeric build run ID.' >&2; exit 1; }
+          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN_ID" > "$RUNNER_TEMP/build.json"
+          jq -e --arg repo "$GH_REPO" '
+            .status == "completed" and .conclusion == "success" and
+            .event == "workflow_dispatch" and
+            .path == ".github/workflows/desktop-installers.yml" and
+            .repository.full_name == $repo and .head_repository.full_name == $repo
+          ' "$RUNNER_TEMP/build.json"
+          sha=$(jq -r '.head_sha' "$RUNNER_TEMP/build.json")
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.build_run_id }}
+          pattern: octo-desktop-*
+          path: artifacts
+
+      - name: Prepare the packages and checksums
+        id: release
+        run: |
+          # Manual desktop-installers runs stamp this exact commit-count version.
+          version="1.0.$(git rev-list --count HEAD)"
+          tag="preview-desktop-$version-run-$BUILD_RUN_ID"
+          test -f "artifacts/octo-desktop-Linux-X64/appimage/Octo-$version-linux-x64.AppImage"
+          python3 scripts/release/release_assets.py stage-desktop \
+            --version "$version" --artifacts artifacts --out release \
+            --require-platform windows-x64 --require-platform linux-x64
+          (cd release && sha256sum ./* > SHA256SUMS && sha256sum --check SHA256SUMS)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Write download links and installation instructions
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          repo, version, tag, sha, run = (os.environ[k] for k in ("GH_REPO", "VERSION", "TAG", "SOURCE_SHA", "BUILD_RUN_ID"))
+          base = f"https://github.com/{repo}/releases/download/{tag}"
+          files = sorted(p.name for p in Path("release").iterdir())
+          links = "\n".join(f"- [{name}]({base}/{name})" for name in files)
+          notes = f"""## Тестовый релиз Linux-пакетов Octo
+
+          Пакеты собраны и проверены в [GitHub Actions](https://github.com/{repo}/actions/runs/{run}),
+          затем опубликованы этим workflow непосредственно из CI.
+          Исходный коммит: [`{sha[:8]}`](https://github.com/{repo}/commit/{sha}).
+          Изменения: [AppImage, Flatpak и pacman — PR #13](https://github.com/winters27/octo-player/pull/13).
+
+          Версия внутри приложения — **{version}** (номер тестовой CI-сборки).
+          Это preview форка для ручной установки; подписанный канал обновлений основного проекта здесь не публикуется.
+
+          ### Скачать
+          Все пакеты — **x86_64**. Linux: AppImage, Flatpak, pacman, DEB, RPM и portable ZIP. Windows: MSI и portable ZIP.
+
+          {links}
+
+          ### AppImage
+          Требуется glibc 2.39+ (например, Ubuntu 24.04+).
+          ```sh
+          chmod +x Octo-{version}-linux-x64.AppImage
+          ./Octo-{version}-linux-x64.AppImage
+          # Запуск без FUSE:
+          ./Octo-{version}-linux-x64.AppImage --appimage-extract-and-run
+          ```
+
+          ### Flatpak
+          ```sh
+          flatpak install --user ./Octo-{version}-linux-x64.flatpak
+          flatpak run app.winters.octo//stable
+          ```
+          Используется Freedesktop Platform 26.08; bundle содержит адрес источника runtime.
+          Эта числовая CI-сборка использует ветку `stable` внутри Flatpak, хотя GitHub-релиз помечен как pre-release.
+          Новую версию можно установить таким же способом из нового bundle.
+
+          ### Arch Linux / CachyOS / Manjaro
+          ```sh
+          sudo pacman -U ./Octo-{version}-linux-x64.pkg.tar.zst
+          octo
+          ```
+
+          ### Проверить скачанный файл
+          Скачайте `SHA256SUMS` рядом с выбранным пакетом:
+          ```sh
+          sha256sum --check --ignore-missing SHA256SUMS
+          ```
+
+          ### Проверки CI
+          Пройдены desktop-тесты Windows/Linux, сборка всех пакетов, установка pacman-пакета в Arch-контейнере,
+          запуск GUI и воспроизведение через Rust-аудиодвижок во всех трёх новых форматах,
+          проверка версии, сохранения настроек и релизных контрольных сумм.
+          """
+          Path("preview-notes.md").write_text("\n".join(line.lstrip() for line in notes.splitlines()) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload and verify the release assets
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          gh release create "$TAG" release/* --target "$SOURCE_SHA" --draft --prerelease --latest=false \
+            --title "Octo $VERSION — Linux packaging preview" --notes-file preview-notes.md
+          gh api "repos/$GH_REPO/releases/tags/$TAG" > "$RUNNER_TEMP/release.json"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          release = json.loads((Path(os.environ["RUNNER_TEMP"]) / "release.json").read_text())
+          assets = {a["name"]: a for a in release["assets"]}
+          local = {p.name: p for p in Path("release").iterdir()}
+          assert assets.keys() == local.keys(), "Uploaded assets differ from the staged files"
+          for name, path in local.items():
+              with path.open("rb") as stream:
+                  digest = "sha256:" + hashlib.file_digest(stream, "sha256").hexdigest()
+              assert assets[name]["state"] == "uploaded", name
+              assert assets[name]["size"] == path.stat().st_size, name
+              assert assets[name]["digest"] == digest, name
+              print(f"Verified {name}")
+          PY
+          gh release edit "$TAG" --draft=false --prerelease --latest=false
+          url=$(gh release view "$TAG" --json url --jq .url)
+          echo "### [Download the tested preview]($url)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Built by https://github.com/$GH_REPO/actions/runs/$BUILD_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
