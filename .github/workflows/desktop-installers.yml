@@ -112,6 +112,16 @@ jobs:
       - name: Tests
         run: ./gradlew :desktop:test --no-daemon
 
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-test-reports-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            desktop/build/test-results/test/*.xml
+            desktop/build/reports/tests/test/
+          if-no-files-found: warn
+
       - name: Installers
         # The same version goes into the app, all packages and the manifest rehearsal.
         # Bash on every system: PowerShell splits -PoctoDesktopVersion=1.1.0 at its first dot.
