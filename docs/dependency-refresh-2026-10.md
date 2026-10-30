@@ -66,3 +66,38 @@ and audio; the real-GPU acceptance script is a separate check.
 compiles the Wayland probe on Java 27, and renders small covers with the new
 NumPy/Pillow. A Linux system-shim check does not test macOS or Windows code;
 Windows packaging exercises that platform in the installer workflow.
+
+## Local verification
+
+- Desktop and test sources compile; the Wayland probe builds and passes the
+  real-GPU acceptance and native input/mixed-scale checks described in its
+  [results](../wayland-probe/RESULTS.md).
+- Rust audio: 209 passed. Linux system shim and fixture generator: `cargo
+  check --locked` passed. NumPy/Pillow: dependency check and both liquid/silk
+  cover generation passed.
+- Shared desktop tests: 1159 passed. Desktop design: 50 passed. Desktop: 1272
+  tests, 56 skipped, two failures (`ContrastTest` yellow-wash contrast and
+  `TitleRowTest` heart alignment). Both failure cases were reproduced on the
+  pre-update baseline on this machine; the title alignment measurements are
+  identical. Tests have not been disabled or their thresholds relaxed.
+- `createDistributable` succeeded. The generated runtime's `release` file
+  reports Java 27.0.1.0.3. Launching that image with an isolated profile and the
+  audio smoke option printed `check: java 27`, advancing real audio playback,
+  and `check: https works (h2, HTTP 200)`; process exit was 0.
+- Running Gradle itself on JDK 17 with `:desktop:run -Pocto.checkPlay=...`
+  also launched the application on Java 27 and passed audio/HTTPS checks.
+
+## GitHub Actions verification
+
+- [Desktop installers, run 40996218327](https://github.com/VibeProgramm/octo-player/actions/runs/40996218327):
+  **passed** Linux and Windows desktop tests; built MSI, two portable ZIPs,
+  DEB, RPM, AppImage, Flatpak and pacman packages; Linux launch/audio/Java 27/
+  HTTPS smoke tests and release manifest/checksum rehearsal passed.
+- [Dependency checks, run 40997192683](https://github.com/VibeProgramm/octo-player/actions/runs/40997192683):
+  **passed** shared `allTests`, Android unit tests and debug APK build with
+  only JDK 17; Rust's 209 tests; Java 27 probe compilation; both Python cover
+  renderers. Android's repository calls the API 37 base platform package
+  `platforms;android-37.0`, not `platforms;android-37`.
+
+Artifacts were built and uploaded by Actions. These verification runs did not
+publish a release. Subsequent documentation-only commits record these results.

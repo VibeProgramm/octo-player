@@ -6,6 +6,8 @@ Compose Multiplatform 1.12.2 and its matched Skiko. It compiles the **actual**
 Compose text and pointer targets above it. The small second window exercises
 the mechanics needed by a mini-player, not the production mini-player UI.
 
+See [measured results and migration gates](RESULTS.md).
+
 ## Build and run
 
 Install JDK 17 and 27, and the normal Linux desktop build dependencies. Run in
