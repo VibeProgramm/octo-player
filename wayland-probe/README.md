@@ -1,12 +1,14 @@
 # Java 27 / native Wayland GPU probe
 
-A Linux x86_64 integration experiment using Kotlin Desktop Toolkit 0.0.90,
+A standalone Linux x86_64 diagnostic using Kotlin Desktop Toolkit 0.0.90,
 Compose Multiplatform 1.12.2 and its matched Skiko. It compiles the **actual**
 `desktop/.../wash/WashRenderer.kt` and uses the shared shaders/motion, with
 Compose text and pointer targets above it. The small second window exercises
 the mechanics needed by a mini-player, not the production mini-player UI.
 
-See [measured results and migration gates](RESULTS.md).
+The full player is implemented in [`desktop-wayland`](../desktop-wayland/README.md)
+and has a published prerelease. This module remains useful for isolated renderer
+and protocol checks. See [historical measurements and current scope](RESULTS.md).
 
 ## Build and run
 
@@ -28,7 +30,8 @@ reads back a rendered frame and checks actual Wayland/DRM syscalls and the
 absence of X11 connections. Run it with the window visible. `GL_RENDERER` values
 identifying llvmpipe, softpipe, swrast or SwiftShader fail; there is no raster
 window fallback. Creating the small synthetic cover on the CPU is texture input,
-not window rendering. The normal hosted CI only **compiles** this probe.
+not window rendering. `dependency-checks.yml` only **compiles** this probe;
+the full player's CI and hardware checks are documented in its guide.
 
 The standalone launcher accepts `--seconds=N`, `--exercise` (at least 20 seconds),
 `--fullscreen`, and `--snapshot=/absolute/file.png`. Set
@@ -54,15 +57,19 @@ The log records callback intervals (p50/p95, after 60 warm-up frames) and CPU
 time spent drawing/submitting. These are **not** GPU timer-query measurements
 or presentation timestamps. KDT paces drawing through Wayland frame callbacks.
 
-## Migration gate
+## Relationship to the native player
 
-This probe does not select a new backend for the packaged player. A production
-host additionally needs Compose keyboard/focus/IME/clipboard/DnD adapters,
-window lifecycle and minimized/idle scheduling, dialogs, decorations on
-compositors without server decorations, accessibility, tray, and mini-player
-policy (including always-on-top where the compositor permits it).
+The native player reuses this module's EGL/Skia bridge and adds the real Octo
+UI/audio engine, Compose keyboard/focus/IME/clipboard adapters, incoming file
+drops, portal dialogs, decorations and main/mini-window lifecycle. Its
+[verification and preview boundaries](../desktop-wayland/README.md) describe the
+full-player checks. The ordinary desktop installers continue to use Compose/AWT.
 
-KDT is pre-1.0. Its upstream Compose experiment is not a supported Linux
-`ComposeWindow` replacement. Test NVIDIA and Intel as well as AMD before making
-any default-backend decision. Passing this probe establishes that the rendering
-route is feasible; it does not establish feature parity for the whole app.
+The probe's append-only inspector and synthetic mini window intentionally remain
+small diagnostic surfaces. Tray, screen-reader integration, broader GPU/compositor
+coverage, physical hotplug and suspend/resume remain open for the native preview;
+mini-player placement and keep-above are compositor-managed.
+
+Both executables retain one KDT `Application` until process exit to avoid KDT
+0.0.90's Wayland-before-EGL teardown crash on Mesa 25. Windows and rendering
+resources are closed before exiting. Revisit this workaround when updating KDT.

@@ -5,6 +5,10 @@ pacman packages for x86_64. All six use the same `createDistributable` app image
 including its trimmed Java 27 runtime and Rust audio engine. Java does not need
 to be installed on the listener's computer.
 
+These packages use Compose/AWT and X11/XWayland. The full
+[native Wayland preview](../../../desktop-wayland/README.md) has its own
+Java 27 portable archive, CI workflow and prerelease.
+
 ## Install and update
 
 Download a package from the [desktop releases](https://github.com/winters27/octo/releases?q=desktop-v&expanded=true).
@@ -96,12 +100,21 @@ missing or duplicate packages fail staging. Only upstream tag runs call
 the manifest, verifies its signature and publishes a complete draft on
 `winters27/octo` with `--latest=false`.
 
-`smoke-test.sh` uses Xvfb and an isolated PulseAudio null sink to launch all three
-new packages, play a silent tone through the real audio engine, check the version
-and save settings. It extracts AppImage without FUSE and installs the Flatpak
-bundle with its actual sandbox permissions. Run it on a disposable CI user:
+`smoke-test.sh` uses Xvfb and an isolated PulseAudio null sink to launch the
+extracted **portable ZIP, AppImage, pacman payload and Flatpak bundle**, play a
+silent tone through the real audio engine, check the app version, Java 27 and
+HTTPS, and save settings. The ZIP is extracted without permission repairs and
+checked for executable launcher/`jspawnhelper` bits and non-executable runtime
+data. It extracts AppImage without FUSE and installs Flatpak with its real
+sandbox permissions plus access to the test fixture directory. Run it on a
+disposable CI user:
 
 ```sh
 bash desktop/packaging/linux/smoke-test.sh desktop/build/compose/binaries/main 1.2.0
 python3 scripts/release/release_assets.py self-test
 ```
+
+[Installer CI 41057075887](https://github.com/VibeProgramm/octo-player/actions/runs/41057075887)
+passed Windows/Linux tests and packaging, these Linux smoke checks and the
+cross-platform manifest rehearsal at `1a10879d`. Platform-specific JUnit XML and
+HTML reports are uploaded even if the test step fails.

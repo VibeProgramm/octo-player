@@ -1,5 +1,10 @@
 # Probe results — 2026-10-30
 
+These are historical measurements of the standalone probe during the initial
+renderer investigation. They are not performance results for the published
+player bundle. The completed native host and exact-release acceptance are
+documented in [`desktop-wayland/README.md`](../desktop-wayland/README.md).
+
 ## Rendering acceptance
 
 Passed `check-gpu.sh` on Linux x86_64, OpenJDK 27.0.1.0.3, KWin 6.8.2,
@@ -49,26 +54,37 @@ This verifies mixed-scale **virtual** output transitions, not physical monitor
 hotplug or every display driver. In that untraced input run, 218 post-warm-up
 750×572 frames had p50/p95 intervals 16.69/17.18 ms and mean CPU submit 1.14 ms.
 
-## Remaining migration gates
+## Scope of these probe runs
 
-- KWin advertises text-input-v3 and the probe enables it. The test session has
-  no active input method, so real CJK composition, candidate placement, preedit
-  selection and reconversion remain **unverified**. The diagnostic append-only
-  inspector is not a complete Compose text-input adapter.
-- No production keyboard focus/shortcuts, Compose clipboard/DnD adapter,
-  screen-reader accessibility, tray integration, dialogs or client-side
-  decorations have been ported to this host.
-- The small second window verifies GPU/window lifetime, not the production
-  mini-player's controls, always-on-top behavior or persisted placement.
+- The initial input session had no active input method. These measurements
+  do not verify CJK composition, candidate placement, preedit selection or
+  reconversion; the append-only inspector is not a complete Compose adapter.
+- The small second window checks GPU/window lifetime rather than the real
+  mini-player's controls. Clipboard and GTK text-drop checks exercise the
+  diagnostic surface rather than Octo's library/import UI.
 - KDT 0.0.90 requests a compositor frame even when the callback draws nothing.
-  Idle/minimized scheduling and GPU cache/lifecycle behavior need a production
-  policy and longer soak tests.
-- Intel/NVIDIA, GNOME, physical multi-monitor hotplug and suspend/resume have
-  not been exercised. Upstream's open NVIDIA EGL issue is relevant to rollout:
-  <https://github.com/JetBrains/kotlin-desktop-toolkit/issues/137>.
+  The short probe timings do not establish full-player idle power consumption
+  or long-session GPU/cache behavior.
 
-**Decision:** Java 27 + native Wayland + hardware Skia/Compose rendering is
-feasible and demonstrated. Keep the host experimental. Replacing the packaged
-player's windows now would lose integrations; the next implementation step is
-the production Compose platform adapter and lifecycle coverage, then a gated
-Linux backend option.
+## Full-player follow-up
+
+The separate [`desktop-wayland`](../desktop-wayland/README.md) module now hosts
+the full player, including Compose text/focus/clipboard integration, native file
+drops, portal dialogs, client-side decorations and the production mini-player.
+Its **1.0.1677-wayland.1** prerelease at `1a10879d` passed the documented packaged
+GPU/audio/HTTPS checks and full GUI acceptance on an unchanged second attempt.
+That guide records the first attempt's failure and the precise IME-test scope.
+The callback/CPU/RSS figures above must not be attributed to that bundle.
+
+After the lifetime fix, the standalone probe also passed hardware exit 0 and
+default software-renderer rejection exit 1 with separately extracted Ubuntu
+Mesa **25.2.8** / LLVM **20** libraries on the AMD/KWin host. This exercises the
+older teardown path without claiming a full Ubuntu desktop acceptance run.
+Both the player and probe retain one KDT `Application` until process exit to
+avoid its Wayland-before-EGL teardown crash.
+
+The native client remains an experimental preview. Native tray/screen-reader
+integration, Intel/NVIDIA, GNOME, physical monitor hotplug and suspend/resume
+remain outside the verified coverage. Placement and keep-above are controlled
+by the compositor. KDT's NVIDIA EGL compatibility remains relevant to rollout:
+<https://github.com/JetBrains/kotlin-desktop-toolkit/issues/137>.
