@@ -73,7 +73,10 @@ updates, system requirements and building these formats.
 
 ## Build from source
 
-You need JDK 17. The Android app also needs the Android SDK (platform 37). The desktop app plays through its own audio engine, written in Rust, so it needs Rust 1.88 or newer and:
+You need JDK 17 for compilation and Android, and JDK 27 for desktop tests,
+launching and packaging. Gradle selects them through Java toolchains. The Android
+app also needs the Android SDK (platform 37). The desktop app plays through its
+own audio engine, written in Rust, so it needs Rust 1.88 or newer and:
 
 - Windows: the MSVC build tools.
 - Linux: `libasound2-dev` and `pkg-config` (Fedora: `alsa-lib-devel`), plus `fakeroot` and `rpm` to build packages.
@@ -102,10 +105,15 @@ cd octo-player
 - `./gradlew :app:assembleRelease` signs the APK when `OCTO_ANDROID_KEYSTORE`, `OCTO_ANDROID_KEYSTORE_PASSWORD`, `OCTO_ANDROID_KEY_ALIAS` and `OCTO_ANDROID_KEY_PASSWORD` are set, and leaves it unsigned otherwise.
 - `-Pocto.noSystemShim=true` builds the desktop app without its media-controls helper, which is also written in Rust.
 
+The experimental [Wayland GPU probe](wayland-probe/README.md) runs a native
+Linux window on Java 27 with Octo's real animated background. It is a separate
+integration experiment; the packaged desktop client still uses Compose/AWT.
+
 | Folder | What's there |
 | --- | --- |
 | `app/` | the Android app |
 | `desktop/` | the desktop app |
+| `wayland-probe/` | experimental Linux x86_64 Wayland/EGL host |
 | `shared/core/` | what both apps share: lyrics, sound, queue rules, song matching, covers, updates |
 | `subsonic/` | the Subsonic and OpenSubsonic client, with Octo's extensions |
 | `design/`, `desktop-design/` | colours, type, icons and fonts |

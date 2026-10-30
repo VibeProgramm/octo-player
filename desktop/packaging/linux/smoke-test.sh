@@ -51,6 +51,8 @@ check() {
     # is not proof that the native audio library loaded and played.
     grep -q 'check: sound is playing, the clock moved' "$work/$kind.log"
     grep -q "check: version $version$" "$work/$kind.log"
+    grep -q 'check: java 27$' "$work/$kind.log"
+    grep -q 'check: https works' "$work/$kind.log"
     test -f "$profile/config/settings.json"
 }
 
@@ -75,5 +77,7 @@ timeout 120 xvfb-run -a dbus-run-session -- flatpak run \
     "$ref" 2>&1 | tee "$work/flatpak.log"
 grep -q 'check: sound is playing, the clock moved' "$work/flatpak.log"
 grep -q "check: version $version$" "$work/flatpak.log"
+grep -q 'check: java 27$' "$work/flatpak.log"
+grep -q 'check: https works' "$work/flatpak.log"
 test -f "$work/flatpak/config/settings.json"
 echo 'AppImage, pacman and Flatpak: GUI, native audio, version and settings checks passed.'

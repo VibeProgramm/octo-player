@@ -2,7 +2,7 @@
 
 `desktop-installers.yml` builds DEB, RPM, portable ZIP, AppImage, Flatpak and
 pacman packages for x86_64. All six use the same `createDistributable` app image,
-including its trimmed Java 17 runtime and Rust audio engine. Java does not need
+including its trimmed Java 27 runtime and Rust audio engine. Java does not need
 to be installed on the listener's computer.
 
 ## Install and update
@@ -61,6 +61,10 @@ pacman package. Prereleases use an Arch version such as `1.3.0pre.beta.1`, which
 sorts below `1.3.0` while the app and release keep `1.3.0-beta.1`.
 
 ## Build
+
+Install both JDK 17 (compilation, shared with Android) and JDK 27 (desktop tests,
+launching and packaging). Gradle's Java toolchains select them independently;
+`JAVA_HOME` alone does not select the packaged runtime.
 
 In addition to the normal desktop build prerequisites, install Python 3.11+,
 curl, `flatpak-builder`, Flatpak and Docker (or `makepkg` on Arch). Set up the

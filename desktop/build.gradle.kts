@@ -11,6 +11,36 @@ plugins {
 
 kotlin { jvmToolchain(17) }
 
+// Shared code still targets Java 17 for Android. The desktop process and
+// the jlink/jpackage tools use Java 27, including when Gradle runs on 17.
+// Keep this lazy: configuring an Android-only build must not require JDK 27.
+val desktopJava = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(27))
+}
+val desktopJavaHome = desktopJava.map { it.metadata.installationPath.asFile.absolutePath }
+
+// Compose installs its task defaults after evaluation; replace those defaults
+// together so tests, run, the runtime probe, jlink and jpackage agree.
+afterEvaluate {
+    tasks.withType<JavaExec>().configureEach {
+        javaLauncher.set(desktopJava)
+        // Compose also sets an explicit executable. Replace it at execution
+        // time so Android-only task graphs do not resolve the desktop JDK.
+        doFirst { setExecutable(desktopJava.get().executablePath.asFile.absolutePath) }
+        jvmArgs("--enable-native-access=ALL-UNNAMED")
+    }
+    tasks.withType<Test>().configureEach {
+        javaLauncher.set(desktopJava)
+        jvmArgs("--enable-native-access=ALL-UNNAMED")
+    }
+    tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJvmToolOperationTask>().configureEach {
+        javaHome.set(desktopJavaHome)
+    }
+    tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractCheckNativeDistributionRuntime>().configureEach {
+        jdkHome.set(desktopJavaHome)
+    }
+}
+
 // The version the installers carry and the app shows. Windows only
 // replaces an installed Octo with a higher version, so every build handed
 // out must count up: a test build passes -PoctoBuild=<commit count>, as the
@@ -245,6 +275,7 @@ compose.desktop {
     application {
         mainClass = "app.winters.octo.desktop.MainKt"
         jvmArgs("-Docto.version=$desktopVersion")
+        jvmArgs("--enable-native-access=ALL-UNNAMED")
         // The heap, for `run` and the installers alike. Left to itself the
         // JVM takes a quarter of the machine's memory as its limit and a
         // 64th as its start (8 GB and 512 MB on 32 GB), never gives it back
