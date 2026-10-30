@@ -93,3 +93,12 @@ getter in `androidx.compose.ui.Actuals_desktopKt` with `Dispatchers.Main`, which
 is bound to the Wayland event loop. The host jar **must be first** on the
 classpath. Tests check the original ABI and actual delayed-callback dispatch.
 Review/remove this small adapter when upstream exposes a host dispatcher here.
+
+### Native application lifetime
+
+KDT 0.0.90's `Application.close()` drops the Wayland event loop before its EGL
+display; Ubuntu's Mesa 25 crashes in `libwayland-client` during that teardown.
+The host therefore retains its single native `Application` until process exit.
+It still stops the event loop, closes windows, flushes settings, and disposes
+the player and Compose resources. The OS reclaims the process-level display
+and runtime. Review this workaround when updating KDT.

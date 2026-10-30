@@ -75,10 +75,15 @@ private fun runPlayer(args: Array<String>) {
     val startup = Startup(settings, places, DesktopOs.Linux)
     KotlinDesktopToolkit.init()
     println("wayland: java=${Runtime.version()} pid=${ProcessHandle.current().pid()} awt=headless display=${System.getenv("DISPLAY") ?: "unset"} socket=${System.getenv("WAYLAND_DISPLAY")}")
-    Application().use { native ->
-        WaylandDispatcher.application = native
-        NativePlayer(native, startup, places, settings, instance, args.toList()).run()
-    }
+    // KDT 0.0.90 drops its event-loop/Wayland connection before EGLData during
+    // Application.close(). Mesa 25 then crashes in libwayland-client during
+    // eglTerminate (caught by the Ubuntu packaged smoke test). This executable
+    // creates exactly one Application: retain it until exitProcess instead.
+    // run() still stops the loop, closes native windows, flushes settings and
+    // disposes the audio/player/Compose resources before process teardown.
+    val native = Application()
+    WaylandDispatcher.application = native
+    NativePlayer(native, startup, places, settings, instance, args.toList()).run()
 }
 
 private class NativePlayer(

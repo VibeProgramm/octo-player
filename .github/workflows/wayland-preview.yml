@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: wayland-preview-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   linux:
     runs-on: ubuntu-24.04
@@ -77,4 +81,5 @@ jobs:
             desktop/build/reports/tests/
             desktop-wayland/build/ci-check/*.log
             desktop-wayland/build/ci-check/*.png
+            hs_err_pid*.log
           if-no-files-found: ignore
