@@ -4,6 +4,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.pointer.PointerKeyboardModifiers
 import org.jetbrains.desktop.linux.KeyCode
 import org.jetbrains.desktop.linux.KeyModifiers
+import org.jetbrains.desktop.linux.KeySym
 
 internal fun Set<KeyModifiers>.composeModifiers() = PointerKeyboardModifiers(
     isCtrlPressed = KeyModifiers.Control in this,
@@ -12,10 +13,39 @@ internal fun Set<KeyModifiers>.composeModifiers() = PointerKeyboardModifiers(
     isMetaPressed = KeyModifiers.Logo in this,
 )
 
-// KDT reports XKB physical codes (evdev + 8); text itself comes from XKB/IME,
-// not this map, so non-US layouts and supplementary Unicode stay intact.
-internal fun composeKey(code: UInt): Key = keys[code] ?: Key.Unknown
-private val keys = mapOf(
+// Use the layout's logical symbol for shortcuts (AZERTY/QWERTZ included).
+// Non-Latin symbols retain the familiar physical Latin shortcut positions.
+// Text is still delivered separately from XKB/IME, never from this map.
+internal fun composeKey(code: UInt, symbol: UInt): Key {
+    if (symbol in KeySym.a..KeySym.z) return letters[(symbol - KeySym.a).toInt()]
+    if (symbol in KeySym.A..KeySym.Z) return letters[(symbol - KeySym.A).toInt()]
+    symbols[symbol]?.let { return it }
+    // Do not turn an unmapped ASCII symbol (e.g. AZERTY punctuation) into a
+    // letter shortcut just because it occupies a US letter's physical key.
+    return if (symbol == 0u || (symbol > 0x7fu && symbol !in 0xfe00u..0xffffu)) physicalKeys[code] ?: Key.Unknown else Key.Unknown
+}
+private val letters = listOf(Key.A, Key.B, Key.C, Key.D, Key.E, Key.F, Key.G, Key.H, Key.I, Key.J, Key.K, Key.L, Key.M,
+    Key.N, Key.O, Key.P, Key.Q, Key.R, Key.S, Key.T, Key.U, Key.V, Key.W, Key.X, Key.Y, Key.Z)
+private val symbols = mapOf(
+    KeySym.Escape to Key.Escape, KeySym.BackSpace to Key.Backspace, KeySym.Delete to Key.Delete,
+    KeySym.Tab to Key.Tab, 0xfe20u to Key.Tab, // ISO_Left_Tab (Shift+Tab)
+    KeySym.Return to Key.Enter, KeySym.KP_Enter to Key.NumPadEnter,
+    KeySym.space to Key.Spacebar, KeySym.Home to Key.MoveHome, KeySym.End to Key.MoveEnd,
+    KeySym.Left to Key.DirectionLeft, KeySym.Right to Key.DirectionRight,
+    KeySym.Up to Key.DirectionUp, KeySym.Down to Key.DirectionDown,
+    KeySym.Page_Up to Key.PageUp, KeySym.Page_Down to Key.PageDown, KeySym.Insert to Key.Insert,
+    KeySym.KP_Home to Key.MoveHome, KeySym.KP_End to Key.MoveEnd,
+    KeySym.KP_Left to Key.DirectionLeft, KeySym.KP_Right to Key.DirectionRight,
+    KeySym.KP_Up to Key.DirectionUp, KeySym.KP_Down to Key.DirectionDown,
+    KeySym.KP_Page_Up to Key.PageUp, KeySym.KP_Page_Down to Key.PageDown,
+    KeySym.KP_Insert to Key.Insert, KeySym.KP_Delete to Key.Delete,
+    KeySym.comma to Key.Comma, KeySym.bracketleft to Key.LeftBracket, KeySym.bracketright to Key.RightBracket,
+    KeySym.Menu to Key.Menu,
+    KeySym.F1 to Key.F1, KeySym.F2 to Key.F2, KeySym.F3 to Key.F3, KeySym.F4 to Key.F4,
+    KeySym.F5 to Key.F5, KeySym.F6 to Key.F6, KeySym.F7 to Key.F7, KeySym.F8 to Key.F8,
+    KeySym.F9 to Key.F9, KeySym.F10 to Key.F10, KeySym.F11 to Key.F11, KeySym.F12 to Key.F12,
+)
+private val physicalKeys = mapOf(
     KeyCode.Escape to Key.Escape, KeyCode.BackSpace to Key.Backspace, KeyCode.Delete to Key.Delete,
     KeyCode.Tab to Key.Tab, KeyCode.Return to Key.Enter, KeyCode.KP_Enter to Key.NumPadEnter,
     KeyCode.space to Key.Spacebar, KeyCode.Home to Key.MoveHome, KeyCode.End to Key.MoveEnd,

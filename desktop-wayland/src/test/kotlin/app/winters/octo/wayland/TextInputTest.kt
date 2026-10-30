@@ -1,14 +1,103 @@
+// KDT's event constructors are Kotlin-internal; these are incoming wire fixtures.
+@file:Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
+
 package app.winters.octo.wayland
 
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.EditProcessor
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.ImeOptions
+import org.jetbrains.desktop.linux.Event
+import org.jetbrains.desktop.linux.TextInputPreeditStringData
+import org.jetbrains.desktop.linux.TextInputCommitStringData
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TextInputTest {
+    @Test fun emptyDoneDoesNotUndoPendingKeyboardSelectionOrClipboardValue() {
+        val old = TextFieldValue("target", TextRange(6))
+        for (changed in listOf(old.copy(selection = TextRange(0, 6)), TextFieldValue("pasted", TextRange(6)))) {
+            val editor = EditProcessor().apply { reset(old, null) }
+            var value = old
+            val input = WaylandTextInput({}, {}, {}, { 1f })
+            input.startInput(old, ImeOptions.Default, { commands -> value = editor.apply(commands) }, {})
+            input.available = true
+            input.focused = true
+            // Compose's key/selection manager calls onValueChange directly;
+            // EditProcessor.reset and platform updateState follow on recomposition.
+            value = changed
+            input.receive(Event.TextInput(null, null, null))
+            assertEquals(changed, value)
+            editor.reset(value, null)
+            input.updateState(old, value)
+        }
+    }
+
+    @Test fun emptyDoneStillRemovesAnOutstandingPreedit() {
+        val editor = EditProcessor().apply { reset(TextFieldValue("ab", TextRange(1)), null) }
+        val input = WaylandTextInput({}, {}, {}, { 1f })
+        input.startInput(editor.toTextFieldValue(), ImeOptions.Default, { commands ->
+            input.updateState(editor.toTextFieldValue(), editor.apply(commands))
+        }, {})
+        input.available = true
+        input.focused = true
+        input.receive(Event.TextInput(TextInputPreeditStringData("に", 3, 3), null, null))
+        input.receive(Event.TextInput(null, null, null))
+        assertEquals("ab", editor.toTextFieldValue().text)
+        assertNull(editor.toTextFieldValue().composition)
+    }
+
+    @Test fun windowAndProtocolLeaveCancelPreeditOnceWithoutDeletingCommittedText() {
+        for (availabilityFirst in listOf(false, true)) {
+            val editor = EditProcessor().apply { reset(TextFieldValue("ab", TextRange(1)), null) }
+            var disables = 0
+            var edits = 0
+            val input = WaylandTextInput({}, {}, { disables++ }, { 1f })
+            input.startInput(editor.toTextFieldValue(), ImeOptions.Default, { commands ->
+                edits++
+                input.updateState(editor.toTextFieldValue(), editor.apply(commands))
+            }, {})
+            input.available = true
+            input.focused = true
+            input.receive(Event.TextInput(TextInputPreeditStringData("に", 3, 3), null, null))
+            assertEquals("aにb", editor.toTextFieldValue().text)
+            if (availabilityFirst) input.available = false else input.focused = false
+            input.available = false
+            input.focused = false
+            assertEquals("ab", editor.toTextFieldValue().text)
+            assertNull(editor.toTextFieldValue().composition)
+            assertEquals(TextRange(1), editor.toTextFieldValue().selection)
+            assertEquals(2, edits)
+            assertEquals(1, disables)
+            input.available = true
+            input.focused = true
+            input.type("x")
+            assertEquals("axb", editor.toTextFieldValue().text)
+        }
+    }
+
+    @Test fun commitImmediatelyBeforeLeaveSurvivesEvenBeforeValuePublication() {
+        val editor = EditProcessor().apply { reset(TextFieldValue("ab", TextRange(1)), null) }
+        val input = WaylandTextInput({}, {}, {}, { 1f })
+        var publish = true
+        input.startInput(editor.toTextFieldValue(), ImeOptions.Default, { commands ->
+            val old = editor.toTextFieldValue()
+            val changed = editor.apply(commands)
+            if (publish) input.updateState(old, changed)
+        }, {})
+        input.available = true
+        input.focused = true
+        input.receive(Event.TextInput(TextInputPreeditStringData("に", 3, 3), null, null))
+        publish = false
+        input.receive(Event.TextInput(null, TextInputCommitStringData("日本"), null))
+        input.focused = false
+        input.available = false
+        assertEquals("a日本b", editor.toTextFieldValue().text)
+        assertNull(editor.toTextFieldValue().composition)
+    }
+
     @Test fun commitsAndReplacesPreeditInOneBatchWithUtf8Cursor() {
         val editor = EditProcessor().apply { reset(TextFieldValue("ab", TextRange(1)), null) }
         fun input(preedit: Preedit?, commit: String? = null): TextFieldValue =

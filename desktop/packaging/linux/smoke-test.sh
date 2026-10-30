@@ -56,6 +56,14 @@ check() {
     test -f "$profile/config/settings.json"
 }
 
+# Extract without repairing permissions: the ZIP must run as downloaded.
+mkdir "$work/zip-image"
+unzip -q "$packages/zip/Octo-$version-linux-x86-64.zip" -d "$work/zip-image"
+test -x "$work/zip-image/Octo/bin/Octo"
+test -x "$work/zip-image/Octo/lib/runtime/lib/jspawnhelper"
+test ! -x "$work/zip-image/Octo/lib/runtime/lib/modules"
+check zip "$work/zip-image/Octo/bin/Octo"
+
 appimage="$packages/appimage/Octo-$version-linux-x64.AppImage"
 chmod +x "$appimage"
 check appimage "$appimage" --appimage-extract-and-run
@@ -80,4 +88,4 @@ grep -q "check: version $version$" "$work/flatpak.log"
 grep -q 'check: java 27$' "$work/flatpak.log"
 grep -q 'check: https works' "$work/flatpak.log"
 test -f "$work/flatpak/config/settings.json"
-echo 'AppImage, pacman and Flatpak: GUI, native audio, version and settings checks passed.'
+echo 'Portable ZIP, AppImage, pacman and Flatpak: GUI, native audio, version and settings checks passed.'

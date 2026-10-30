@@ -19,31 +19,41 @@ import java.awt.datatransfer.StringSelection
 
 internal val TextMimes = listOf("text/plain;charset=utf-8", "text/plain", "UTF8_STRING")
 
-internal class WaylandClipboard(private val application: Application) : TextClipboard, Clipboard {
+internal class WaylandClipboard(
+    private val availableMimes: () -> List<String>,
+    private val paste: (Int, List<String>) -> Unit,
+    private val publish: (List<String>) -> Unit,
+) : TextClipboard, Clipboard {
+    constructor(application: Application) : this(application::clipboardGetAvailableMimeTypes, application::clipboardPaste, application::clipboardPut)
+
     private var cached: String? = null
     private var owned: String? = null
     private var serial = 0
     private var receivedSerial = 0
-    private val requests = mutableMapOf<Int, CompletableDeferred<String?>>()
+    private var generation = 0L
+    private data class Read(val generation: Long, val reply: CompletableDeferred<String?>)
+    private val requests = mutableMapOf<Int, Read>()
 
     override fun text(): String? = cached
     override fun put(text: String) {
+        generation++
         owned = text
         cached = text
-        application.clipboardPut(TextMimes)
+        publish(TextMimes)
     }
 
     override suspend fun read(): String? {
         owned?.let { return it }
-        if (application.clipboardGetAvailableMimeTypes().none { it in TextMimes }) {
+        if (availableMimes().none { it in TextMimes }) {
+            generation++
             cached = null
             return null
         }
         val id = ++serial
         val reply = CompletableDeferred<String?>()
-        requests[id] = reply
+        requests[id] = Read(generation, reply)
         try {
-            application.clipboardPaste(id, TextMimes)
+            paste(id, TextMimes)
             return withTimeoutOrNull(3_000) { reply.await() }
         } finally {
             requests.remove(id)
@@ -51,16 +61,21 @@ internal class WaylandClipboard(private val application: Application) : TextClip
     }
 
     fun receive(event: Event.DataTransfer) {
-        val reply = requests.remove(event.serial) ?: return
+        val request = requests.remove(event.serial) ?: return
         val text = event.content?.data?.decodeToString()
-        if (event.serial >= receivedSerial) {
+        if (request.generation == generation && event.serial >= receivedSerial) {
             receivedSerial = event.serial
             cached = text
         }
-        reply.complete(text)
+        // A paste already requested from the old owner keeps its snapshot;
+        // it must not publish that snapshot as the new owner's cached value.
+        request.reply.complete(text)
     }
 
-    fun cancelled() { owned = null; cached = null }
+    // KDT reports offers for our own selection too. Only source cancellation
+    // means ownership was lost; an offer alone must not discard data we serve.
+    fun offered() { generation++; cached = owned }
+    fun cancelled() { generation++; owned = null; cached = null }
     fun data(source: DataSource, mime: String): ByteArray? =
         if (source == DataSource.Clipboard && mime in TextMimes) owned?.toByteArray() else null
 

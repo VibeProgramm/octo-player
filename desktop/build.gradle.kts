@@ -500,7 +500,11 @@ val packagePortableZip by tasks.registering(Zip::class) {
     group = "compose desktop"
     description = "Packs the app into a zip that runs without installing."
     dependsOn("createDistributable")
-    from(layout.buildDirectory.dir("compose/binaries/main/app"))
+    from(layout.buildDirectory.dir("compose/binaries/main/app")) {
+        // Reproducible archives default to 0644, including the Linux launcher
+        // and Java's subprocess helper. Keep executable source files runnable.
+        eachFile { if (hostName.startsWith("linux") && file.canExecute()) permissions { unix("rwxr-xr-x") } }
+    }
     from(file("portable/octo-portable")) { into(if (hostName.startsWith("windows")) "Octo/app" else "Octo/lib/app") }
     archiveFileName = "Octo-$desktopVersion-$jnaFolder.zip"
     destinationDirectory = layout.buildDirectory.dir("compose/binaries/main/zip")

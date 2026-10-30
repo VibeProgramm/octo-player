@@ -66,7 +66,9 @@ class Fixture:
                         'getScanStatus': dict(scanStatus=dict(scanning=False, count=3)),
                         'getPlayQueue': dict(playQueue=dict(entry=[])),
                         'getGenres': dict(genres=dict(genre=[])),
-                        'search3': dict(searchResult3=dict(song=songs, album=albums, artist=[])),
+                        'search3': dict(searchResult3=dict(
+                            song=[s for s in songs if query.get('query', '').casefold() in s['title'].casefold()],
+                            album=[a for a in albums if query.get('query', '').casefold() in a['name'].casefold()], artist=[])),
                         'getRandomSongs': dict(randomSongs=dict(song=fixture.songs)),
                         'getInternetRadioStations': dict(internetRadioStations=dict(internetRadioStation=[])),
                         'getLyricsBySongId': dict(lyricsList=dict(structuredLyrics=[])),

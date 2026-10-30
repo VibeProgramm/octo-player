@@ -100,6 +100,7 @@ private class NativePlayer(
     private val clipboard = WaylandClipboard(native)
     private val fileDrops = NativeFileDrops()
     private val windows = linkedMapOf<Long, WaylandWindow>()
+    private val restoringMaximized = mutableSetOf<Long>()
     private val files = WaylandFiles({ app?.notice = it }) { windows[focused]?.window ?: windows.values.firstOrNull()?.window }
     private var nextId = 0L
     private var focused: Long? = null
@@ -133,15 +134,16 @@ private class NativePlayer(
             else (saved?.width?.toInt() ?: 1100) to (saved?.height?.toInt() ?: 760)
         val id = ++nextId
         val window = WaylandWindow(native, id, mini, dimensions.first.coerceAtLeast(if (mini) 320 else 720),
-            dimensions.second.coerceAtLeast(if (mini) 120 else 480), scope, clipboard,
+            dimensions.second.coerceAtLeast(if (mini) 120 else 480), clipboard,
             previewKey = { preview(it, mini) }, content = { Content(it) })
         windows[id] = window
-        if (!mini && saved?.maximized == true) window.window.maximize()
+        if (!mini && saved?.maximized == true) restoringMaximized.add(id)
         return window
     }
 
     private fun closeWindow(window: WaylandWindow) {
         windows.remove(window.id)
+        restoringMaximized.remove(window.id)
         window.close()
     }
 
@@ -299,18 +301,29 @@ private class NativePlayer(
                     try {
                         when (event) {
                             Event.ApplicationStarted -> { openWindow(false); scope.launch { openApp() } }
-                            is Event.WindowDraw -> return@ApplicationConfig if (windows[event.windowId]?.draw(event) == true) EventHandlerResult.Stop else EventHandlerResult.Continue
+                            is Event.WindowDraw -> {
+                                val window = windows[event.windowId]
+                                val drawn = window?.draw(event) == true
+                                if (drawn && window.frames == 1 && event.windowId in restoringMaximized) {
+                                    // First map the saved normal bounds. Maximizing before the
+                                    // first buffer leaves KWin with no restore geometry, and KDT
+                                    // uses the maximized size for a later 0x0 normal configure.
+                                    scope.launch { windows[event.windowId]?.window?.maximize() }
+                                }
+                                return@ApplicationConfig if (drawn) EventHandlerResult.Stop else EventHandlerResult.Continue
+                            }
                             is Event.WindowConfigure -> windows[event.windowId]?.let { w ->
                                 w.configure(event)
                                 val (width, height) = w.logicalSize
-                                if (!event.fullscreen && !event.maximized && width > 0 && height > 0) settings.update { old ->
-                                    if (w.mini) old.copy(system = old.system.copy(miniPlayer = WindowSpot(0f, 0f, width.toFloat(), height.toFloat())))
-                                    else old.copy(window = WindowSpot(0f, 0f, width.toFloat(), height.toFloat()))
+                                if (event.maximized) restoringMaximized.remove(event.windowId)
+                                if (!event.fullscreen && event.windowId !in restoringMaximized && width > 0 && height > 0) settings.update { old ->
+                                    if (w.mini) old.copy(system = old.system.copy(miniPlayer = windowSpot(old.system.miniPlayer, width, height, event.maximized, true)))
+                                    else old.copy(window = windowSpot(old.window, width, height, event.maximized, false))
                                 }
                             }
                             is Event.WindowScaleChanged -> { windows[event.windowId]?.scale = event.newScale.rawScale.toFloat(); println("wayland: scale=$event") }
                             is Event.WindowCloseRequest -> if (windows[event.windowId]?.mini == true) system?.setMiniPlayer(false) else quit()
-                            is Event.WindowClosed -> windows.remove(event.windowId)?.nativeClosed()
+                            is Event.WindowClosed -> { restoringMaximized.remove(event.windowId); windows.remove(event.windowId)?.nativeClosed() }
                             is Event.WindowKeyboardEnter -> {
                                 focused = event.windowId
                                 windows[focused]?.focus(true)
@@ -325,18 +338,27 @@ private class NativePlayer(
                             is Event.MouseDown -> windows[event.windowId]?.pointer(PointerEventType.Press, event.locationInWindow, event.button, event.serial)
                             is Event.MouseUp -> windows[event.windowId]?.pointer(PointerEventType.Release, event.locationInWindow, event.button, event.serial)
                             is Event.ScrollWheel -> windows[event.windowId]?.pointer(PointerEventType.Scroll, event.locationInWindow, scroll = Offset(scroll(event.horizontalScroll), scroll(event.verticalScroll)))
-                            is Event.KeyDown -> windows[focused]?.key(event.keyCode.value, true, event.characters, modifiers)
-                            is Event.KeyUp -> windows[focused]?.key(event.keyCode.value, false, null, modifiers)
+                            is Event.KeyDown -> windows[focused]?.key(event.keyCode.value, event.key.value, true, event.characters, modifiers)
+                            is Event.KeyUp -> windows[focused]?.key(event.keyCode.value, event.key.value, false, null, modifiers)
                             is Event.TextInputAvailability -> windows[event.windowId]?.input?.available = event.available
                             is Event.TextInput -> windows[focused]?.input?.receive(event)
                             is Event.DataTransfer -> clipboard.receive(event)
-                            is Event.DataTransferAvailable -> if (event.dataSource == DataSource.Clipboard) scope.launch { clipboard.read() }
-                            is Event.DataTransferCancelled -> if (event.dataSource == DataSource.Clipboard) clipboard.cancelled()
+                            is Event.DataTransferAvailable -> if (event.dataSource == DataSource.Clipboard) {
+                                clipboard.offered()
+                                scope.launch { clipboard.read() }
+                            }
+                            is Event.DataTransferCancelled -> if (event.dataSource == DataSource.Clipboard) {
+                                clipboard.cancelled()
+                                scope.launch { clipboard.read() }
+                            }
                             is Event.FileChooserResponse -> files.receive(event)
                             is Event.ActivationTokenResponse -> activations.remove(event.requestId)?.let { windows[it]?.window?.activate(event.token) }
-                            is Event.DropPerformed -> event.content?.data?.decodeToString()?.lineSequence()?.filter { it.isNotBlank() && !it.startsWith('#') }?.toList()?.let { addresses ->
-                                scope.launch {
-                                    if (!fileDrops.receive(addresses)) system?.open(parseLaunchArgs(addresses))
+                            is Event.DropPerformed -> {
+                                println("wayland: drop id=${event.windowId} mime=${event.content?.mimeType} bytes=${event.content?.data?.size ?: 0}")
+                                event.content?.data?.decodeToString()?.lineSequence()?.filter { it.isNotBlank() && !it.startsWith('#') }?.toList()?.let { addresses ->
+                                    scope.launch {
+                                        if (!fileDrops.receive(addresses)) system?.open(parseLaunchArgs(addresses))
+                                    }
                                 }
                             }
                             else -> Unit

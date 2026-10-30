@@ -1,10 +1,12 @@
-@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@file:OptIn(androidx.compose.ui.InternalComposeUiApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @file:Suppress("DEPRECATION")
 
 package app.winters.octo.wayland
 
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.FrameRecomposer
 import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.*
@@ -22,9 +24,14 @@ import kotlin.math.roundToInt
 // Compose's selection/edit processor continues to handle arrows, word movement,
 // undo, selection and shortcuts. Only XKB text and text-input-v3 edits enter here.
 internal class WaylandTextInput(
-    private val application: Application,
+    private val enable: (TextInputContext) -> Unit,
+    private val update: (TextInputContext) -> Unit,
+    private val disable: () -> Unit,
     private val scale: () -> Float,
+    private val flushPendingEdits: () -> Unit = {},
 ) : PlatformTextInputService {
+    constructor(application: Application, scale: () -> Float, flushPendingEdits: () -> Unit) : this(application::textInputEnable, application::textInputUpdate, application::textInputDisable, scale, flushPendingEdits)
+
     private var request: PlatformTextInputMethodRequest? = null
     private var legacyValue = TextFieldValue()
     private var legacyOptions = ImeOptions.Default
@@ -34,10 +41,11 @@ internal class WaylandTextInput(
     private var enabled = false
     private var lastContext: TextInputContext? = null
     private var fromIme = false
+    private var preedit = false
     var available = false
-        set(value) { field = value; sync() }
+        set(value) { field = value; if (!value) cancelPreedit(); sync() }
     var focused = false
-        set(value) { field = value; sync() }
+        set(value) { field = value; if (!value) cancelPreedit(); sync() }
 
     val active: Boolean get() = request != null || legacyEdit != null
     private val value: TextFieldValue get() = request?.value?.invoke() ?: legacyValue
@@ -46,12 +54,22 @@ internal class WaylandTextInput(
     suspend fun start(request: PlatformTextInputMethodRequest): Nothing = coroutineScope {
         this@WaylandTextInput.request = request
         try {
-            launch { snapshotFlow { request.value() to request.focusedRectInRoot() }.collect { sync() } }
+            launch {
+                snapshotFlow { request.value() to request.focusedRectInRoot() }.collect { (value, _) ->
+                    if (this@WaylandTextInput.request === request) {
+                        // Keyboard/clipboard edits can end composition without
+                        // another protocol event or legacy updateState call.
+                        if (value.composition == null) preedit = false
+                        sync()
+                    }
+                }
+            }
             sync()
             awaitCancellation()
         } finally {
             if (this@WaylandTextInput.request === request) {
                 this@WaylandTextInput.request = null
+                preedit = false
                 sync()
             }
         }
@@ -64,10 +82,14 @@ internal class WaylandTextInput(
         legacyAction = onImeActionPerformed
         sync()
     }
-    override fun stopInput() { legacyEdit = null; legacyAction = null; sync() }
+    override fun stopInput() { legacyEdit = null; legacyAction = null; preedit = false; sync() }
     override fun showSoftwareKeyboard() = sync()
     override fun hideSoftwareKeyboard() = Unit
-    override fun updateState(oldValue: TextFieldValue?, newValue: TextFieldValue) { legacyValue = newValue; sync() }
+    override fun updateState(oldValue: TextFieldValue?, newValue: TextFieldValue) {
+        legacyValue = newValue
+        if (newValue.composition == null) preedit = false
+        sync()
+    }
     override fun notifyFocusedRect(rect: Rect) { legacyRect = rect; sync() }
 
     private fun edit(commands: List<EditCommand>) {
@@ -75,12 +97,31 @@ internal class WaylandTextInput(
     }
 
     fun type(text: String) {
-        if (active && text.isNotEmpty()) edit(listOf(CommitTextCommand(text, 1)))
+        if (active && text.isNotEmpty()) {
+            preedit = false
+            edit(listOf(CommitTextCommand(text, 1)))
+        }
+    }
+
+    private fun cancelPreedit() {
+        // Reset before invoking the field: updateState can re-enter sync, and
+        // both keyboard leave and text-input leave can arrive for one loss.
+        val cancel = preedit
+        preedit = false
+        fromIme = false
+        if (!cancel || !active) return
+        request?.let { current ->
+            flushPendingEdits()
+            // Read synchronously: the snapshot collector may not have run yet.
+            // With no composition, empty composing text deletes the selection.
+            if (request !== current || current.value().composition == null) return
+        }
+        edit(listOf(SetComposingTextCommand("", 1), FinishComposingTextCommand()))
     }
 
     fun sync() {
         if (!available || !focused || !active) {
-            if (enabled) application.textInputDisable()
+            if (enabled) disable()
             enabled = false
             lastContext = null
             return
@@ -113,16 +154,29 @@ internal class WaylandTextInput(
             fromIme,
         )
         if (!enabled) {
-            application.textInputEnable(context)
+            enable(context)
             enabled = true
-        } else if (context != lastContext) application.textInputUpdate(context)
+        } else if (context != lastContext) update(context)
         lastContext = context
         fromIme = false
     }
 
     fun receive(event: Event.TextInput) {
-        if (!focused || !active) return
+        if (!available || !focused || !active) return
+        if (preedit) request?.let { current ->
+            // A key/paste can have reached onValueChange while both the request
+            // and EditProcessor still await the next host frame. Publish it
+            // before checking composition or sending any further IME edits.
+            flushPendingEdits()
+            if (request !== current || !available || !focused) return
+            if (current.value().composition == null) preedit = false
+        }
+        // KWin also sends empty done acknowledgments for context updates.
+        // An unnecessary edit would republish EditProcessor's old value over
+        // a keyboard selection/paste awaiting Compose recomposition.
+        if (!preedit && event.preeditStringData == null && event.commitStringData == null && event.deleteSurroundingTextData == null) return
         fromIme = true
+        preedit = !event.preeditStringData?.text.isNullOrEmpty()
         edit(imeCommands(value, event.preeditStringData?.let {
             Preedit(it.text.orEmpty(), it.cursorBeginBytePos, it.cursorEndBytePos)
         }, event.commitStringData?.text, event.deleteSurroundingTextData?.let {
@@ -137,6 +191,16 @@ internal class WaylandTextInput(
         request = null
         legacyEdit = null
     }
+}
+
+// No drawing/GPU work: publish pending field values and reset their processors.
+// performFrame sends the clock; its queued recomposition must also be drained
+// before a native leave/done callback can safely inspect the modern request.
+@Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
+internal fun FrameRecomposer.flushPendingTextInput() {
+    Snapshot.sendApplyNotifications()
+    performFrame(System.nanoTime())
+    performFrameDispatch()
 }
 
 internal data class Preedit(val text: String, val cursorBegin: Int, val cursorEnd: Int)

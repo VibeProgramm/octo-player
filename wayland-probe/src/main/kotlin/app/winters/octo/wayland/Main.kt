@@ -7,11 +7,17 @@ import kotlinx.coroutines.CoroutineDispatcher
 import org.jetbrains.desktop.linux.*
 import java.nio.file.Path
 import kotlin.coroutines.CoroutineContext
+import kotlin.system.exitProcess
 
 private const val TEXT = "text/plain;charset=utf-8"
 private val mimeTypes = listOf(TEXT, "text/plain", "text/uri-list")
 
 fun main(args: Array<String>) {
+    val status = try { runProbe(args); 0 } catch (error: Throwable) { error.printStackTrace(); 1 }
+    exitProcess(status)
+}
+
+private fun runProbe(args: Array<String>) {
     check(Runtime.version().feature() == 27) { "Run the probe on Java 27" }
     check(System.getenv("DISPLAY").isNullOrEmpty()) { "Unset DISPLAY to rule out XWayland" }
     check(!System.getenv("WAYLAND_DISPLAY").isNullOrEmpty()) { "A Wayland compositor is required" }
@@ -23,7 +29,11 @@ fun main(args: Array<String>) {
     val snapshot = args.firstOrNull { it.startsWith("--snapshot=") }?.substringAfter('=')?.let(Path::of)
     KotlinDesktopToolkit.init()
     println("probe: java=${Runtime.version()} display=unset wayland=${System.getenv("WAYLAND_DISPLAY")}")
-    Application().use { app ->
+    // Like the player, this one-shot process retains KDT 0.0.90's Application:
+    // close() drops Wayland before EGL and can crash Mesa 25 in eglTerminate.
+    // The loop and finally below still dispose native windows and Compose/Skia.
+    val app = Application()
+    run {
         val dispatcher = object : CoroutineDispatcher() {
             override fun dispatch(context: CoroutineContext, block: Runnable) = app.runOnEventLoopAsync { block.run() }
         }

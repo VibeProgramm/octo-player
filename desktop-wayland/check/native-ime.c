@@ -14,7 +14,13 @@
 
 static struct zwp_input_method_context_v1 *context;
 static unsigned serial;
-static void surrounding(void *d, struct zwp_input_method_context_v1 *c, const char *text, unsigned cursor, unsigned anchor) {}
+static void surrounding(void *d, struct zwp_input_method_context_v1 *c, const char *text, unsigned cursor, unsigned anchor) {
+    /* Hex keeps Unicode/newlines unambiguous and gives the harness real field
+     * readiness instead of sleeping after an asynchronous clipboard request. */
+    fputs("octo-ime: surrounding=", stdout);
+    for (const unsigned char *p = (const unsigned char *)text; *p; p++) printf("%02x", *p);
+    printf(" cursor=%u anchor=%u\n", cursor, anchor); fflush(stdout);
+}
 static void reset(void *d, struct zwp_input_method_context_v1 *c) {}
 static void content(void *d, struct zwp_input_method_context_v1 *c, unsigned hint, unsigned purpose) {}
 static void action(void *d, struct zwp_input_method_context_v1 *c, unsigned button, unsigned index) {}
@@ -51,6 +57,8 @@ static void command(char *line) {
     }
 }
 int main(void) {
+    const char *log = getenv("OCTO_IME_LOG");
+    if (log && !freopen(log, "w", stdout)) return 5;
     const char *path = getenv("OCTO_IME_CONTROL");
     if (!path) return 2;
     struct wl_display *display = wl_display_connect(NULL);

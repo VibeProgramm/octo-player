@@ -14,8 +14,6 @@ import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.scene.CanvasLayersComposeScene
 import androidx.compose.ui.unit.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import org.jetbrains.desktop.linux.*
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.EncodedImageFormat
@@ -37,7 +35,6 @@ internal class WaylandWindow(
     val mini: Boolean,
     width: Int,
     height: Int,
-    private val scope: CoroutineScope,
     private val clipboard: WaylandClipboard,
     private val previewKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean,
     content: @Composable (WaylandWindow) -> Unit,
@@ -66,9 +63,9 @@ internal class WaylandWindow(
         private set
     var scale = 1f
         set(value) { field = value; scene.density = Density(value); needsDraw = true; input.sync() }
-    val input = WaylandTextInput(application) { scale }
     private var needsDraw = true
     private val recomposer = FrameRecomposer(WaylandDispatcher) { needsDraw = true }
+    val input = WaylandTextInput(application, { scale }, recomposer::flushPendingTextInput)
     private val platform = object : PlatformContext.Empty() {
         override val windowInfo get() = info
         override val textInputService get() = input
@@ -113,14 +110,23 @@ internal class WaylandWindow(
         clientDecorated = event.decorationMode is WindowDecorationMode.Client
         logicalSize = event.size.width.rawLogical to event.size.height.rawLogical
         needsDraw = true
-        println("wayland: configure id=$id size=${logicalSize.first}x${logicalSize.second} fullscreen=$fullscreen")
+        println("wayland: configure id=$id size=${logicalSize.first}x${logicalSize.second} fullscreen=$fullscreen maximized=$maximized")
     }
 
     fun focus(value: Boolean) {
         println("wayland: focus id=$id focused=$value")
-        info.isWindowFocused = value
+        // Publish/cancel preedit before Compose reacts to window focus loss
+        // and can dispose the field's input request.
         input.focused = value
-        if (!value) pressed.clear()
+        info.isWindowFocused = value
+        if (!value) cancelPointer()
+    }
+
+    private fun cancelPointer() {
+        if (pressed.isNotEmpty()) println("wayland: pointer-cancel id=$id buttons=${pressed.size}")
+        pressed.clear()
+        mouseSerial = null
+        scene.cancelPointerInput()
     }
 
     fun beginMove() { mouseSerial?.let(window::startMove) }
@@ -128,8 +134,12 @@ internal class WaylandWindow(
     fun toggleMaximized() { if (maximized) window.unmaximize() else window.maximize() }
 
     fun pointer(type: PointerEventType, point: LogicalPoint, button: MouseButton? = null, serial: EventSerial? = null, scroll: Offset = Offset.Zero) {
-        if (type == PointerEventType.Enter) pointerInside = true
-        if (type == PointerEventType.Exit) pointerInside = false
+        if (type == PointerEventType.Enter || type == PointerEventType.Exit) {
+            // The compositor consumes the release during an interactive move.
+            // KDT resets its grab on leave/enter; cancel Compose's gesture too.
+            cancelPointer()
+            pointerInside = type == PointerEventType.Enter
+        }
         if (serial != null) mouseSerial = serial
         if (button != null) {
             if (type == PointerEventType.Press) pressed.add(button)
@@ -157,8 +167,17 @@ internal class WaylandWindow(
         )
     }
 
-    fun key(code: UInt, down: Boolean, text: String?, modifiers: Set<KeyModifiers>) {
-        val key = composeKey(code)
+    fun key(code: UInt, symbol: UInt, down: Boolean, text: String?, modifiers: Set<KeyModifiers>) {
+        if (closed || !info.isWindowFocused) return
+        if (down) {
+            // Selection commands read the last composed value, unlike edits
+            // applied directly to EditProcessor. Publish the preceding key or
+            // clipboard result before this key can consume that value.
+            recomposer.flushPendingTextInput()
+            // Publication also runs queued effects, which can retire this window.
+            if (closed || !info.isWindowFocused) return
+        }
+        val key = composeKey(code, symbol)
         val ctrl = KeyModifiers.Control in modifiers
         val alt = KeyModifiers.Alt in modifiers
         val meta = KeyModifiers.Logo in modifiers
@@ -167,18 +186,11 @@ internal class WaylandWindow(
             isCtrlPressed = ctrl, isAltPressed = alt, isMetaPressed = meta, isShiftPressed = shift)
         if (down && key == Key.F11) { toggleFullscreen(); return }
         if (down && key == Key.F12) System.getProperty("octo.wayland.capture")?.let { capture(Path.of(it)); return }
-        fun send() {
-            if (closed || !info.isWindowFocused) return
-            // Window shortcuts also work after a page removes the focused
-            // control (for example, when signing in replaces the form).
-            val consumed = previewKey(event) || scene.sendKeyEvent(event)
-            if (down && !consumed && !ctrl && !alt && !meta) input.type(text.orEmpty().filterNot(Char::isISOControl))
-        }
-        // BTF1's synchronous clipboard reads the same freshly fetched data as
-        // BTF2. The native loop stays free to receive the data-transfer event.
-        if (down && ((ctrl && key == Key.V) || (shift && key == Key.Insert))) {
-            scope.launch { clipboard.read(); send() }
-        } else send()
+        // Compose's selection manager reads LocalClipboard asynchronously on
+        // the original field. Delaying the key itself would retarget a paste
+        // after Tab/click changes focus while the clipboard owner is replying.
+        val consumed = previewKey(event) || scene.sendKeyEvent(event)
+        if (down && !consumed && !ctrl && !alt && !meta) input.type(text.orEmpty().filterNot(Char::isISOControl))
     }
 
     fun capture(path: Path) { capture = path; needsDraw = true }

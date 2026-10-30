@@ -66,6 +66,14 @@ clock, HTTPS, no X11 connections, and rejection of software rendering by default
 It uses a local Subsonic fixture and independent Wayland keyboard/clipboard,
 input-method and GTK drag-source clients, plus MPRIS to check the audio clock.
 It never stores the fixture password in the keyring. See `check/run-native.sh`.
+The harness also requires ext-data-control support and its protocol XML for the delayed
+clipboard owner. Set `FAKE_INPUT_XML`, `INPUT_METHOD_XML` and `DATA_CONTROL_XML`
+if the distribution stores those protocol files outside the script's defaults.
+Field readiness comes from the fake IME's surrounding-text feedback; clipboard
+copies include a keyboard-entered marker distinct from the external seed.
+The slow owner holds its response until the focus change is observed. Input uses
+one persistent virtual keyboard/pointer, with commands recorded in the output
+directory. Set `OCTO_CHECK_WIRE=1` to include the player's Wayland protocol trace.
 
 ### Hardware acceptance (2026-10-30)
 
@@ -82,7 +90,7 @@ of one CPU core (not a zero-animation idle measurement).
 
 The full desktop test suite also runs on the Ubuntu CI runner. Local offscreen
 visual tests are slow on this machine and have pre-existing image/locale
-differences; the native adapter's seven regression tests pass locally.
+differences; focused native adapter regression tests also run locally.
 
 ### Compose dispatcher compatibility adapter
 
