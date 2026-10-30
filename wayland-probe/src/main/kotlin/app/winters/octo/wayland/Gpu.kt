@@ -19,7 +19,7 @@ import java.lang.foreign.ValueLayout.JAVA_INT
 
 // Called only inside WindowDraw, while KDT has made this window's EGL
 // context current. No AWT surface, X display, or raster fallback is involved.
-internal class Gpu(app: Application) : AutoCloseable {
+internal class Gpu(app: Application, logPrefix: String = "probe", allowSoftwareForTest: Boolean = false) : AutoCloseable {
     private val proc = checkNotNull(app.getEglProcFunc()) { "KDT did not provide EGL" }
     val renderer: String = glString(0x1f01)
     private val context: DirectContext
@@ -29,10 +29,10 @@ internal class Gpu(app: Application) : AutoCloseable {
 
     init {
         check(renderer.isNotBlank()) { "GL_RENDERER is empty" }
-        check(!Regex("llvmpipe|softpipe|swrast|software|swiftshader", RegexOption.IGNORE_CASE).containsMatchIn(renderer)) {
+        check(allowSoftwareForTest || !Regex("llvmpipe|softpipe|swrast|software|swiftshader", RegexOption.IGNORE_CASE).containsMatchIn(renderer)) {
             "Hardware GPU required; got $renderer"
         }
-        println("probe: gpu=$renderer; gl=${glString(0x1f02)}")
+        println("$logPrefix: gpu=$renderer; gl=${glString(0x1f02)}")
         context = GLAssembledInterface.createFromNativePointers(proc.ctxPtr, proc.fPtr).use {
             DirectContext.makeGLWithInterface(it)
         }

@@ -105,14 +105,19 @@ cd octo-player
 - `./gradlew :app:assembleRelease` signs the APK when `OCTO_ANDROID_KEYSTORE`, `OCTO_ANDROID_KEYSTORE_PASSWORD`, `OCTO_ANDROID_KEY_ALIAS` and `OCTO_ANDROID_KEY_PASSWORD` are set, and leaves it unsigned otherwise.
 - `-Pocto.noSystemShim=true` builds the desktop app without its media-controls helper, which is also written in Rust.
 
-The experimental [Wayland GPU probe](wayland-probe/README.md) runs a native
-Linux window on Java 27 with Octo's real animated background. It is a separate
-integration experiment; the packaged desktop client still uses Compose/AWT.
+The experimental [native Wayland player](desktop-wayland/README.md) runs the
+full Octo client on Linux x86_64 through Wayland, EGL/OpenGL ES and Skia, with
+Java 27 included in its portable bundle. Download the prerelease from
+[this fork's releases](https://github.com/VibeProgramm/octo-player/releases).
+Hardware rendering is required; XWayland is not needed. The ordinary desktop
+installers use Compose/AWT. The smaller [GPU probe](wayland-probe/README.md)
+remains available for isolated renderer diagnostics.
 
 | Folder | What's there |
 | --- | --- |
 | `app/` | the Android app |
 | `desktop/` | the desktop app |
+| `desktop-wayland/` | native Linux Wayland host for the full player; portable Java 27 bundle |
 | `wayland-probe/` | experimental Linux x86_64 Wayland/EGL host |
 | `shared/core/` | what both apps share: lyrics, sound, queue rules, song matching, covers, updates |
 | `subsonic/` | the Subsonic and OpenSubsonic client, with Octo's extensions |

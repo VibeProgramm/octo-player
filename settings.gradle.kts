@@ -20,3 +20,4 @@ dependencyResolutionManagement {
 rootProject.name = "OctoPlayer"
 include(":app", ":design", ":subsonic", ":shared:core", ":desktop", ":desktop-design")
 include(":wayland-probe")
+include(":desktop-wayland")
