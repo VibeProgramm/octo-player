@@ -8,6 +8,9 @@ mkdir -p "$out/runtime" "$out/unpacked"
 chmod 700 "$out/runtime"
 tar -xzf "desktop-wayland/build/distributions/Octo-Wayland-$VERSION-linux-x64.tar.gz" -C "$out/unpacked"
 launcher="$out/unpacked/Octo-Wayland/octo-wayland"
+test -x "$launcher"
+test -x "$out/unpacked/Octo-Wayland/runtime/bin/java"
+test -x "$out/unpacked/Octo-Wayland/runtime/lib/jspawnhelper"
 export XDG_RUNTIME_DIR="$out/runtime"
 export WAYLAND_DISPLAY=wayland-octo-ci
 export OCTO_PROFILE_DIR="$out/profile"
@@ -30,7 +33,10 @@ done
 test -S "$out/runtime/$WAYLAND_DISPLAY"
 pactl info
 export JAVA_TOOL_OPTIONS="-Docto.wayland.testSoftware=true -Docto.checkPlay=$out/tone.wav -Docto.wayland.capture=$out/frame.png"
-timeout 90 dbus-run-session -- strace -f -e trace=connect,openat -o "$out/trace.log" "$launcher" >"$out/player.log" 2>&1
+if ! timeout 90 dbus-run-session -- strace -f -e trace=connect,openat -o "$out/trace.log" "$launcher" >"$out/player.log" 2>&1; then
+    cat "$out/player.log"
+    exit 1
+fi
 python3 - "$out" "$VERSION" <<'PY'
 import pathlib, sys
 out = pathlib.Path(sys.argv[1])

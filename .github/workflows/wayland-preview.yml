@@ -75,5 +75,6 @@ jobs:
           path: |
             desktop-wayland/build/reports/tests/
             desktop/build/reports/tests/
-            desktop-wayland/build/ci-check/
+            desktop-wayland/build/ci-check/*.log
+            desktop-wayland/build/ci-check/*.png
           if-no-files-found: ignore

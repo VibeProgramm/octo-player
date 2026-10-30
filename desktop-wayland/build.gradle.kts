@@ -118,7 +118,12 @@ val installPortable = tasks.register<Sync>("installPortable") {
 }
 tasks.register<Tar>("packagePortable") {
     dependsOn(installPortable)
-    from(portableDir) { into("Octo-Wayland") }
+    from(portableDir) {
+        into("Octo-Wayland")
+        // Gradle 9's reproducible archives default every file to 0644, even
+        // when Sync preserved its mode. Java and jspawnhelper need execute bits.
+        eachFile { if (file.canExecute()) permissions { unix("rwxr-xr-x") } }
+    }
     archiveFileName.set(waylandVersion.map { "Octo-Wayland-$it-linux-x64.tar.gz" })
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
     compression = Compression.GZIP
