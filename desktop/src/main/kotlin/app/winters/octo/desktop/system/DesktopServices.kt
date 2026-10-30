@@ -1,5 +1,7 @@
 package app.winters.octo.desktop.system
 
+import app.winters.octo.desktop.settings.DesktopOs
+import app.winters.octo.desktop.settings.currentOs
 import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.Toolkit
@@ -68,7 +70,10 @@ private object AwtFilePicker : FilePicker {
         val dialog = FileDialog(null as Frame?, request.title, if (request.save) FileDialog.SAVE else FileDialog.LOAD)
         try {
             request.folder?.let { dialog.directory = it.path }
-            dialog.file = request.suggested ?: request.extensions.takeIf { it.isNotEmpty() }?.joinToString(";") { "*.$it" }
+            request.suggested?.let { dialog.file = it }
+            if (request.suggested == null && currentOs() == DesktopOs.Windows && request.extensions.isNotEmpty()) {
+                dialog.file = request.extensions.joinToString(";") { "*.$it" }
+            }
             if (!request.save && request.extensions.isNotEmpty()) {
                 dialog.setFilenameFilter { _, name -> name.substringAfterLast('.').lowercase() in request.extensions }
             }

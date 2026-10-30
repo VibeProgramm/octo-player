@@ -69,10 +69,17 @@ def ctrl(code):
 
 
 def copied_text(expected):
+    last = None
     def matches():
+        nonlocal last
         result = subprocess.run(['wl-paste', '--no-newline'], text=True, capture_output=True, timeout=5)
+        last = result.stdout if result.returncode == 0 else result.stderr
         return result.returncode == 0 and result.stdout == expected
-    wait(matches, f'Clipboard did not receive {expected!r}')
+    try:
+        wait(matches, f'Clipboard did not receive {expected!r}')
+    except AssertionError:
+        capture('clipboard-failed')
+        raise AssertionError(f'Expected clipboard {expected!r}, got {last!r}') from None
 
 
 def stop(process):
