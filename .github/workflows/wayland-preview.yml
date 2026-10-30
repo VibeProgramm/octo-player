@@ -44,14 +44,16 @@ jobs:
           build=$(git rev-list --count HEAD)
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "version=1.0.$build-wayland.1" >> "$GITHUB_OUTPUT"
-      - name: Desktop and native-adapter tests
-        run: ./gradlew :desktop:test :desktop-wayland:test --no-daemon --max-workers=3
+      - name: Native-adapter tests
+        run: ./gradlew :desktop-wayland:test --no-daemon --max-workers=3
       - name: Build the portable Java 27 bundle
         run: ./gradlew :desktop-wayland:packagePortable -PoctoBuild=${{ steps.version.outputs.build }} -PoctoDesktopVersion=${{ steps.version.outputs.version }} --no-daemon --max-workers=3
       - name: Packaged Wayland / audio / TLS smoke
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: bash desktop-wayland/check/ci-smoke.sh
+      - name: Full desktop regression suite
+        run: ./gradlew :desktop:test --no-daemon --max-workers=3
       - name: Checksums and provenance
         env:
           VERSION: ${{ steps.version.outputs.version }}

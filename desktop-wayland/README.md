@@ -74,8 +74,11 @@ AMD Radeon Vega 8, Mesa 26.2.5, KWin 6.8.2, two isolated outputs at 100% and
 streaming with an advancing MPRIS clock, pause/resume/seek, mini-player switching
 while playing, mixed-DPI movement, fullscreen and clean shutdown. Independent
 clients verified Unicode clipboard, text-input-v3 preedit/commit/UTF-8 deletion
-and an audio-file drag from GTK. `strace` confirmed the Wayland socket and DRM
-render node, with no X11 connection.
+and an audio-file drag from GTK. The real KDE portal completed a Save/Open
+roundtrip with a Cyrillic filename. `strace` confirmed the Wayland socket and
+DRM render node, with no X11 connection. With the full player paused and its
+animated background enabled, an eight-second untraced sample used about 22%
+of one CPU core (not a zero-animation idle measurement).
 
 The full desktop test suite also runs on the Ubuntu CI runner. Local offscreen
 visual tests are slow on this machine and have pre-existing image/locale

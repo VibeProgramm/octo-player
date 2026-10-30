@@ -36,11 +36,15 @@ def wait(test, message, seconds=40):
 
 def script(body):
     path = OUT / 'window.js'
-    path.write_text(body)
+    marker = f'OCTO-SCRIPT-{time.time_ns()}'
+    path.write_text(body + '\nconsole.warn(' + json.dumps(marker) + ');')
     number = run('qdbus6', 'org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.loadScript', str(path), 'octo-check')
     paths = run('qdbus6', 'org.kde.KWin').splitlines()
     obj = next(p.strip() for p in paths if p.strip().endswith('/Script' + number) or p.strip() == '/' + number)
     run('qdbus6', 'org.kde.KWin', obj, 'org.kde.kwin.Script.run')
+    # run() starts an asynchronous script load. Do not unload it until the
+    # compositor has actually completed the requested window operations.
+    wait(lambda: marker in (OUT / 'compositor.log').read_text(), 'KWin script did not complete')
     run('qdbus6', 'org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.unloadScript', 'octo-check')
 
 
@@ -125,9 +129,41 @@ def portal_ready(title):
     marker = f'OCTO-DIALOG-{time.time_ns()}'
     def mapped():
         script('for (const w of workspace.windowList()) if (String(w.caption).includes('
-               + json.dumps(title) + ')) {workspace.activeWindow=w; print(' + json.dumps(marker) + ');}')
+               + json.dumps(title) + ')) {workspace.activeWindow=w; console.warn(' + json.dumps(marker) + ');}')
         return marker in (OUT / 'compositor.log').read_text()
     wait(mapped, f'No isolated portal dialog: {title}')
+
+
+def check_portals(env):
+    target = OUT / f'Portal Unicode Файл-{time.time_ns()}.txt'
+    process = None
+    try:
+        with (OUT / 'portal.log').open('w') as log:
+            process = subprocess.Popen([LAUNCHER], env=dict(env, JAVA_TOOL_OPTIONS='-Docto.wayland.checkFiles=true'),
+                                       stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            portal_text = lambda: (OUT / 'portal.log').read_text()
+            wait(lambda: 'check-files save' in portal_text(), 'No portal save request')
+            portal_ready('Octo check: Save')
+            ctrl(30)
+            paste(str(target))
+            key(28)
+            wait(target.exists, 'Portal Save did not return the selected file')
+            wait(lambda: 'check-files open' in portal_text(), 'No portal open request')
+            portal_ready('Octo check: Open')
+            ctrl(30)  # The native file dialog initially focuses its filename.
+            paste(str(target))
+            key(28)
+            wait(lambda: 'check-files PASS' in portal_text(), 'Portal Open did not return the saved Unicode path')
+            assert process.wait(timeout=15) == 0
+            print('PASS real portal Save/Open roundtrip with a Unicode filename', flush=True)
+    finally:
+        stop(process)
+
+
+if os.environ.get('OCTO_CHECK_PORTAL_ONLY') == '1':
+    check_portals(dict(os.environ, OCTO_PROFILE_DIR=str(OUT / f'portal-profile-{time.time_ns()}')))
+    print('PASS native acceptance complete', flush=True)
+    raise SystemExit(0)
 
 
 fixture = Fixture()
@@ -284,25 +320,7 @@ try:
             print('PASS independent strace: Wayland + DRM render node, no X11 connection', flush=True)
         print('PASS native application clean shutdown', flush=True)
     if os.environ.get('OCTO_CHECK_PORTAL') == '1':
-        target = OUT / f'Portal Unicode Файл-{time.time_ns()}.txt'
-        with (OUT / 'portal.log').open('w') as log:
-            process = subprocess.Popen([LAUNCHER], env=dict(env, JAVA_TOOL_OPTIONS='-Docto.wayland.checkFiles=true'),
-                                       stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-            portal_text = lambda: (OUT / 'portal.log').read_text()
-            wait(lambda: 'check-files save' in portal_text(), 'No portal save request')
-            portal_ready('Octo check: Save')
-            ctrl(30)
-            paste(str(target))
-            key(28)
-            wait(target.exists, 'Portal Save did not return the selected file')
-            wait(lambda: 'check-files open' in portal_text(), 'No portal open request')
-            portal_ready('Octo check: Open')
-            ctrl(38)  # Ctrl+L focuses the KDE file dialog's location.
-            paste(str(target))
-            key(28)
-            wait(lambda: 'check-files PASS' in portal_text(), 'Portal Open did not return the saved Unicode path')
-            assert process.wait(timeout=15) == 0
-            print('PASS real portal Save/Open roundtrip with a Unicode filename', flush=True)
+        check_portals(env)
     print('PASS native acceptance complete', flush=True)
 finally:
     (OUT / 'server-calls.json').write_text(json.dumps(fixture.calls, indent=2))

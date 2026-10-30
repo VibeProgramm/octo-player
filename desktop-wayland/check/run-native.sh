@@ -22,7 +22,7 @@ status=0
 # D-Bus activation must inherit the isolated display too, otherwise portal
 # backends can open a dialog on the real desktop even though Octo is nested.
 timeout 330s env -u DISPLAY WAYLAND_DISPLAY=wayland-octo-player-test XDG_CONFIG_HOME="$out/compositor-config" \
-    QT_QPA_PLATFORM=wayland GTK_A11Y=none NO_AT_BRIDGE=1 dbus-run-session -- \
+    QT_QPA_PLATFORM=wayland QT_FORCE_STDERR_LOGGING=1 GTK_A11Y=none NO_AT_BRIDGE=1 dbus-run-session -- \
     kwin_wayland --virtual --width 1280 --height 900 --output-count 2 --socket wayland-octo-player-test \
     --inputmethod "$out/tools/ime" --no-lockscreen --no-global-shortcuts --no-kactivities \
     --exit-with-session "$root/desktop-wayland/check/native-session.py" >"$out/compositor.log" 2>&1 || status=$?
